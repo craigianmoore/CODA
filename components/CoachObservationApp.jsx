@@ -4050,7 +4050,11 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestedOutcome]);
 
-  const isHighlyCompetent = assessmentOutcome === "Highly Competent";
+  // Keyed off the actual score, not the assessmentOutcome dropdown value —
+  // that dropdown can lag behind the real score if it was manually touched
+  // earlier in the session (outcomeManuallySet), which previously meant this
+  // box wouldn't appear at 16+ until the dropdown was flipped by hand.
+  const isHighlyCompetent = runningTotal >= HIGHLY_COMPETENT_THRESHOLD;
   const isNotYetCompetent = (assessmentOutcome || suggestedOutcome) === "Not Yet Competent";
 
   function togglePathway(opt) {
@@ -5355,11 +5359,12 @@ function buildSingleObservationHtml(obs) {
   const sessionObjectiveCard = obs.sessionPlan?.sessionObjective
     ? `<div class="info-box"><p class="info-box-label">Session Objective</p>${esc(obs.sessionPlan.sessionObjective)}</div>`
     : "";
-  const sessionPlanSection = (sessionObjectiveCard || sessionPlanFieldCards || typeOfSessionCard)
+  const sessionPlanSection = (sessionObjectiveCard || sessionPlanFieldCards || typeOfSessionCard || pitchMap)
     ? `<div class="section">
         <p class="section-title">Session Plan</p>
         ${sessionObjectiveCard}
         <div class="plan-fields-grid">${sessionPlanFieldCards}${typeOfSessionCard}</div>
+        ${pitchMap}
       </div>`
     : "";
 
@@ -5482,8 +5487,6 @@ function buildSingleObservationHtml(obs) {
           <p class="section-title"><span>Assessment Scoring</span><span class="score-total">${total ?? "—"} / ${MAX_TOTAL_SCORE}</span></p>
           <div class="areas-grid">${areaCards}</div>
         </div>` : ""}
-
-        ${pitchMap}
 
         <div class="two-col">
           <div class="box box-green">
