@@ -1426,6 +1426,10 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
     saveClosedCourseNumbers([...closedCourseNumbers, courseNumber]);
   }
 
+  function reopenCourse(courseNumber) {
+    saveClosedCourseNumbers(closedCourseNumbers.filter(n => n !== courseNumber));
+  }
+
   function coachTopicsFor(coachId) {
     return coaches.find(c => c.id === coachId)?.topics;
   }
@@ -1524,14 +1528,20 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
           <div className="divide-y divide-slate-100">
             {completedGroups.map(g => (
               <div key={g.courseNumber}>
-                <button onClick={() => setExpandedCourse(expandedCourse === g.courseNumber ? null : g.courseNumber)}
-                  className="w-full px-5 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors text-left">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">#{g.courseNumber} — {g.courseTitle}</p>
-                    <p className="text-xs text-slate-400">{g.records.length} coach{g.records.length === 1 ? "" : "es"} tracked</p>
-                  </div>
-                  <ChevronRight className={`w-4 h-4 text-slate-300 transition-transform ${expandedCourse === g.courseNumber ? "rotate-90" : ""}`} />
-                </button>
+                <div className="px-5 py-3 flex items-center justify-between gap-3">
+                  <button onClick={() => setExpandedCourse(expandedCourse === g.courseNumber ? null : g.courseNumber)}
+                    className="flex-1 min-w-0 text-left flex items-center gap-2 hover:bg-slate-50 -mx-2 px-2 py-1 rounded-lg transition-colors">
+                    <ChevronRight className={`w-4 h-4 text-slate-300 transition-transform shrink-0 ${expandedCourse === g.courseNumber ? "rotate-90" : ""}`} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-800 truncate">#{g.courseNumber} — {g.courseTitle}</p>
+                      <p className="text-xs text-slate-400">{g.records.length} coach{g.records.length === 1 ? "" : "es"} tracked</p>
+                    </div>
+                  </button>
+                  <button onClick={() => reopenCourse(g.courseNumber)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-50 whitespace-nowrap shrink-0">
+                    <ChevronLeft className="w-3.5 h-3.5" /> Reopen Course
+                  </button>
+                </div>
                 {expandedCourse === g.courseNumber && (
                   <div className="px-5 pb-3 space-y-2">
                     {[...g.records].sort((a, b) => a.coachName.localeCompare(b.coachName)).map(t => {
@@ -6232,6 +6242,13 @@ function DataImportTool({ onImported }) {
 
 function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onView, onClearHistory, onDeleteObservation, adminSettings, saveAdminSettings, adminLockouts, recordAdminAttempt, autoOpenAdmin, onAutoOpenHandled }) {
   const [cetFilter, setCetFilter] = useState("");
+  const [courseNumberFilter, setCourseNumberFilter] = useState("");
+  const [courseTypeFilter, setCourseTypeFilter] = useState("");
+  const [dateFromFilter, setDateFromFilter] = useState("");
+  const [dateToFilter, setDateToFilter] = useState("");
+  const [competenceFilter, setCompetenceFilter] = useState("");
+  const [minScoreFilter, setMinScoreFilter] = useState("");
+  const [maxScoreFilter, setMaxScoreFilter] = useState("");
   const [clearConfirmStep, setClearConfirmStep] = useState(false);
   const [confirmDeleteObsId, setConfirmDeleteObsId] = useState(null);
   const [exportAllCoaches, setExportAllCoaches] = useState(true);
@@ -6280,11 +6297,43 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
   const maxAdmins = adminSettings.maxAdmins || MAX_ADMINS;
   const iAmLeadAdmin = panelAuthed && isLeadAdmin(adminSettings, signedInAdminName);
 
-  const filtered = observations.filter(o =>
-    (!coachId || o.coachId === coachId) &&
-    (!cetFilter || (o.coachEducatorName || "").toLowerCase() === cetFilter.toLowerCase())
-  );
+  function observationCourseType(o) {
+    if (o.sessionType === "informal") return "Informal";
+    return courseLevelGroup(o.formalCourseName);
+  }
+
+  const courseNumberOptions = [...new Set(observations.map(o => (o.courseNumber || "").trim()).filter(Boolean))]
+    .sort((a, b) => courseNumericSort({ courseNumber: a }, { courseNumber: b }));
+  const courseTypeOptions = COURSE_LEVEL_GROUP_ORDER.filter(g => observations.some(o => observationCourseType(o) === g));
+  const hasInformal = observations.some(o => o.sessionType === "informal");
+
+  const filtered = observations.filter(o => {
+    const total = totalForObs(o);
+    if (coachId && o.coachId !== coachId) return false;
+    if (cetFilter && (o.coachEducatorName || "").toLowerCase() !== cetFilter.toLowerCase()) return false;
+    if (courseNumberFilter && (o.courseNumber || "").trim() !== courseNumberFilter) return false;
+    if (courseTypeFilter && observationCourseType(o) !== courseTypeFilter) return false;
+    if (dateFromFilter && o.date < dateFromFilter) return false;
+    if (dateToFilter && o.date > dateToFilter) return false;
+    if (competenceFilter && (o.assessmentOutcome || "") !== competenceFilter) return false;
+    if (minScoreFilter !== "" && (total == null || total < Number(minScoreFilter))) return false;
+    if (maxScoreFilter !== "" && (total == null || total > Number(maxScoreFilter))) return false;
+    return true;
+  });
   const sorted = [...filtered].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const filtersActive = !!(coachId || cetFilter || courseNumberFilter || courseTypeFilter || dateFromFilter || dateToFilter || competenceFilter || minScoreFilter !== "" || maxScoreFilter !== "");
+
+  function clearAllFilters() {
+    setCoachId(null);
+    setCetFilter("");
+    setCourseNumberFilter("");
+    setCourseTypeFilter("");
+    setDateFromFilter("");
+    setDateToFilter("");
+    setCompetenceFilter("");
+    setMinScoreFilter("");
+    setMaxScoreFilter("");
+  }
 
   function isAdminMatch(name) {
     return adminSettings.admins.some(a => a.name.trim().toLowerCase() === (name || "").trim().toLowerCase());
@@ -6571,15 +6620,49 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="text-xl font-bold text-slate-900">Observation History</h2>
-        <div className="flex items-center gap-2">
-          <select value={coachId || ""} onChange={e => setCoachId(e.target.value || null)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm">
-            <option value="">All coaches</option>
-            {[...coaches].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <select value={cetFilter} onChange={e => setCetFilter(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm">
-            <option value="">All CETs</option>
-            {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
-          </select>
+        {filtersActive && (
+          <button onClick={clearAllFilters} className="text-sm font-semibold text-indigo-600 hover:text-indigo-700">Clear filters</button>
+        )}
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-xl p-3 grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        <select value={coachId || ""} onChange={e => setCoachId(e.target.value || null)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+          <option value="">All coaches</option>
+          {[...coaches].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select value={cetFilter} onChange={e => setCetFilter(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+          <option value="">All CETs</option>
+          {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
+        </select>
+        <select value={courseNumberFilter} onChange={e => setCourseNumberFilter(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+          <option value="">All course numbers</option>
+          {courseNumberOptions.map(n => <option key={n} value={n}>#{n}</option>)}
+        </select>
+        <select value={courseTypeFilter} onChange={e => setCourseTypeFilter(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+          <option value="">All course types</option>
+          {courseTypeOptions.map(g => <option key={g} value={g}>{g}</option>)}
+          {hasInformal && <option value="Informal">Informal</option>}
+        </select>
+        <select value={competenceFilter} onChange={e => setCompetenceFilter(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+          <option value="">All outcomes</option>
+          <option value="Highly Competent">Highly Competent</option>
+          <option value="Competent">Competent</option>
+          <option value="Not Yet Competent">Not Yet Competent</option>
+          <option value="N/A">N/A</option>
+        </select>
+        <div className="flex items-center gap-1.5">
+          <input type="date" value={dateFromFilter} onChange={e => setDateFromFilter(e.target.value)} title="From date"
+            className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
+          <span className="text-slate-400 text-sm shrink-0">to</span>
+          <input type="date" value={dateToFilter} onChange={e => setDateToFilter(e.target.value)} title="To date"
+            className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <input type="number" min="0" max={MAX_TOTAL_SCORE} value={minScoreFilter} onChange={e => setMinScoreFilter(e.target.value)}
+            placeholder="Min score" title="Minimum score" className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
+          <span className="text-slate-400 text-sm shrink-0">–</span>
+          <input type="number" min="0" max={MAX_TOTAL_SCORE} value={maxScoreFilter} onChange={e => setMaxScoreFilter(e.target.value)}
+            placeholder="Max score" title="Maximum score" className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
         </div>
       </div>
 
@@ -6791,7 +6874,9 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
       )}
 
       {sorted.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">No observations found.</div>
+        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">
+          {filtersActive ? "No observations match these filters." : "No observations found."}
+        </div>
       ) : (
         <div className="space-y-2">
           {sorted.map(o => {
