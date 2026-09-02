@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Users, BookOpen, ClipboardList, FileText, Plus, ChevronLeft, ChevronRight, Check, X, Calendar, Award, TrendingUp, ArrowRight, Loader2, ListChecks, Pencil, Upload, AlertCircle, PenLine, Search, Trash2, Settings, Clock, Smartphone, Tablet, Laptop, Lock, LogOut } from "lucide-react";
+import { Users, BookOpen, ClipboardList, FileText, Plus, ChevronLeft, ChevronRight, Check, X, Calendar, Award, TrendingUp, ArrowRight, Loader2, ListChecks, Pencil, Upload, AlertCircle, PenLine, Search, Trash2, Settings, Clock, Smartphone, Tablet, Laptop, Lock, LogOut, Mic } from "lucide-react";
 import Papa from "papaparse";
 import * as mammoth from "mammoth";
 import { supabase } from "../lib/supabase";
@@ -4035,6 +4035,66 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   );
 }
 
+// A drop-in replacement for <textarea> that adds a dictation mic button —
+// useful since CETs are often typing these notes live, pitch-side, while
+// watching a session. Uses the browser's built-in Web Speech API (no
+// external service or API key needed); the mic button simply doesn't
+// render in browsers that don't support it (Firefox, notably), so it
+// degrades to a plain textarea with no error or broken state.
+function VoiceTextarea({ value, onChange, className, rows, placeholder, ...rest }) {
+  const [listening, setListening] = useState(false);
+  const [supported, setSupported] = useState(false);
+  const recognitionRef = useRef(null);
+  const baseValueRef = useRef("");
+
+  useEffect(() => {
+    const SR = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+    setSupported(!!SR);
+    return () => { recognitionRef.current && recognitionRef.current.stop(); };
+  }, []);
+
+  function toggleListening() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    if (listening) {
+      recognitionRef.current && recognitionRef.current.stop();
+      setListening(false);
+      return;
+    }
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-AU";
+    baseValueRef.current = value || "";
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let i = 0; i < event.results.length; i++) transcript += event.results[i][0].transcript;
+      const sep = baseValueRef.current && !baseValueRef.current.endsWith(" ") ? " " : "";
+      onChange({ target: { value: `${baseValueRef.current}${sep}${transcript}`.trim() } });
+    };
+    recognition.onerror = () => setListening(false);
+    recognition.onend = () => setListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+    setListening(true);
+  }
+
+  return (
+    <div className="relative">
+      <textarea value={value} onChange={onChange} rows={rows} placeholder={placeholder} className={className} {...rest} />
+      {supported && (
+        <button type="button" onClick={toggleListening}
+          title={listening ? "Stop dictation" : "Dictate with your voice"}
+          className={`absolute bottom-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-colors shrink-0 ${
+            listening ? "bg-red-500 text-white animate-pulse" : "bg-white text-slate-400 border border-slate-200 hover:text-slate-600 hover:border-slate-300"
+          }`}>
+          <Mic className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function NewObservation({ coaches, courses, educators, saveCoaches, saveEducators, observations, saveObservations, completedTasks, existingObservation, onSaved, onCancel }) {
   const isEditing = !!existingObservation;
 
@@ -4946,7 +5006,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                   </div>
                 </div>
               )}
-              <textarea value={keyOutcomesFocus} onChange={e => setKeyOutcomesFocus(e.target.value)} rows={3}
+              <VoiceTextarea value={keyOutcomesFocus} onChange={e => setKeyOutcomesFocus(e.target.value)} rows={3}
                 placeholder="Note the key outcomes from the coach's Individual Development Plan this session is focused on..."
                 className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
             </div>
@@ -5015,7 +5075,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">
                 Session Objective <span className="text-red-500">*</span>
               </label>
-              <textarea value={sessionPlan.sessionObjective} onChange={e => setSessionPlanField("sessionObjective", e.target.value)} rows={2}
+              <VoiceTextarea value={sessionPlan.sessionObjective} onChange={e => setSessionPlanField("sessionObjective", e.target.value)} rows={2}
                 placeholder="What is the clear, measurable objective of this session?"
                 className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
               {!sessionPlan.sessionObjective.trim() && (
@@ -5063,7 +5123,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                     <label className="text-xs font-medium text-slate-500 mb-1.5 block">
                       {f.label} {f.required && <span className="text-red-500">*</span>}
                     </label>
-                    <textarea value={sessionPlan[f.key]} onChange={e => setSessionPlanField(f.key, e.target.value)} rows={2}
+                    <VoiceTextarea value={sessionPlan[f.key]} onChange={e => setSessionPlanField(f.key, e.target.value)} rows={2}
                       placeholder={`Notes on ${f.label.toLowerCase()}...`} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
                     {f.required && !sessionPlan[f.key].trim() && (
                       <p className="text-xs text-red-500 mt-1">Required.</p>
@@ -5251,17 +5311,17 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
           <div className="space-y-4">
             <div>
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">Key strengths observed</label>
-              <textarea value={strengths} onChange={e => setStrengths(e.target.value)} rows={4}
+              <VoiceTextarea value={strengths} onChange={e => setStrengths(e.target.value)} rows={4}
                 placeholder="What did the coach do well in this session?" className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
             </div>
             <div>
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">Areas for development</label>
-              <textarea value={areasForDevelopment} onChange={e => setAreasForDevelopment(e.target.value)} rows={4}
+              <VoiceTextarea value={areasForDevelopment} onChange={e => setAreasForDevelopment(e.target.value)} rows={4}
                 placeholder="What should the coach focus on improving?" className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
             </div>
             <div>
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">Additional plan notes for the coach <span className="text-red-500">*</span></label>
-              <textarea value={planNotes} onChange={e => setPlanNotes(e.target.value)} rows={3}
+              <VoiceTextarea value={planNotes} onChange={e => setPlanNotes(e.target.value)} rows={3}
                 placeholder="Add any specific actions, timelines, or goals for this coach's development..." className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
               {!planNotes.trim() && (
                 <p className="text-xs text-red-500 mt-1">Required — please add at least a brief note before saving.</p>
@@ -5397,7 +5457,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
           <div className="max-w-5xl mx-auto px-4 py-3">
             <p className="text-sm font-semibold text-slate-800 mb-1">General Notes</p>
             <p className="text-xs text-slate-400 mb-2">Always visible while scoring — use this for anything that doesn't fit neatly under one assessment area.</p>
-            <textarea value={cetNotes} onChange={e => setCetNotes(e.target.value)} rows={2}
+            <VoiceTextarea value={cetNotes} onChange={e => setCetNotes(e.target.value)} rows={2}
               placeholder="Add any general notes here..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
           </div>
         </div>
