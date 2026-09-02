@@ -1120,22 +1120,36 @@ export default function CoachObservationApp() {
         )}
         {tab === "logistics" && (
           <div className="space-y-8">
-            <ClearCoachesAndCetsBar
-              coaches={coaches} educators={educators}
-              saveCoaches={saveCoaches} saveEducators={saveEducators}
-              adminSettings={adminSettings}
-              adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
-            />
-            <CetTab educators={educators} saveEducators={saveEducators} observations={visibleObservations} />
+            <div className="flex justify-end">
+              <a href="/CODA_How_To_Use.docx" download
+                className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 border border-indigo-200 px-3 py-2 rounded-lg hover:bg-indigo-50">
+                <FileText className="w-4 h-4" /> How to Use CODA
+              </a>
+            </div>
+            <div>
+              <RemoveAllBar
+                label="Remove All CETs" count={educators.length} onClear={() => saveEducators([])}
+                warningText={`This will permanently delete all ${educators.length} CET${educators.length === 1 ? "" : "s"}. Past observations will remain in History but will no longer show a linked CET profile. This cannot be undone and is restricted to App Admins.`}
+                adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
+              />
+              <CetTab educators={educators} saveEducators={saveEducators} observations={visibleObservations} />
+            </div>
             <CoursesTab
               courses={courses} saveCourses={saveCourses} adminSettings={adminSettings}
               adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
             />
-            <CoachesTab
-              coaches={coaches} observations={visibleObservations}
-              saveCoaches={saveCoaches}
-              goHistory={(cid) => { setHistoryCoachId(cid); setTab("history"); }}
-            />
+            <div>
+              <RemoveAllBar
+                label="Remove All Coaches" count={coaches.length} onClear={() => saveCoaches([])}
+                warningText={`This will permanently delete all ${coaches.length} coach${coaches.length === 1 ? "" : "es"}. Past observations will remain in History but will no longer show a linked coach profile. This cannot be undone and is restricted to App Admins.`}
+                adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
+              />
+              <CoachesTab
+                coaches={coaches} observations={visibleObservations}
+                saveCoaches={saveCoaches}
+                goHistory={(cid) => { setHistoryCoachId(cid); setTab("history"); }}
+              />
+            </div>
           </div>
         )}
         {tab === "report" && reportId && (
@@ -1571,7 +1585,7 @@ function StatCard({ label, value, icon: Icon }) {
   );
 }
 
-function ClearCoachesAndCetsBar({ coaches, educators, saveCoaches, saveEducators, adminSettings, adminLockouts, recordAdminAttempt }) {
+function RemoveAllBar({ label, count, onClear, warningText, adminSettings, adminLockouts, recordAdminAttempt }) {
   const [confirmClear, setConfirmClear] = useState(false);
   const [adminName, setAdminName] = useState("");
   const [pin, setPin] = useState("");
@@ -1596,8 +1610,7 @@ function ClearCoachesAndCetsBar({ coaches, educators, saveCoaches, saveEducators
       return;
     }
     recordAdminAttempt(adminName, true);
-    saveCoaches([]);
-    saveEducators([]);
+    onClear();
     setConfirmClear(false);
     setAdminName("");
     setPin("");
@@ -1611,26 +1624,20 @@ function ClearCoachesAndCetsBar({ coaches, educators, saveCoaches, saveEducators
     setClearError(false);
   }
 
+  if (count === 0) return null;
+
   return (
-    <div className="space-y-3">
-      <div className="flex justify-between items-center gap-2">
-        <a href="https://drive.google.com/file/d/1PkpXDQ3Lag447mEuwCUi2km5lxs99JIo/view?usp=sharing" target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 border border-indigo-200 px-3 py-2 rounded-lg hover:bg-indigo-50">
-          <FileText className="w-4 h-4" /> CODA User Sheet
-        </a>
-        {(coaches.length > 0 || educators.length > 0) && (
-          <button onClick={handleOpenConfirm} className="flex items-center gap-1.5 text-sm font-semibold text-red-600 border border-red-200 px-3 py-2 rounded-lg hover:bg-red-50">
-            <Trash2 className="w-4 h-4" /> Remove All Coaches & CETs
-          </button>
-        )}
+    <div className="space-y-3 mb-3">
+      <div className="flex justify-end">
+        <button onClick={handleOpenConfirm} className="flex items-center gap-1.5 text-sm font-semibold text-red-600 border border-red-200 px-3 py-2 rounded-lg hover:bg-red-50">
+          <Trash2 className="w-4 h-4" /> {label}
+        </button>
       </div>
-      {confirmClear && (coaches.length > 0 || educators.length > 0) && (
+      {confirmClear && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-3">
           <div className="flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-red-700 flex-1">
-              This will permanently delete all {coaches.length} coach{coaches.length === 1 ? "" : "es"} and {educators.length} CET{educators.length === 1 ? "" : "s"}. Past observations will remain in History but will no longer be linked to a coach or CET profile. This cannot be undone and is restricted to App Admins.
-            </p>
+            <p className="text-sm text-red-700 flex-1">{warningText}</p>
           </div>
           <div className="pl-6 grid sm:grid-cols-2 gap-2">
             <input value={adminName} onChange={e => { setAdminName(e.target.value); setClearError(false); }} placeholder="Admin name"
