@@ -839,6 +839,15 @@ async function syncCollectionSb(table, oldArray, newArray) {
   await Promise.all((oldArray || []).filter(i => !newIds.has(i.id)).map(i => removeRecordSb(table, i.id)));
 }
 
+// Used by the Import Data tool specifically — adds/updates records from the
+// imported file but never deletes anything already in the table. Restoring
+// a backup should never be able to silently wipe out real data that was
+// added after that backup was taken (e.g. a coach added directly in the
+// live app since the export was made).
+async function mergeCollectionSb(table, newArray) {
+  await Promise.all(newArray.map(i => writeRecordSb(table, i)));
+}
+
 async function kvGet(key) {
   const { data, error } = await supabase.from("kv_settings").select("data").eq("key", key).maybeSingle();
   if (error || !data) return null;
@@ -6181,12 +6190,11 @@ function DataImportTool({ onImported }) {
           }
           if (COLLECTION_TABLE_MAP[key]) {
             const table = COLLECTION_TABLE_MAP[key];
-            const current = await loadCollectionSb(table);
             // Also tolerate a collection stored as an object keyed by id
             // rather than a plain array, and records missing an id.
             const asArray = Array.isArray(raw) ? raw : (raw && typeof raw === "object" ? Object.values(raw) : []);
             const withIds = asArray.map(item => (item && typeof item === "object" && !item.id) ? { ...item, id: uid() } : item);
-            await syncCollectionSb(table, current, withIds);
+            await mergeCollectionSb(table, withIds);
           } else {
             await kvSet(key, raw);
           }
@@ -6209,7 +6217,7 @@ function DataImportTool({ onImported }) {
   return (
     <div className="rounded-lg border border-sky-300 bg-sky-50 p-3 space-y-2">
       <p className="text-sm font-semibold text-sky-800">Import Data (restore from backup)</p>
-      <p className="text-xs text-sky-700">Paste JSON produced by the Export Data tool. This overwrites matching data in the database — use with care.</p>
+      <p className="text-xs text-sky-700">Paste JSON produced by the Export Data tool. This adds new records and updates any existing ones with a matching ID — it never deletes records that aren't in the pasted file, so anything added directly in the app since your backup was taken stays safe.</p>
       <textarea value={input} onChange={e => setInput(e.target.value)} rows={6} placeholder="Paste exported JSON here..."
         className="w-full font-mono text-xs p-2 border border-sky-300 rounded-lg bg-white" />
       <button onClick={handleImport} disabled={importing || !input.trim()}
