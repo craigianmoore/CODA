@@ -1198,7 +1198,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, onAdminClick }) {
     <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
       <div className={`${maxWidthForViewMode(viewMode)} mx-auto px-4`}>
         <div className="flex items-center justify-between py-3">
-          <div className="flex items-center gap-2">
+          <a href="/" className="flex items-center gap-2 hover:opacity-75 transition-opacity" title="Back to CODA home">
             <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center">
               <Award className="w-5 h-5 text-white" />
             </div>
@@ -1206,7 +1206,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, onAdminClick }) {
               <h1 className="font-bold text-slate-900 text-sm leading-tight">Coach Session Observation</h1>
               <p className="text-xs text-slate-400 leading-tight">Coach Observation Development App</p>
             </div>
-          </div>
+          </a>
           {onViewModeChange && (
             <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
               {VIEW_MODES.map(v => {
