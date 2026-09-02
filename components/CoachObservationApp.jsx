@@ -3050,6 +3050,28 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     });
   }
 
+  // Bulk-fixes the exact gap that caused it: records imported via the
+  // Coursework CSV tool with the (now-required) Course Number left blank
+  // never show under Open/Completed Courses and never auto-fill in New
+  // Observation, since both key off courseNumber. This lets a whole batch
+  // be corrected in one action instead of editing each record by hand.
+  const [bulkCourseNumberInputs, setBulkCourseNumberInputs] = useState({});
+
+  function applyBulkCourseNumber(groupKey, groupTasks) {
+    const raw = (bulkCourseNumberInputs[groupKey] || "").trim();
+    if (!raw) return;
+    const ids = new Set(groupTasks.map(t => t.id).filter(id => selectedTaskIds.has(id)));
+    if (ids.size === 0) return;
+    saveCompletedTasks(completedTasks.map(t => ids.has(t.id) ? { ...t, courseNumber: raw, updatedAt: new Date().toISOString() } : t));
+    setBulkCourseNumberInputs(prev => ({ ...prev, [groupKey]: "" }));
+    setSelectedTaskIds(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => next.delete(id));
+      return next;
+    });
+    expandCourseGroup(raw);
+  }
+
   function selectDiplomaType(type) {
     setCourseworkDiplomaType(type);
     setCourseworkCourseTitle(type === "C" ? "AFC/FA C Diploma" : "AFC/FA B Diploma");
@@ -3111,6 +3133,11 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
 
   function generateCourseworkPreview() {
     if (!courseworkRawRows || !courseworkNameHeader) return;
+    if (!courseworkCourseNumber.trim()) {
+      setCourseworkError("Course Number is required — without it, the imported records won't show up under Open/Completed Courses or auto-fill in New Observation.");
+      setCourseworkPreview(null);
+      return;
+    }
     const excluded = new Set([courseworkNameHeader, courseworkClubHeader, courseworkFaHeader, courseworkCetHeader, courseworkOnlineModulesHeader, ...courseworkTopicHeaders].filter(Boolean));
     const attendanceHeaders = courseworkHeaders.filter(h => !excluded.has(h) && isDateColumnHeader(h, courseworkDiplomaType));
     if (!attendanceHeaders.length) {
@@ -3541,7 +3568,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 placeholder="e.g. AFC/FA B Diploma" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course Number</label>
+              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course Number <span className="text-red-500">*</span></label>
               <input value={courseworkCourseNumber} onChange={e => setCourseworkCourseNumber(e.target.value)}
                 placeholder="e.g. 236" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
             </div>
@@ -3740,6 +3767,22 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                           </label>
                         </div>
                       </div>
+                      {groupSomeSelected && !g.courseNumber && (
+                        <div className="px-4 pb-3 -mt-1">
+                          <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-2.5 flex items-center gap-2 flex-wrap">
+                            <p className="text-xs text-indigo-800 font-medium">Set Course Number for {groupSelectedCount} selected:</p>
+                            <input value={bulkCourseNumberInputs[g.courseNumber || "none"] || ""}
+                              onChange={e => setBulkCourseNumberInputs(prev => ({ ...prev, [g.courseNumber || "none"]: e.target.value }))}
+                              placeholder="e.g. 236" className="border border-indigo-300 rounded-lg px-2.5 py-1.5 text-xs w-28 bg-white" />
+                            <button onClick={() => applyBulkCourseNumber(g.courseNumber || "none", g.records)}
+                              disabled={!(bulkCourseNumberInputs[g.courseNumber || "none"] || "").trim()}
+                              className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:text-slate-300 disabled:cursor-not-allowed">
+                              Apply
+                            </button>
+                            <p className="text-xs text-indigo-500 w-full">This moves these records into that course's group and re-enables auto-fill in New Observation.</p>
+                          </div>
+                        </div>
+                      )}
                       {!isCollapsed && (
                         <div className="px-4 pb-4 grid sm:grid-cols-2 gap-3">
                           {g.records.map(t => {
