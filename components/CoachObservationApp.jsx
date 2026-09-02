@@ -6481,9 +6481,6 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
             <option value="">All CETs</option>
             {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
           </select>
-          <button onClick={() => setShowAdminPanel(s => !s)} className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-100">
-            <Settings className="w-4 h-4" /> Admin Settings
-          </button>
         </div>
       </div>
 
