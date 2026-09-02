@@ -69,7 +69,7 @@ const MEMBER_FEDERATIONS = [
   { label: "Football Tasmania", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FT-500x500.png?itok=ApnEG5Y_" },
   { label: "Football Victoria", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2022-05/FFV-Memfed-BrandedCard.png?itok=XO8-QVPx" },
   { label: "Football West", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FW-500x500.png?itok=u-RYKimY" },
-  { label: "Northern NSW Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-06/Untitled-14.jpg?itok=Df5mdHPr" },
+  { label: "Northern NSW Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-06/Untitled-14.jpg?itok=Df5mdHPr", scale: 1.7 },
 ];
 
 export default function LandingPage() {
@@ -115,9 +115,14 @@ export default function LandingPage() {
             </div>
             <div className="hidden lg:block w-10 h-px bg-white/15" />
             {MEMBER_FEDERATIONS.map(mf => (
-              <div key={mf.label} className="bg-white/95 rounded-md p-2 flex items-center justify-center w-16 h-16 shrink-0" title={mf.label}>
+              <div key={mf.label} className="bg-white/95 rounded-md p-2 flex items-center justify-center w-16 h-16 shrink-0 overflow-hidden" title={mf.label}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={mf.logoUrl} alt={mf.label} className="max-w-full max-h-full object-contain" />
+                <img
+                  src={mf.logoUrl}
+                  alt={mf.label}
+                  className="max-w-full max-h-full object-contain"
+                  style={mf.scale ? { transform: `scale(${mf.scale})` } : undefined}
+                />
               </div>
             ))}
           </div>
