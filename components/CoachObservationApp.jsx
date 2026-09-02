@@ -1975,14 +1975,11 @@ function CoachesTab({ coaches, observations, saveCoaches, goHistory }) {
           </div>
           {(() => {
             const q = searchQuery.trim().toLowerCase();
-            if (!q) {
-              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">Start typing a name above to search coaches.</div>;
-            }
             const filtered = [...coaches]
               .sort((a, b) => a.name.localeCompare(b.name))
-              .filter(c => c.name.toLowerCase().split(/\s+/).some(part => part.includes(q)));
+              .filter(c => !q || c.name.toLowerCase().split(/\s+/).some(part => part.includes(q)));
             if (filtered.length === 0) {
-              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">No coaches match "{searchQuery}".</div>;
+              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">{q ? `No coaches match "${searchQuery}".` : "No coaches added yet."}</div>;
             }
             return (
               <div className="grid sm:grid-cols-2 gap-3">
@@ -2297,14 +2294,11 @@ function CetTab({ educators, saveEducators, observations }) {
           </div>
           {(() => {
             const q = searchQuery.trim().toLowerCase();
-            if (!q) {
-              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">Start typing a name above to search CETs.</div>;
-            }
             const filtered = [...educators]
               .sort((a, b) => a.name.localeCompare(b.name))
-              .filter(c => c.name.toLowerCase().split(/\s+/).some(part => part.includes(q)));
+              .filter(c => !q || c.name.toLowerCase().split(/\s+/).some(part => part.includes(q)));
             if (filtered.length === 0) {
-              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">No CETs match "{searchQuery}".</div>;
+              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">{q ? `No CETs match "${searchQuery}".` : "No CETs added yet."}</div>;
             }
             return (
               <div className="grid sm:grid-cols-2 gap-3">
