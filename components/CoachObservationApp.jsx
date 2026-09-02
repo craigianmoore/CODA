@@ -825,12 +825,12 @@ async function loadCollectionSb(table) {
 
 async function writeRecordSb(table, item) {
   const { error } = await supabase.from(table).upsert({ id: item.id, data: item, updated_at: new Date().toISOString() });
-  if (error) console.error(`Write to ${table} failed:`, error);
+  if (error) { console.error(`Write to ${table} failed:`, error); throw error; }
 }
 
 async function removeRecordSb(table, id) {
   const { error } = await supabase.from(table).delete().eq("id", id);
-  if (error) console.error(`Delete from ${table} failed:`, error);
+  if (error) { console.error(`Delete from ${table} failed:`, error); throw error; }
 }
 
 async function syncCollectionSb(table, oldArray, newArray) {
@@ -6170,12 +6170,25 @@ function DataImportTool({ onImported }) {
     try {
       for (const key of foundKeys) {
         try {
+          // The old Claude-artifact CODA double-encoded its export: every
+          // key's value is itself a JSON *string* (e.g. "coaches": "[{...}]"
+          // instead of "coaches": [{...}]) rather than the parsed value
+          // directly. Un-wrap that first, for every key, before anything
+          // else — this affects collections and settings alike.
+          let raw = parsed[key];
+          if (typeof raw === "string") {
+            try { raw = JSON.parse(raw); } catch { /* not JSON — leave as-is */ }
+          }
           if (COLLECTION_TABLE_MAP[key]) {
             const table = COLLECTION_TABLE_MAP[key];
             const current = await loadCollectionSb(table);
-            await syncCollectionSb(table, current, parsed[key] || []);
+            // Also tolerate a collection stored as an object keyed by id
+            // rather than a plain array, and records missing an id.
+            const asArray = Array.isArray(raw) ? raw : (raw && typeof raw === "object" ? Object.values(raw) : []);
+            const withIds = asArray.map(item => (item && typeof item === "object" && !item.id) ? { ...item, id: uid() } : item);
+            await syncCollectionSb(table, current, withIds);
           } else {
-            await kvSet(key, parsed[key]);
+            await kvSet(key, raw);
           }
         } catch (e) {
           failedKeys.push(key);
@@ -6266,7 +6279,7 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
   const sorted = [...filtered].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   function isAdminMatch(name) {
-    return adminSettings.admins.some(a => a.name.toLowerCase() === (name || "").trim().toLowerCase());
+    return adminSettings.admins.some(a => a.name.trim().toLowerCase() === (name || "").trim().toLowerCase());
   }
 
   function handleClearHistory() {
@@ -6497,7 +6510,7 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
       return;
     }
     const updatedAdmins = adminSettings.admins.map(a =>
-      a.name.toLowerCase() === signedInAdminName.toLowerCase() ? { ...a, pin: newPin } : a
+      a.name.trim().toLowerCase() === signedInAdminName.trim().toLowerCase() ? { ...a, pin: newPin } : a
     );
     saveAdminSettings({ ...adminSettings, admins: updatedAdmins });
     setPinChangeError("");
