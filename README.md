@@ -94,3 +94,17 @@ Then open http://localhost:3000
   admin-gated tool)
 - **Lead Admin session lock**, IDP upload/tracking per coach, view-mode
   toggle (Phone/Tablet/Laptop) — all carried over unchanged
+
+## Landing page and app route
+
+The app is now split across two routes:
+
+- `/` — a marketing landing page introducing CODA. No login required.
+- `/app` — the actual PIN-gated app (what used to live at `/`).
+
+Both "Open CODA" buttons on the landing page link to `/app`. If you'd
+rather the app live at the root again, swap `app/page.js` (landing) and
+`app/app/page.js` (the app) back — just remember to fix the relative
+import paths in whichever file ends up at `/app` (`../../lib/supabase`
+and `../../components/CoachObservationApp` one level down from root,
+`../lib/supabase` etc. at the root itself).
