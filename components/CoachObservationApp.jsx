@@ -293,6 +293,28 @@ function computeSessionNumber(observations, coachId, courseNumber, currentId, cu
   return idx === -1 ? sorted.length : idx + 1;
 }
 
+// Member Federations for the PDF header logo — alphabetised by display name,
+// defaulting to Football Victoria. Logo URLs are hotlinked from Football
+// Australia's own member-federations page (footballaustralia.com.au) —
+// same approach as the FV logo already used in the bulk History PDF export
+// — rather than recreated graphics. If that page's images ever move, these
+// would need updating the same way.
+const MEMBER_FEDERATIONS = [
+  { key: "Capital", label: "Capital Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-03/caplognpl.png?itok=72Yn6G9K" },
+  { key: "FNSW", label: "Football NSW", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-07/FNSW%20-%20500x500_0.png?itok=gZT5_9tI" },
+  { key: "FNT", label: "Football Northern Territory", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FFNT-500x500.png?itok=4jv-0bEU" },
+  { key: "FQ", label: "Football Queensland", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FQ-500x500.png?itok=1tFQhETo" },
+  { key: "FSA", label: "Football South Australia", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-11/FootballSA-520x520.png?itok=7701s1eg" },
+  { key: "FTas", label: "Football Tasmania", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FT-500x500.png?itok=ApnEG5Y_" },
+  { key: "FV", label: "Football Victoria", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2022-05/FFV-Memfed-BrandedCard.png?itok=XO8-QVPx" },
+  { key: "FWest", label: "Football West", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FW-500x500.png?itok=u-RYKimY" },
+  { key: "NNSWF", label: "Northern NSW Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-06/Untitled-14.jpg?itok=Df5mdHPr" },
+];
+const DEFAULT_MEMBER_FEDERATION = "FV";
+function memberFederationLogo(key) {
+  return (MEMBER_FEDERATIONS.find(m => m.key === key) || MEMBER_FEDERATIONS.find(m => m.key === DEFAULT_MEMBER_FEDERATION)).logoUrl;
+}
+
 const COACH_LEVEL_OPTIONS = [
   "AFC/FA C Diploma",
   "AFC/FA B Diploma",
@@ -3959,6 +3981,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   });
 
   const [date, setDate] = useState(() => existingObservation?.date || new Date().toISOString().slice(0, 10));
+  const [memberFederation, setMemberFederation] = useState(() => existingObservation?.memberFederation || DEFAULT_MEMBER_FEDERATION);
   const [sessionType, setSessionType] = useState(() => existingObservation?.sessionType || "formal");
 
   const initialCourseMatch = existingObservation
@@ -4364,6 +4387,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
       coachEducatorName: educatorName,
       educatorRole,
       date,
+      memberFederation,
       sessionType,
       formalCourseName: sessionType === "formal" ? formalCourseName.trim() : "",
       diplomaBlock: sessionType === "formal" && (isBDiploma(formalCourseName) || isADiploma(formalCourseName)) ? diplomaBlock : "",
@@ -4429,6 +4453,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
       coachEducatorName: finalEducatorName,
       educatorRole,
       date,
+      memberFederation,
       sessionType,
       formalCourseName: sessionType === "formal" ? formalCourseName.trim() : "",
       diplomaBlock: sessionType === "formal" && (isBDiploma(formalCourseName) || isADiploma(formalCourseName)) ? diplomaBlock : "",
@@ -4581,6 +4606,14 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Date of observation</label>
                 <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Member Federation</label>
+              <select value={memberFederation} onChange={e => setMemberFederation(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+                {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
+              </select>
+              <p className="text-xs text-slate-400 mt-1">Sets the logo shown on this report's PDF export.</p>
             </div>
 
             <div>
@@ -5300,6 +5333,35 @@ function buildSingleObservationHtml(obs) {
     : obs.assessmentOutcome === "Competent" ? "outcome-competent"
     : obs.assessmentOutcome === "Not Yet Competent" ? "outcome-notyet" : "outcome-neutral";
   const thresholdPass = obs.diplomaThreshold != null && total >= obs.diplomaThreshold;
+  const logoUrl = memberFederationLogo(obs.memberFederation);
+
+  const sessionPlanFieldCards = obs.sessionPlan ? SESSION_PLAN_FIELDS.filter(f => {
+    if (f.key === "sizeOfPitch") return !!(obs.sessionPlan.pitchLength || obs.sessionPlan.pitchWidth);
+    return (obs.sessionPlan[f.key] || "").toString().trim().length > 0;
+  }).map(f => {
+    const value = f.key === "sizeOfPitch"
+      ? (obs.sessionPlan.pitchLength || obs.sessionPlan.pitchWidth ? `${esc(obs.sessionPlan.pitchLength) || "—"} x ${esc(obs.sessionPlan.pitchWidth) || "—"}` : "—")
+      : esc(obs.sessionPlan[f.key]) || "—";
+    return `<div class="plan-field-card"><p class="plan-field-label">${esc(f.label)}</p><p class="plan-field-value">${value}</p></div>`;
+  }).join("") : "";
+  const typeOfSessionCard = obs.sessionPlan?.typeOfSession?.length > 0
+    ? `<div class="plan-field-card" style="grid-column: span 2;">
+        <p class="plan-field-label">Type of Session</p>
+        <div>${obs.sessionPlan.typeOfSession.map(t => `<span class="chip-slate">${esc(t)}</span>`).join("")}</div>
+        ${obs.sessionPlan.progressiveType?.length > 0 ? `<p class="plan-field-sub">Progressive type: ${esc(obs.sessionPlan.progressiveType.join(", "))}</p>` : ""}
+        ${obs.sessionPlan.pppType?.length > 0 ? `<p class="plan-field-sub">PPP type: ${esc(obs.sessionPlan.pppType.join(", "))}</p>` : ""}
+      </div>`
+    : "";
+  const sessionObjectiveCard = obs.sessionPlan?.sessionObjective
+    ? `<div class="info-box"><p class="info-box-label">Session Objective</p>${esc(obs.sessionPlan.sessionObjective)}</div>`
+    : "";
+  const sessionPlanSection = (sessionObjectiveCard || sessionPlanFieldCards || typeOfSessionCard)
+    ? `<div class="section">
+        <p class="section-title">Session Plan</p>
+        ${sessionObjectiveCard}
+        <div class="plan-fields-grid">${sessionPlanFieldCards}${typeOfSessionCard}</div>
+      </div>`
+    : "";
 
   const areaCards = obs.areas ? ASSESSMENT_AREAS.map(a => {
     const d = obs.areas[a.key] || {};
@@ -5326,7 +5388,8 @@ function buildSingleObservationHtml(obs) {
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: #1e293b; background: #f8fafc; }
         .page { max-width: 800px; margin: 0 auto; padding: 28px; }
         .header { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 18px; }
-        .header-icon { width: 40px; height: 40px; border-radius: 9px; background: #0f172a; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; flex-shrink: 0; }
+        .header-icon { width: 44px; height: 44px; border-radius: 9px; background: #fff; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
+        .header-icon img { max-width: 100%; max-height: 100%; object-fit: contain; }
         h1 { margin: 0; font-size: 21px; }
         .subtitle { color: #64748b; font-size: 13px; margin: 2px 0 0; }
         .type-badge { margin-left: auto; font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: #eef2ff; color: #4338ca; white-space: nowrap; }
@@ -5338,6 +5401,13 @@ function buildSingleObservationHtml(obs) {
         .score-total { font-size: 14px; font-weight: 700; }
         .info-box { border-radius: 10px; border: 1px solid #e0e7ff; background: #eef2ff; padding: 12px; font-size: 13px; margin-bottom: 12px; }
         .info-box-label { font-size: 11px; font-weight: 700; color: #4338ca; margin: 0 0 4px; }
+        .plan-fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .plan-field-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px; background: #f8fafc; break-inside: avoid; }
+        .plan-field-label { font-size: 10.5px; font-weight: 700; color: #64748b; margin: 0 0 3px; }
+        .plan-field-value { font-size: 12.5px; color: #1e293b; margin: 0; white-space: pre-wrap; }
+        .plan-field-sub { font-size: 11px; color: #64748b; margin: 4px 0 0; }
+        .chip-slate { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: #e2e8f0; color: #334155; margin: 0 6px 4px 0; }
+        .action-plan-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; background: #fff; }
         .areas-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .area-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; background: #fff; break-inside: avoid; }
         .area-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
@@ -5387,7 +5457,7 @@ function buildSingleObservationHtml(obs) {
     <body>
       <div class="page">
         <div class="header">
-          <div class="header-icon">CO</div>
+          <div class="header-icon"><img src="${logoUrl}" alt="${esc((MEMBER_FEDERATIONS.find(m => m.key === obs.memberFederation) || {}).label || "Football Victoria")} logo" /></div>
           <div>
             <h1>Coaching Observation Report</h1>
             <p class="subtitle">${esc(obs.coachName) || "—"}</p>
@@ -5404,6 +5474,8 @@ function buildSingleObservationHtml(obs) {
         ${obs.sessionTopic ? `<p style="font-size:12.5px;color:#64748b;">Session Topic: <strong>${esc(obs.sessionTopic)}</strong></p>` : ""}
 
         ${obs.keyOutcomesFocus ? `<div class="info-box"><p class="info-box-label">Key Outcomes Focus (from IDP)</p>${esc(obs.keyOutcomesFocus).replace(/\n/g, "<br/>")}</div>` : ""}
+
+        ${sessionPlanSection}
 
         ${areaCards ? `
         <div class="section">
@@ -5448,8 +5520,10 @@ function buildSingleObservationHtml(obs) {
           <p class="section-title">Development Plan</p>
           ${obs.planNotes ? `<div class="box box-slate" style="margin-bottom:10px;"><p class="box-title" style="font-size:12px;">Coach Educator's Notes</p><p style="margin:0;">${esc(obs.planNotes)}</p></div>` : ""}
           ${actionItems.length > 0 ? `
-          <p class="box-title" style="font-size:12px;">Coach's Action Plan</p>
-          <ol class="action-plan">${actionItems.map(a => `<li>${esc(a)}</li>`).join("")}</ol>` : ""}
+          <div class="action-plan-box">
+            <p class="box-title" style="font-size:12px;">Coach's Action Plan</p>
+            <ol class="action-plan">${actionItems.map(a => `<li>${esc(a)}</li>`).join("")}</ol>
+          </div>` : ""}
           ${!obs.planNotes && actionItems.length === 0 ? `<p style="font-size:12.5px;color:#94a3b8;">No specific plan items recorded.</p>` : ""}
         </div>
 
