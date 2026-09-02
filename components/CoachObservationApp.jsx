@@ -2755,7 +2755,7 @@ function isDateColumnHeader(header, diplomaType) {
 }
 
 function guessClubHeader(headers) {
-  const patterns = [/^club$/i, /^team$/i, /^club\s*\/\s*team$/i, /^team\s*\/\s*club$/i, /^team\s*name$/i, /^club\s*name$/i];
+  const patterns = [/^club$/i, /^team$/i, /^club\s*\/\s*team$/i, /^team\s*\/\s*club$/i, /^team\s*name$/i, /^club\s*name$/i, /^suborganisation$/i, /^sub-organisation$/i, /suborg/i];
   for (const p of patterns) {
     const found = headers.find(h => p.test(h.trim()));
     if (found) return found;
@@ -2884,6 +2884,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [courseworkHeaders, setCourseworkHeaders] = useState(null);
   const [courseworkRawRows, setCourseworkRawRows] = useState(null);
   const [courseworkNameHeader, setCourseworkNameHeader] = useState("");
+  const [courseworkFirstNameHeader, setCourseworkFirstNameHeader] = useState("");
+  const [courseworkLastNameHeader, setCourseworkLastNameHeader] = useState("");
   const [courseworkClubHeader, setCourseworkClubHeader] = useState("");
   const [courseworkFaHeader, setCourseworkFaHeader] = useState("");
   const [courseworkCetHeader, setCourseworkCetHeader] = useState("");
@@ -3123,16 +3125,30 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
         if (!headers.length) { setCourseworkError("Could not read column headers from this file — check it has a header row."); return; }
         setCourseworkHeaders(headers);
         setCourseworkRawRows(rows);
-        const nameHeader = headers.find(h => h.trim().toLowerCase() === "name")
+        // Some exports (Football Australia's registration system among them)
+        // split the name into separate First Name / Last Name columns rather
+        // than one combined column. Detect that pair specifically and prefer
+        // it — falling back to single-column detection only when no pair
+        // exists — since guessing a single "name" column here would silently
+        // pick up First Name alone and drop every surname on import.
+        const firstNameHeader = headers.find(h => /^first\s*name$/i.test(h.trim())) || "";
+        const lastNameHeader = headers.find(h => /^last\s*name$/i.test(h.trim())) || "";
+        const hasFirstLastPair = !!(firstNameHeader && lastNameHeader);
+        const nameHeader = hasFirstLastPair ? "__firstlast__" : (
+          headers.find(h => h.trim().toLowerCase() === "name")
           || headers.find(h => /^coach(es)?['\u2019]?s?\s*name$/i.test(h.trim()))
           || headers.find(h => /candidate\s*name/i.test(h))
           || headers.find(h => /name/i.test(h) && !/club|team/i.test(h))
           || headers.find(h => /candidate|coach/i.test(h))
-          || headers[0];
+          || headers[0]
+        );
         const clubHeader = guessClubHeader(headers);
         const faHeader = headers.find(h => h.trim().toLowerCase() === "fa number")
           || headers.find(h => /fa\s*(number|no\.?|#|reg(istration)?|id)/i.test(h))
-          || headers.find(h => /^fa$/i.test(h.trim())) || "";
+          || headers.find(h => /^fa$/i.test(h.trim()))
+          || headers.find(h => /^username$/i.test(h.trim())) || "";
+        setCourseworkFirstNameHeader(firstNameHeader);
+        setCourseworkLastNameHeader(lastNameHeader);
         const cetHeader = guessCetHeader(headers);
         const onlineModulesHeader = guessOnlineModulesHeader(headers);
         setCourseworkNameHeader(nameHeader);
@@ -3160,7 +3176,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       setCourseworkPreview(null);
       return;
     }
-    const excluded = new Set([courseworkNameHeader, courseworkClubHeader, courseworkFaHeader, courseworkCetHeader, courseworkOnlineModulesHeader, ...courseworkTopicHeaders].filter(Boolean));
+    const excluded = new Set([courseworkNameHeader, courseworkFirstNameHeader, courseworkLastNameHeader, courseworkClubHeader, courseworkFaHeader, courseworkCetHeader, courseworkOnlineModulesHeader, ...courseworkTopicHeaders].filter(Boolean));
     const attendanceHeaders = courseworkHeaders.filter(h => !excluded.has(h) && isDateColumnHeader(h, courseworkDiplomaType));
     if (!attendanceHeaders.length) {
       setCourseworkError('No date-format attendance columns found — expected headers like "12/07/2026 (3)" with a bracketed session number.');
@@ -3170,7 +3186,9 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     const maxSessions = courseworkDiplomaType === "C" ? 4 : 9;
     let skippedBlankName = 0;
     const preview = courseworkRawRows.map(r => {
-      const coachName = (r[courseworkNameHeader] || "").toString().trim();
+      const coachName = courseworkNameHeader === "__firstlast__"
+        ? [r[courseworkFirstNameHeader], r[courseworkLastNameHeader]].map(v => (v || "").toString().trim()).filter(Boolean).join(" ")
+        : (r[courseworkNameHeader] || "").toString().trim();
       if (!coachName) { skippedBlankName++; return null; }
       const club = courseworkClubHeader ? (r[courseworkClubHeader] || "").toString().trim() : "";
       const faNumber = courseworkFaHeader ? (r[courseworkFaHeader] || "").toString().trim() : "";
@@ -3272,6 +3290,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     setCourseworkHeaders(null);
     setCourseworkRawRows(null);
     setCourseworkNameHeader("");
+    setCourseworkFirstNameHeader("");
+    setCourseworkLastNameHeader("");
     setCourseworkClubHeader("");
     setCourseworkFaHeader("");
     setCourseworkCetHeader("");
@@ -3610,8 +3630,14 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                   <label className="text-xs font-medium text-slate-600 mb-1.5 block">Coach Name column</label>
                   <select value={courseworkNameHeader} onChange={e => { setCourseworkNameHeader(e.target.value); setCourseworkPreview(null); }}
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                    {courseworkFirstNameHeader && courseworkLastNameHeader && (
+                      <option value="__firstlast__">{courseworkFirstNameHeader} + {courseworkLastNameHeader} (combined)</option>
+                    )}
                     {courseworkHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
+                  {courseworkNameHeader === "__firstlast__" && (
+                    <p className="text-xs text-slate-400 mt-1">Combining {courseworkFirstNameHeader} and {courseworkLastNameHeader} into one full name.</p>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs font-medium text-slate-600 mb-1.5 block">Club / Team column (optional)</label>

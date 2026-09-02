@@ -45,6 +45,8 @@ const STEPS = [
   },
 ];
 
+const FA_LOGO_URL = "https://footballaustralia.com.au/sites/default/files/styles/image_300x/public/2020-12/18128_FA_Website-Header-Logo_FA.png?itok=18GbS1cR";
+
 const MEMBER_FEDERATIONS = [
   { label: "Capital Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-03/caplognpl.png?itok=72Yn6G9K" },
   { label: "Football NSW", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-07/FNSW%20-%20500x500_0.png?itok=gZT5_9tI" },
@@ -63,29 +65,48 @@ export default function LandingPage() {
       {/* Hero */}
       <header className="relative overflow-hidden bg-[#0A2A4E]">
         <PitchLines />
-        <div className="relative max-w-5xl mx-auto px-6 sm:px-10 pt-20 pb-24 sm:pt-28 sm:pb-32">
-          <p className="text-sm font-medium tracking-wide text-[#C9A227] mb-4">
-            Coach Observation Development App
-          </p>
-          <h1
-            style={{ fontFamily: "var(--font-display)" }}
-            className="text-white font-bold uppercase leading-[0.95] text-5xl sm:text-6xl md:text-7xl max-w-3xl"
-          >
-            Every observation, held to the same standard.
-          </h1>
-          <p className="mt-6 text-lg text-slate-300 max-w-xl leading-relaxed">
-            CODA is where Coach Education Tutors score sessions, track diploma
-            coursework, and build the development record a coach can
-            actually act on — one shared workspace, one consistent rubric,
-            every time.
-          </p>
-          <div className="mt-10 flex items-center gap-4">
-            <Link
-              href="/app"
-              className="inline-flex items-center bg-[#C9A227] text-[#0A2A4E] font-semibold px-6 py-3.5 rounded-md hover:bg-[#dab434] transition-colors"
+        <div className="relative max-w-6xl mx-auto px-6 sm:px-10 pt-20 pb-16 sm:pt-28 sm:pb-24 flex flex-col lg:flex-row gap-14 lg:gap-10 items-start">
+          <div className="flex-1 max-w-3xl">
+            <p className="text-sm font-medium tracking-wide text-[#C9A227] mb-4">
+              Coach Observation Development App
+            </p>
+            <h1
+              style={{ fontFamily: "var(--font-display)" }}
+              className="text-white font-bold uppercase leading-[0.95] text-5xl sm:text-6xl md:text-7xl"
             >
-              Open CODA
-            </Link>
+              Every observation, held to the same standard.
+            </h1>
+            <p className="mt-6 text-lg text-slate-300 max-w-xl leading-relaxed">
+              CODA is where Coach Education Tutors score sessions, track diploma
+              coursework, and build the development record a coach can
+              actually act on — one shared workspace, one consistent rubric,
+              every time.
+            </p>
+            <div className="mt-10 flex items-center gap-4">
+              <Link
+                href="/app"
+                className="inline-flex items-center bg-[#C9A227] text-[#0A2A4E] font-semibold px-6 py-3.5 rounded-md hover:bg-[#dab434] transition-colors"
+              >
+                Open CODA
+              </Link>
+            </div>
+          </div>
+
+          {/* FA at top, the nine Member Federations alphabetically below —
+              a credibility rail, not decoration: this is who CODA reports
+              to and who it's built for. */}
+          <div className="w-full lg:w-40 shrink-0 flex flex-row lg:flex-col items-center gap-5 lg:gap-4 flex-wrap lg:flex-nowrap">
+            <div className="bg-white rounded-md p-3 flex items-center justify-center w-24 lg:w-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={FA_LOGO_URL} alt="Football Australia" className="h-10 object-contain" />
+            </div>
+            <div className="hidden lg:block w-full h-px bg-white/15" />
+            {MEMBER_FEDERATIONS.map(mf => (
+              <div key={mf.label} className="bg-white/95 rounded-md p-2.5 flex items-center justify-center w-16 lg:w-full" title={mf.label}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={mf.logoUrl} alt={mf.label} className="h-7 lg:h-8 object-contain" />
+              </div>
+            ))}
           </div>
         </div>
       </header>
@@ -136,28 +157,6 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* Member Federations */}
-      <section className="max-w-5xl mx-auto px-6 sm:px-10 py-20">
-        <h2
-          style={{ fontFamily: "var(--font-display)" }}
-          className="text-2xl sm:text-3xl font-bold uppercase text-[#0A2A4E] mb-3"
-        >
-          Built for every Member Federation
-        </h2>
-        <p className="text-slate-600 max-w-xl mb-10 leading-relaxed">
-          Each report carries the coach's own federation on it — pick it once
-          in Session Details and it's reflected through to the signed PDF.
-        </p>
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-6 sm:gap-8 items-center">
-          {MEMBER_FEDERATIONS.map(mf => (
-            <div key={mf.label} className="flex items-center justify-center grayscale hover:grayscale-0 transition-all opacity-70 hover:opacity-100" title={mf.label}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={mf.logoUrl} alt={mf.label} className="h-12 sm:h-14 object-contain" />
-            </div>
-          ))}
         </div>
       </section>
 
