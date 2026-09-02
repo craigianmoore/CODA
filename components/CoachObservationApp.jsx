@@ -894,6 +894,7 @@ export default function CoachObservationApp() {
   const [reportId, setReportId] = useState(null);
   const [historyCoachId, setHistoryCoachId] = useState(null);
   const [editingObservationId, setEditingObservationId] = useState(null);
+  const [historyAdminAutoOpen, setHistoryAdminAutoOpen] = useState(false);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -1073,7 +1074,8 @@ export default function CoachObservationApp() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Header tab={tab} setTab={setTab} viewMode={viewMode} onViewModeChange={handleViewModeChange} />
+      <Header tab={tab} setTab={setTab} viewMode={viewMode} onViewModeChange={handleViewModeChange}
+        onAdminClick={() => { setTab("history"); setHistoryAdminAutoOpen(true); }} />
       {error && (
         <div className={`${maxWidthForViewMode(viewMode)} mx-auto px-4 pt-3`}>
           <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2 flex justify-between items-center gap-3">
@@ -1120,7 +1122,11 @@ export default function CoachObservationApp() {
         )}
         {tab === "logistics" && (
           <div className="space-y-8">
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <a href="/CODA_Course_Candidate_Sheet_Template.xlsx" download
+                className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700 border border-emerald-300 px-3 py-2 rounded-lg hover:bg-emerald-50">
+                <FileText className="w-4 h-4" /> Course Candidate Sheet Template
+              </a>
               <a href="/CODA_How_To_Use.docx" download
                 className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 border border-indigo-200 px-3 py-2 rounded-lg hover:bg-indigo-50">
                 <FileText className="w-4 h-4" /> How to Use CODA
@@ -1172,6 +1178,7 @@ export default function CoachObservationApp() {
             adminSettings={adminSettings}
             saveAdminSettings={saveAdminSettings}
             adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
+            autoOpenAdmin={historyAdminAutoOpen} onAutoOpenHandled={() => setHistoryAdminAutoOpen(false)}
           />
         )}
       </main>
@@ -1179,7 +1186,7 @@ export default function CoachObservationApp() {
   );
 }
 
-function Header({ tab, setTab, viewMode, onViewModeChange }) {
+function Header({ tab, setTab, viewMode, onViewModeChange, onAdminClick }) {
   const items = [
     { id: "dashboard", label: "Dashboard", icon: TrendingUp },
     { id: "newObs", label: "New Observation", icon: ClipboardList },
@@ -1222,7 +1229,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange }) {
             </div>
           )}
         </div>
-        <nav className="flex gap-1 overflow-x-auto pb-2 -mb-px">
+        <nav className="flex items-center gap-1 overflow-x-auto pb-2 -mb-px">
           {items.map(it => {
             const Icon = it.icon;
             const active = tab === it.id || (tab === "report" && it.id === "history");
@@ -1239,6 +1246,14 @@ function Header({ tab, setTab, viewMode, onViewModeChange }) {
               </button>
             );
           })}
+          {onAdminClick && (
+            <button
+              onClick={onAdminClick}
+              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 mb-2 text-sm font-semibold text-blue-700 border-2 border-blue-500 rounded-lg whitespace-nowrap hover:bg-blue-50 transition-colors shrink-0"
+            >
+              <Lock className="w-3.5 h-3.5" /> Admin
+            </button>
+          )}
         </nav>
       </div>
     </header>
@@ -6090,7 +6105,7 @@ function DataImportTool({ onImported }) {
   );
 }
 
-function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onView, onClearHistory, onDeleteObservation, adminSettings, saveAdminSettings, adminLockouts, recordAdminAttempt }) {
+function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onView, onClearHistory, onDeleteObservation, adminSettings, saveAdminSettings, adminLockouts, recordAdminAttempt, autoOpenAdmin, onAutoOpenHandled }) {
   const [cetFilter, setCetFilter] = useState("");
   const [clearConfirmStep, setClearConfirmStep] = useState(false);
   const [confirmDeleteObsId, setConfirmDeleteObsId] = useState(null);
@@ -6102,6 +6117,13 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
   }
 
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+
+  useEffect(() => {
+    if (autoOpenAdmin) {
+      setShowAdminPanel(true);
+      onAutoOpenHandled && onAutoOpenHandled();
+    }
+  }, [autoOpenAdmin]);
   const [panelAuthed, setPanelAuthed] = useState(false);
   const [signedInAdminName, setSignedInAdminName] = useState("");
   const [panelName, setPanelName] = useState("");
