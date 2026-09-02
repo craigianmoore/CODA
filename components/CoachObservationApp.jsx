@@ -652,7 +652,7 @@ function pitchGeometry() {
   const thirdW = innerW / 3;
   const cx = pad + innerW / 2, cy = pad + innerH / 2;
 
-  const stripeCount = 12;
+  const stripeCount = cols;
   const stripeW = innerW / stripeCount;
   const stripes = Array.from({ length: stripeCount }, (_, i) => ({ x: pad + i * stripeW, w: stripeW, dark: i % 2 === 0 }));
 
@@ -4053,12 +4053,16 @@ function VoiceTextarea({ value, onChange, className, rows, placeholder, ...rest 
     return () => { recognitionRef.current && recognitionRef.current.stop(); };
   }, []);
 
+  function stopListening() {
+    recognitionRef.current && recognitionRef.current.stop();
+    setListening(false);
+  }
+
   function toggleListening() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
     if (listening) {
-      recognitionRef.current && recognitionRef.current.stop();
-      setListening(false);
+      stopListening();
       return;
     }
     const recognition = new SR();
@@ -4081,9 +4085,11 @@ function VoiceTextarea({ value, onChange, className, rows, placeholder, ...rest 
 
   return (
     <div className="relative">
-      <textarea value={value} onChange={onChange} rows={rows} placeholder={placeholder} className={className} {...rest} />
+      <textarea value={value} onChange={onChange} rows={rows} placeholder={placeholder} className={className}
+        {...rest}
+        onBlur={(e) => { if (listening) stopListening(); rest.onBlur && rest.onBlur(e); }} />
       {supported && (
-        <button type="button" onClick={toggleListening}
+        <button type="button" onClick={toggleListening} onMouseDown={(e) => e.preventDefault()}
           title={listening ? "Stop dictation" : "Dictate with your voice"}
           className={`absolute bottom-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-colors shrink-0 ${
             listening ? "bg-red-500 text-white animate-pulse" : "bg-white text-slate-400 border border-slate-200 hover:text-slate-600 hover:border-slate-300"
@@ -4334,6 +4340,8 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   }
 
   const actionTextareaRefs = useRef([]);
+  const pitchLengthRef = useRef(null);
+  const pitchWidthRef = useRef(null);
 
   function setActionItem(idx, val) {
     setActionPlan(prev => prev.map((v, i) => i === idx ? val : v));
@@ -5093,13 +5101,23 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                     <div className="border border-slate-300 rounded-lg px-3 py-2 flex items-center gap-3 bg-white">
                       <div className="flex-1">
                         <p className="text-xs text-slate-400 mb-0.5">Length</p>
-                        <input value={sessionPlan.pitchLength} onChange={e => setSessionPlanField("pitchLength", e.target.value)}
+                        <input ref={pitchLengthRef} value={sessionPlan.pitchLength}
+                          onChange={e => {
+                            const clean = sanitizeAlphanumeric(e.target.value);
+                            setSessionPlanField("pitchLength", clean);
+                            if (clean.replace(/\D/g, "").length >= 2) pitchWidthRef.current && pitchWidthRef.current.focus();
+                          }}
                           placeholder="e.g. 40m" className="w-full text-sm outline-none" />
                       </div>
                       <span className="text-slate-400 font-semibold">x</span>
                       <div className="flex-1">
                         <p className="text-xs text-slate-400 mb-0.5">Width</p>
-                        <input value={sessionPlan.pitchWidth} onChange={e => setSessionPlanField("pitchWidth", e.target.value)}
+                        <input ref={pitchWidthRef} value={sessionPlan.pitchWidth}
+                          onChange={e => {
+                            const clean = sanitizeAlphanumeric(e.target.value);
+                            setSessionPlanField("pitchWidth", clean);
+                            if (clean.replace(/\D/g, "").length >= 2) pitchLengthRef.current && pitchLengthRef.current.focus();
+                          }}
                           placeholder="e.g. 30m" className="w-full text-sm outline-none" />
                       </div>
                     </div>
