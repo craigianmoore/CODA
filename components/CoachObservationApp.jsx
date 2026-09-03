@@ -5955,7 +5955,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                       <p className="text-xs text-slate-500">{a.descriptors[currentScore]}</p>
                     </div>
                   )}
-                  <textarea value={areas[a.key].notes} onChange={ev => setArea(a.key, "notes", ev.target.value)}
+                  <VoiceTextarea value={areas[a.key].notes} onChange={ev => setArea(a.key, "notes", ev.target.value)}
                     placeholder={`Evidence for ${a.label.toLowerCase()} observed in this session...`}
                     className={`w-full border rounded-lg px-3 py-2 text-sm bg-white ${
                       typeof currentScore === "number" && currentScore <= 1 && !areas[a.key].notes.trim() ? "border-red-300" : "border-slate-200"
@@ -6377,7 +6377,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
   const isDraft = obs.status === "draft";
   const obsSessionNumber = (obs.courseNumber && obs.coachId) ? computeSessionNumber(observations, obs.coachId, obs.courseNumber, obs.id, obs.date) : null;
 
-  function handleDownloadPdf() {
+  function handlePrintPdf() {
     const win = window.open("", "_blank");
     if (!win) {
       alert("Please allow pop-ups for this site to download a PDF.");
@@ -6385,6 +6385,54 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
     }
     win.document.write(buildSingleObservationHtml(obs));
     win.document.close();
+  }
+
+  const [savingPdf, setSavingPdf] = useState(false);
+
+  async function handleSavePdf() {
+    setSavingPdf(true);
+    try {
+      const html2pdf = (await import("html2pdf.js")).default;
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.left = "-99999px";
+      iframe.style.top = "0";
+      iframe.style.width = "800px";
+      iframe.style.height = "1131px";
+      document.body.appendChild(iframe);
+
+      // Same HTML used for Print, minus the auto-print script — we're
+      // rendering this off-screen to capture, not opening it as a page.
+      const htmlContent = buildSingleObservationHtml(obs).replace(
+        /<script>window\.onload[\s\S]*?<\/script>/, ""
+      );
+      iframe.contentDocument.open();
+      iframe.contentDocument.write(htmlContent);
+      iframe.contentDocument.close();
+
+      await new Promise((resolve) => {
+        const imgs = iframe.contentDocument.images;
+        if (!imgs || imgs.length === 0) { resolve(); return; }
+        let loaded = 0;
+        const done = () => { loaded++; if (loaded >= imgs.length) resolve(); };
+        Array.from(imgs).forEach((img) => { img.complete ? done() : (img.onload = img.onerror = done); });
+        setTimeout(resolve, 3000);
+      });
+
+      const filename = `${(obs.coachName || "observation").replace(/[^a-z0-9]+/gi, "-")}-report.pdf`;
+      await html2pdf().set({
+        margin: 0,
+        filename,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      }).from(iframe.contentDocument.body).save();
+
+      document.body.removeChild(iframe);
+    } catch (e) {
+      alert("Couldn't generate the PDF file — try Print instead, then choose Save as PDF from the print dialog.");
+    }
+    setSavingPdf(false);
   }
 
   function resetReopenAuth() {
@@ -6436,9 +6484,15 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
         <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700">
           <ChevronLeft className="w-4 h-4" /> Back
         </button>
-        <button onClick={handleDownloadPdf} className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700 border border-emerald-300 px-3 py-1.5 rounded-lg hover:bg-emerald-50">
-          <FileText className="w-4 h-4" /> Download PDF
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleSavePdf} disabled={savingPdf}
+            className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700 border border-emerald-300 px-3 py-1.5 rounded-lg hover:bg-emerald-50 disabled:opacity-50">
+            <FileText className="w-4 h-4" /> {savingPdf ? "Saving..." : "Save PDF"}
+          </button>
+          <button onClick={handlePrintPdf} className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-100">
+            <FileText className="w-4 h-4" /> Print
+          </button>
+        </div>
       </div>
 
       {isDraft && (
