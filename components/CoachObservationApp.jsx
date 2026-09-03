@@ -3769,6 +3769,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   // Observation, since both key off courseNumber. This lets a whole batch
   // be corrected in one action instead of editing each record by hand.
   const [bulkCourseNumberInputs, setBulkCourseNumberInputs] = useState({});
+  const [bulkMfInputs, setBulkMfInputs] = useState({});
   const [savingCandidatePdfId, setSavingCandidatePdfId] = useState(null);
 
   async function handleSaveCandidatePdf(t, cardCoach) {
@@ -3796,6 +3797,21 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       return next;
     });
     expandCourseGroup(raw);
+  }
+
+  function applyBulkMemberFederation(groupKey, groupTasks) {
+    const mfKey = bulkMfInputs[groupKey];
+    if (!mfKey) return;
+    const ids = new Set(groupTasks.map(t => t.id).filter(id => selectedTaskIds.has(id)));
+    if (ids.size === 0) return;
+    saveCompletedTasks(completedTasks.map(t => ids.has(t.id) ? { ...t, memberFederation: mfKey, updatedAt: new Date().toISOString() } : t));
+    setBulkMfInputs(prev => ({ ...prev, [groupKey]: "" }));
+    setSelectedTaskIds(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => next.delete(id));
+      return next;
+    });
+    setExpandedMfs(prev => new Set(prev).add(mfKey));
   }
 
   function selectDiplomaType(type) {
@@ -4646,6 +4662,24 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                               Apply
                             </button>
                             <p className="text-xs text-indigo-500 w-full">This moves these records into that course's group and re-enables auto-fill in New Observation.</p>
+                          </div>
+                        </div>
+                      )}
+                      {groupSomeSelected && (
+                        <div className="px-4 pb-3 -mt-1">
+                          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 flex items-center gap-2 flex-wrap">
+                            <p className="text-xs text-emerald-800 font-medium">Set Member Federation for {groupSelectedCount} selected:</p>
+                            <select value={bulkMfInputs[g.courseNumber || "none"] || ""}
+                              onChange={e => setBulkMfInputs(prev => ({ ...prev, [g.courseNumber || "none"]: e.target.value }))}
+                              className="border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs bg-white">
+                              <option value="">Choose Member Federation...</option>
+                              {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
+                            </select>
+                            <button onClick={() => applyBulkMemberFederation(g.courseNumber || "none", g.records)}
+                              disabled={!bulkMfInputs[g.courseNumber || "none"]}
+                              className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 disabled:text-slate-300 disabled:cursor-not-allowed">
+                              Apply
+                            </button>
                           </div>
                         </div>
                       )}
