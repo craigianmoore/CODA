@@ -864,8 +864,8 @@ async function kvDelete(key) {
   if (error) console.error(`kvDelete ${key} failed:`, error);
 }
 
-export default function CoachObservationApp() {
-  const [tab, setTab] = useState("dashboard");
+export default function CoachObservationApp({ initialMemberFederation } = {}) {
+  const [tab, setTab] = useState(initialMemberFederation ? "newObs" : "dashboard");
 
   function detectViewMode() {
     if (typeof window === "undefined") return "laptop";
@@ -1116,6 +1116,7 @@ export default function CoachObservationApp() {
             observations={observations} saveObservations={saveObservations}
             completedTasks={completedTasks}
             existingObservation={editingObservation}
+            defaultMemberFederation={initialMemberFederation}
             onSaved={handleObservationSaved}
             onCancel={() => { setEditingObservationId(null); setTab("dashboard"); }}
           />
@@ -2279,6 +2280,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
   const [org, setOrg] = useState("");
   const [levelOption, setLevelOption] = useState("");
   const [level, setLevel] = useState("");
+  const [cetMfSelection, setCetMfSelection] = useState([]);
   const [showUpload, setShowUpload] = useState(false);
   const [parsedRows, setParsedRows] = useState(null);
   const [uploadError, setUploadError] = useState(null);
@@ -2286,6 +2288,27 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
   const [includeDuplicates, setIncludeDuplicates] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [editingMfId, setEditingMfId] = useState(null);
+  const [editingMfSelection, setEditingMfSelection] = useState([]);
+
+  function toggleCetMf(key) {
+    setCetMfSelection(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+  }
+
+  function startEditMf(cet) {
+    setEditingMfId(cet.id);
+    setEditingMfSelection(cet.memberFederations || []);
+  }
+
+  function toggleEditingMf(key) {
+    setEditingMfSelection(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+  }
+
+  function saveMfAssignment() {
+    saveEducators(educators.map(c => c.id === editingMfId ? { ...c, memberFederations: editingMfSelection } : c));
+    setEditingMfId(null);
+    setEditingMfSelection([]);
+  }
 
   // Duplicate detection & merge — CETs are referenced by name string
   // everywhere (observations.coachEducatorName, completedTasks.cet), not
@@ -2362,9 +2385,9 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
 
   function addCet() {
     if (!name.trim()) return;
-    const newCet = { id: uid(), name: name.trim(), club: org.trim(), level: level.trim() };
+    const newCet = { id: uid(), name: name.trim(), club: org.trim(), level: level.trim(), memberFederations: cetMfSelection };
     saveEducators([...educators, newCet]);
-    setName(""); setOrg(""); setLevel(""); setLevelOption(""); setShowForm(false);
+    setName(""); setOrg(""); setLevel(""); setLevelOption(""); setCetMfSelection([]); setShowForm(false);
   }
 
   function matchKey(name, club) {
@@ -2595,6 +2618,19 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
           {levelOption === "__other__" && (
             <input value={level} onChange={e => setLevel(e.target.value)} placeholder="Custom coaching level" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
           )}
+          <div>
+            <p className="text-xs font-medium text-slate-500 mb-1.5">Member Federation(s)</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {MEMBER_FEDERATIONS.map(mf => (
+                <button key={mf.key} type="button" onClick={() => toggleCetMf(mf.key)}
+                  className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                    cetMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                  }`}>
+                  {mf.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex gap-2">
             <button onClick={addCet} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold">Save CET</button>
             <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-500">Cancel</button>
@@ -2629,14 +2665,45 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                         <div className="flex-1">
                           <p className="font-semibold text-slate-900">{c.name}</p>
                           <p className="text-xs text-slate-400">{[c.club, c.level].filter(Boolean).join(" · ") || "No details"}</p>
+                          {(c.memberFederations || []).length > 0 && (
+                            <div className="flex gap-1 flex-wrap mt-1.5">
+                              {c.memberFederations.map(key => {
+                                const mf = MEMBER_FEDERATIONS.find(m => m.key === key);
+                                return <span key={key} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700">{mf ? mf.label : key}</span>;
+                              })}
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className="text-xs font-medium bg-slate-100 text-slate-600 px-2 py-1 rounded-full">{obsCount} obs.</span>
+                          <button onClick={() => editingMfId === c.id ? setEditingMfId(null) : startEditMf(c)}
+                            className="text-xs font-semibold text-indigo-600 border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-50 whitespace-nowrap">
+                            MF
+                          </button>
                           <button onClick={() => setConfirmDeleteId(c.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
+                      {editingMfId === c.id && (
+                        <div className="mt-3 border-t border-slate-100 pt-3">
+                          <p className="text-xs font-medium text-slate-500 mb-1.5">Assign to Member Federation(s)</p>
+                          <div className="flex gap-1.5 flex-wrap mb-2">
+                            {MEMBER_FEDERATIONS.map(mf => (
+                              <button key={mf.key} type="button" onClick={() => toggleEditingMf(mf.key)}
+                                className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                                  editingMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                                }`}>
+                                {mf.label}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={saveMfAssignment} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Save</button>
+                            <button onClick={() => setEditingMfId(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+                          </div>
+                        </div>
+                      )}
                       {confirmDeleteId === c.id && (
                         <div className="mt-3 flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg p-2.5">
                           <p className="text-xs text-red-700 flex-1">Delete {c.name}? Their past observations will remain in History but they won't appear in the CET dropdown for new observations.</p>
@@ -4398,7 +4465,7 @@ function VoiceTextarea({ value, onChange, className, rows, placeholder, ...rest 
   );
 }
 
-function NewObservation({ coaches, courses, educators, saveCoaches, saveEducators, observations, saveObservations, completedTasks, existingObservation, onSaved, onCancel }) {
+function NewObservation({ coaches, courses, educators, saveCoaches, saveEducators, observations, saveObservations, completedTasks, existingObservation, defaultMemberFederation, onSaved, onCancel }) {
   const isEditing = !!existingObservation;
 
   const [step, setStep] = useState(0);
@@ -4429,7 +4496,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   });
 
   const [date, setDate] = useState(() => existingObservation?.date || new Date().toISOString().slice(0, 10));
-  const [memberFederation, setMemberFederation] = useState(() => existingObservation?.memberFederation || DEFAULT_MEMBER_FEDERATION);
+  const [memberFederation, setMemberFederation] = useState(() => existingObservation?.memberFederation || defaultMemberFederation || DEFAULT_MEMBER_FEDERATION);
   const [sessionType, setSessionType] = useState(() => existingObservation?.sessionType || "formal");
 
   const initialCourseMatch = existingObservation

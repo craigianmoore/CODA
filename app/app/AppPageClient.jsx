@@ -1,11 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import CoachObservationApp from "../../components/CoachObservationApp";
 
 const VISITOR_KEY = "coda_visitor_fa";
 
 export default function AppPageClient() {
+  const searchParams = useSearchParams();
+  const mfParam = searchParams.get("mf");
   const [checking, setChecking] = useState(true);
   const [faNumber, setFaNumber] = useState(null);
   const [input, setInput] = useState("");
@@ -72,7 +75,7 @@ export default function AppPageClient() {
         <span>FA# {faNumber}</span>
         <button onClick={handleChangeIdentity} className="underline hover:no-underline">Not you? Change</button>
       </div>
-      <CoachObservationApp />
+      <CoachObservationApp initialMemberFederation={mfParam} />
     </div>
   );
 }

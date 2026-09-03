@@ -61,15 +61,15 @@ const STEPS = [
 const FA_LOGO_URL = "https://footballaustralia.com.au/sites/default/files/styles/image_300x/public/2020-12/18128_FA_Website-Header-Logo_FA.png?itok=18GbS1cR";
 
 const MEMBER_FEDERATIONS = [
-  { label: "Capital Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-03/caplognpl.png?itok=72Yn6G9K", scale: 1.2 },
-  { label: "Football NSW", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-07/FNSW%20-%20500x500_0.png?itok=gZT5_9tI" },
-  { label: "Football Northern Territory", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FFNT-500x500.png?itok=4jv-0bEU" },
-  { label: "Football Queensland", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FQ-500x500.png?itok=1tFQhETo" },
-  { label: "Football South Australia", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-11/FootballSA-520x520.png?itok=7701s1eg" },
-  { label: "Football Tasmania", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FT-500x500.png?itok=ApnEG5Y_" },
-  { label: "Football Victoria", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2022-05/FFV-Memfed-BrandedCard.png?itok=XO8-QVPx" },
-  { label: "Football West", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FW-500x500.png?itok=u-RYKimY" },
-  { label: "Northern NSW Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-06/Untitled-14.jpg?itok=Df5mdHPr", scale: 1.7 },
+  { key: "Capital", label: "Capital Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-03/caplognpl.png?itok=72Yn6G9K", scale: 1.2 },
+  { key: "FNSW", label: "Football NSW", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-07/FNSW%20-%20500x500_0.png?itok=gZT5_9tI" },
+  { key: "FNT", label: "Football Northern Territory", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FFNT-500x500.png?itok=4jv-0bEU" },
+  { key: "FQ", label: "Football Queensland", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FQ-500x500.png?itok=1tFQhETo" },
+  { key: "FSA", label: "Football South Australia", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-11/FootballSA-520x520.png?itok=7701s1eg" },
+  { key: "FTas", label: "Football Tasmania", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FT-500x500.png?itok=ApnEG5Y_" },
+  { key: "FV", label: "Football Victoria", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2022-05/FFV-Memfed-BrandedCard.png?itok=XO8-QVPx" },
+  { key: "FWest", label: "Football West", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FW-500x500.png?itok=u-RYKimY" },
+  { key: "NNSWF", label: "Northern NSW Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-06/Untitled-14.jpg?itok=Df5mdHPr", scale: 1.7 },
 ];
 
 export default function LandingPage() {
@@ -115,7 +115,8 @@ export default function LandingPage() {
             </div>
             <div className="hidden lg:block w-10 h-px bg-white/15" />
             {MEMBER_FEDERATIONS.map(mf => (
-              <div key={mf.label} className="bg-white/95 rounded-md p-2 flex items-center justify-center w-16 h-16 shrink-0 overflow-hidden" title={mf.label}>
+              <Link key={mf.key} href={`/app?mf=${mf.key}`} title={`Log an observation as ${mf.label}`}
+                className="bg-white/95 rounded-md p-2 flex items-center justify-center w-16 h-16 shrink-0 overflow-hidden hover:bg-white hover:scale-105 transition-all">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={mf.logoUrl}
@@ -123,7 +124,7 @@ export default function LandingPage() {
                   className="max-w-full max-h-full object-contain"
                   style={mf.scale ? { transform: `scale(${mf.scale})` } : undefined}
                 />
-              </div>
+              </Link>
             ))}
           </div>
         </div>
