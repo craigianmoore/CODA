@@ -3239,6 +3239,7 @@ function emptyCompletedTaskForm() {
     courseOption: "",
     courseTitle: "",
     courseNumber: "",
+    memberFederation: DEFAULT_MEMBER_FEDERATION,
     attendancePercent: "",
     onlineModulesPercent: "",
     formativeAssessmentDone: false,
@@ -3557,6 +3558,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [searchQuery, setSearchQuery] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [expandedCourses, setExpandedCourses] = useState(() => new Set());
+  const [expandedMfs, setExpandedMfs] = useState(() => new Set());
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [idpExpandedTaskId, setIdpExpandedTaskId] = useState(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState(() => new Set());
@@ -3564,6 +3566,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [showCourseworkUpload, setShowCourseworkUpload] = useState(false);
   const [courseworkDiplomaType, setCourseworkDiplomaType] = useState("B");
   const [courseworkCourseNumber, setCourseworkCourseNumber] = useState("");
+  const [courseworkMemberFederation, setCourseworkMemberFederation] = useState(DEFAULT_MEMBER_FEDERATION);
   const [courseworkCourseTitle, setCourseworkCourseTitle] = useState("AFC/FA B Diploma");
   const [courseworkHeaders, setCourseworkHeaders] = useState(null);
   const [courseworkRawRows, setCourseworkRawRows] = useState(null);
@@ -3658,6 +3661,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       courseOption: matchedCourse ? matchedCourse.id : "__other__",
       courseTitle: task.courseTitle || "",
       courseNumber: task.courseNumber || "",
+      memberFederation: task.memberFederation || DEFAULT_MEMBER_FEDERATION,
       attendancePercent: task.attendancePercent != null ? String(task.attendancePercent) : "",
       onlineModulesPercent: task.onlineModulesPercent != null ? String(task.onlineModulesPercent) : "",
       formativeAssessmentDone: !!task.formativeAssessmentDone,
@@ -3697,6 +3701,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       coachName: coach ? coach.name : "",
       courseTitle: form.courseTitle.trim(),
       courseNumber: form.courseNumber.trim(),
+      memberFederation: form.memberFederation || DEFAULT_MEMBER_FEDERATION,
       attendancePercent: Math.max(0, Math.min(100, Math.round(Number(form.attendancePercent)))),
       onlineModulesPercent: form.onlineModulesPercent === "" ? 0 : Math.max(0, Math.min(100, Math.round(Number(form.onlineModulesPercent)))),
       formativeAssessmentDone: !!form.formativeAssessmentDone,
@@ -3945,6 +3950,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           onlineModulesPercent: p.onlineModulesPct != null ? p.onlineModulesPct : (updatedTasks[existingIdx].onlineModulesPercent || 0),
           team: p.goalscoringTeam || p.club || updatedTasks[existingIdx].team || "",
           cet: p.cetName || updatedTasks[existingIdx].cet || "",
+          memberFederation: courseworkMemberFederation,
           updatedAt: new Date().toISOString(),
         };
       } else {
@@ -3954,6 +3960,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           coachName: coach.name,
           courseTitle: courseworkCourseTitle.trim() || (courseworkDiplomaType === "C" ? "AFC/FA C Diploma" : "AFC/FA B Diploma"),
           courseNumber: courseworkCourseNumber.trim(),
+          memberFederation: courseworkMemberFederation,
           attendancePercent: p.pct,
           onlineModulesPercent: p.onlineModulesPct != null ? p.onlineModulesPct : 0,
           checkpoint: "",
@@ -4093,6 +4100,12 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course Number (optional)</label>
             <input value={form.courseNumber} onChange={e => setField("courseNumber", e.target.value)} placeholder="e.g. 165 or 240"
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Member Federation</label>
+            <select value={form.memberFederation} onChange={e => setField("memberFederation", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+              {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
+            </select>
           </div>
         </div>
 
@@ -4370,6 +4383,12 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               <input value={courseworkCourseNumber} onChange={e => setCourseworkCourseNumber(e.target.value)}
                 placeholder="e.g. 236" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
             </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Member Federation</label>
+              <select value={courseworkMemberFederation} onChange={e => setCourseworkMemberFederation(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+                {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
+              </select>
+            </div>
           </div>
           <input type="file" accept=".csv" onChange={handleCourseworkFile}
             className="block w-full text-sm text-slate-600 border border-slate-300 rounded-lg px-3 py-2 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 file:text-sm" />
@@ -4538,9 +4557,52 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             if (groups.length === 0) {
               return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">{q ? `No records match "${searchQuery}".` : "No records yet."}</div>;
             }
+            // Course groups are nested under a Member Federation header — the
+            // MF is read off whichever value is most common among a course
+            // group's own records (they're usually all the same MF, but this
+            // stays sensible even if a group is somehow mixed). Records from
+            // before this field existed fall under "No Federation Assigned".
+            const mfOrder = MEMBER_FEDERATIONS.map(mf => mf.key);
+            const mfGroupsMap = {};
+            groups.forEach(g => {
+              const counts = {};
+              g.records.forEach(t => { const k = t.memberFederation || ""; counts[k] = (counts[k] || 0) + 1; });
+              const mfKey = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+              if (!mfGroupsMap[mfKey]) mfGroupsMap[mfKey] = [];
+              mfGroupsMap[mfKey].push(g);
+            });
+            const mfGroups = Object.entries(mfGroupsMap)
+              .map(([mfKey, courseGroups]) => ({
+                mfKey,
+                mfLabel: mfKey ? ((MEMBER_FEDERATIONS.find(m => m.key === mfKey) || {}).label || mfKey) : "No Federation Assigned",
+                courseGroups,
+                recordCount: courseGroups.reduce((sum, g) => sum + g.records.length, 0),
+              }))
+              .sort((a, b) => {
+                if (!a.mfKey) return 1;
+                if (!b.mfKey) return -1;
+                return mfOrder.indexOf(a.mfKey) - mfOrder.indexOf(b.mfKey);
+              });
             return (
-              <div className="space-y-3">
-                {groups.map(g => {
+              <div className="space-y-4">
+                {mfGroups.map(mfg => {
+                  const mfCollapsed = !q && !expandedMfs.has(mfg.mfKey || "none");
+                  return (
+                    <div key={mfg.mfKey || "none"} className="space-y-3">
+                      <button onClick={() => setExpandedMfs(prev => {
+                        const next = new Set(prev);
+                        const k = mfg.mfKey || "none";
+                        next.has(k) ? next.delete(k) : next.add(k);
+                        return next;
+                      })} type="button"
+                        className="w-full flex items-center gap-2 text-left bg-slate-100 hover:bg-slate-200 transition-colors rounded-lg px-4 py-2.5">
+                        <ChevronRight className={`w-4 h-4 text-slate-500 transition-transform shrink-0 ${mfCollapsed ? "" : "rotate-90"}`} />
+                        <p className="text-sm font-bold text-slate-800 flex-1">{mfg.mfLabel}</p>
+                        <span className="text-xs font-medium text-slate-500">{mfg.recordCount} record{mfg.recordCount === 1 ? "" : "s"}</span>
+                      </button>
+                      {!mfCollapsed && (
+                <div className="space-y-3 pl-2">
+                {mfg.courseGroups.map(g => {
                   const isCollapsed = !q && !expandedCourses.has(g.courseNumber);
                   const groupIds = g.records.map(t => t.id);
                   const groupAllSelected = groupIds.length > 0 && groupIds.every(id => selectedTaskIds.has(id));
@@ -4784,6 +4846,11 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                             );
                           })}
                         </div>
+                      )}
+                    </div>
+                  );
+                })}
+                </div>
                       )}
                     </div>
                   );
