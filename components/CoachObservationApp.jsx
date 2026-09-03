@@ -301,6 +301,7 @@ function computeSessionNumber(observations, coachId, courseNumber, currentId, cu
 // would need updating the same way.
 const MEMBER_FEDERATIONS = [
   { key: "Capital", label: "Capital Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-03/caplognpl.png?itok=72Yn6G9K" },
+  { key: "FA", label: "Football Australia", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_300x/public/2020-12/18128_FA_Website-Header-Logo_FA.png?itok=18GbS1cR" },
   { key: "FNSW", label: "Football NSW", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-07/FNSW%20-%20500x500_0.png?itok=gZT5_9tI" },
   { key: "FNT", label: "Football Northern Territory", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FFNT-500x500.png?itok=4jv-0bEU" },
   { key: "FQ", label: "Football Queensland", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FQ-500x500.png?itok=1tFQhETo" },
@@ -916,6 +917,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [error, setError] = useState(null);
   const [reportId, setReportId] = useState(null);
   const [historyCoachId, setHistoryCoachId] = useState(null);
+  const [historyCetFilter, setHistoryCetFilter] = useState("");
   const [editingObservationId, setEditingObservationId] = useState(null);
   const [historyAdminAutoOpen, setHistoryAdminAutoOpen] = useState(false);
 
@@ -1172,7 +1174,8 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
                 adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
               />
               <CetTab educators={educators} saveEducators={saveEducators} observations={visibleObservations}
-                adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt} />
+                adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
+                goHistoryForCet={(name) => { setHistoryCetFilter(name); setTab("history"); }} />
             </div>
             <CoursesTab
               courses={courses} saveCourses={saveCourses} adminSettings={adminSettings}
@@ -1209,6 +1212,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
           <HistoryTab
             coaches={coaches} educators={educators} observations={visibleObservations}
             coachId={historyCoachId} setCoachId={setHistoryCoachId}
+            cetFilter={historyCetFilter} setCetFilter={setHistoryCetFilter}
             onView={(id) => { setReportId(id); setTab("report"); }}
             onClearHistory={(mfScope) => saveObservations(observations.filter(o =>
               o.status === "draft" || (mfScope && !mfScope.includes(o.memberFederation))
@@ -2318,7 +2322,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
   );
 }
 
-function CetTab({ educators, saveEducators, observations, adminSettings, adminLockouts, recordAdminAttempt }) {
+function CetTab({ educators, saveEducators, observations, adminSettings, adminLockouts, recordAdminAttempt, goHistoryForCet }) {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [org, setOrg] = useState("");
@@ -2334,9 +2338,31 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [editingMfId, setEditingMfId] = useState(null);
   const [editingMfSelection, setEditingMfSelection] = useState([]);
+  const [editingDetailsId, setEditingDetailsId] = useState(null);
+  const [editingDetailsClub, setEditingDetailsClub] = useState("");
+  const [editingDetailsLevelOption, setEditingDetailsLevelOption] = useState("");
+  const [editingDetailsLevel, setEditingDetailsLevel] = useState("");
   const [selectedCetIds, setSelectedCetIds] = useState(() => new Set());
   const [bulkMfPicker, setBulkMfPicker] = useState("");
   const [bulkMfMsg, setBulkMfMsg] = useState("");
+
+  function startEditDetails(cet) {
+    setEditingDetailsId(cet.id);
+    setEditingDetailsClub(cet.club || "");
+    setEditingDetailsLevelOption(cet.level ? (COACH_LEVEL_OPTIONS.includes(cet.level) ? cet.level : "__other__") : "");
+    setEditingDetailsLevel(cet.level && !COACH_LEVEL_OPTIONS.includes(cet.level) ? cet.level : "");
+  }
+
+  function handleEditDetailsLevelOptionChange(value) {
+    setEditingDetailsLevelOption(value);
+    setEditingDetailsLevel(value === "__other__" ? "" : value);
+  }
+
+  function saveEditDetails() {
+    const finalLevel = editingDetailsLevelOption === "__other__" ? editingDetailsLevel.trim() : editingDetailsLevelOption;
+    saveEducators(educators.map(c => c.id === editingDetailsId ? { ...c, club: editingDetailsClub.trim(), level: finalLevel } : c));
+    setEditingDetailsId(null);
+  }
 
   function toggleCetSelected(id) {
     setSelectedCetIds(prev => {
@@ -2796,7 +2822,18 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-xs font-medium bg-slate-100 text-slate-600 px-2 py-1 rounded-full">{obsCount} obs.</span>
+                          {goHistoryForCet ? (
+                            <button onClick={() => goHistoryForCet(c.name)}
+                              className="text-xs font-medium bg-slate-100 text-slate-600 px-2 py-1 rounded-full hover:bg-indigo-100 hover:text-indigo-700 transition-colors">
+                              {obsCount} obs.
+                            </button>
+                          ) : (
+                            <span className="text-xs font-medium bg-slate-100 text-slate-600 px-2 py-1 rounded-full">{obsCount} obs.</span>
+                          )}
+                          <button onClick={() => editingDetailsId === c.id ? setEditingDetailsId(null) : startEditDetails(c)}
+                            className="text-xs font-semibold text-slate-600 border border-slate-300 px-2 py-1 rounded-md hover:bg-slate-100 whitespace-nowrap">
+                            Edit
+                          </button>
                           <button onClick={() => editingMfId === c.id ? setEditingMfId(null) : startEditMf(c)}
                             className="text-xs font-semibold text-indigo-600 border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-50 whitespace-nowrap">
                             MF
@@ -2806,6 +2843,27 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                           </button>
                         </div>
                       </div>
+                      {editingDetailsId === c.id && (
+                        <div className="mt-3 border-t border-slate-100 pt-3 space-y-2">
+                          <p className="text-xs font-medium text-slate-500 mb-1">Details</p>
+                          <input value={editingDetailsClub} onChange={e => setEditingDetailsClub(e.target.value)} placeholder="Club / Organisation"
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                          <select value={editingDetailsLevelOption} onChange={e => handleEditDetailsLevelOptionChange(e.target.value)}
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                            <option value="">Select current accreditation level...</option>
+                            {COACH_LEVEL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                            <option value="__other__">Other (type your own)</option>
+                          </select>
+                          {editingDetailsLevelOption === "__other__" && (
+                            <input value={editingDetailsLevel} onChange={e => setEditingDetailsLevel(e.target.value)} placeholder="Custom accreditation level"
+                              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                          )}
+                          <div className="flex gap-2">
+                            <button onClick={saveEditDetails} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Save</button>
+                            <button onClick={() => setEditingDetailsId(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+                          </div>
+                        </div>
+                      )}
                       {editingMfId === c.id && (
                         <div className="mt-3 border-t border-slate-100 pt-3">
                           <p className="text-xs font-medium text-slate-500 mb-1.5">Assign to Member Federation(s)</p>
@@ -6955,8 +7013,7 @@ function DataImportTool({ onImported }) {
   );
 }
 
-function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onView, onClearHistory, onDeleteObservation, adminSettings, saveAdminSettings, adminLockouts, recordAdminAttempt, autoOpenAdmin, onAutoOpenHandled }) {
-  const [cetFilter, setCetFilter] = useState("");
+function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cetFilter, setCetFilter, onView, onClearHistory, onDeleteObservation, adminSettings, saveAdminSettings, adminLockouts, recordAdminAttempt, autoOpenAdmin, onAutoOpenHandled }) {
   const [courseNumberFilter, setCourseNumberFilter] = useState("");
   const [courseTypeFilter, setCourseTypeFilter] = useState("");
   const [dateFromFilter, setDateFromFilter] = useState("");
