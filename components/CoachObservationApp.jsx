@@ -337,21 +337,35 @@ const EDUCATOR_ROLES = {
 
 const ADMIN_LOCKOUT_THRESHOLD = 3;
 const ADMIN_LOCKOUT_MS = 30 * 60 * 1000;
-const DEFAULT_ADMIN_SETTINGS = { admins: [{ name: "Craig Moore", pin: "8938" }], maxAdmins: 2, leadAdminName: "Craig Moore" };
+const DEFAULT_ADMIN_SETTINGS = { admins: [{ name: "Craig Moore", pin: "8938", role: "master" }], maxAdmins: 2, leadAdminName: "Craig Moore" };
 const MAX_ADMINS = 2;
 
 function migrateAdminSettings(raw) {
   if (!raw) return DEFAULT_ADMIN_SETTINGS;
   const admins = Array.isArray(raw.admins) ? raw.admins : DEFAULT_ADMIN_SETTINGS.admins;
   const migratedAdmins = admins.map(a => {
-    if (typeof a === "string") return { name: a, pin: raw.pin || DEFAULT_ADMIN_SETTINGS.admins[0].pin };
-    return { name: a.name || "", pin: a.pin || "" };
+    // Every admin from before the Master/MF-scoped split becomes Master —
+    // preserves exactly the full access they already had, nobody currently
+    // working loses anything on this migration.
+    if (typeof a === "string") return { name: a, pin: raw.pin || DEFAULT_ADMIN_SETTINGS.admins[0].pin, role: "master" };
+    const role = a.role === "mf" ? "mf" : "master";
+    return { name: a.name || "", pin: a.pin || "", role, memberFederations: role === "mf" ? (a.memberFederations || []) : undefined };
   }).filter(a => a.name);
   return {
     admins: migratedAdmins.length ? migratedAdmins : DEFAULT_ADMIN_SETTINGS.admins,
     maxAdmins: raw.maxAdmins || MAX_ADMINS,
     leadAdminName: raw.leadAdminName || (migratedAdmins[0] && migratedAdmins[0].name) || DEFAULT_ADMIN_SETTINGS.leadAdminName,
   };
+}
+
+// An admin with no role, or role !== "mf", is treated as Master — full
+// access, matching every admin's behaviour before this feature existed.
+function isMasterAdmin(adminMatch) {
+  return !adminMatch || adminMatch.role !== "mf";
+}
+function adminHasMfAccess(adminMatch, mfKey) {
+  if (isMasterAdmin(adminMatch)) return true;
+  return (adminMatch.memberFederations || []).includes(mfKey);
 }
 
 function findAdminMatch(admins, name, pin) {
@@ -1128,6 +1142,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             onBulkDelete={handleBulkDeleteCompletedTasks}
             observations={observations}
             onViewReport={(id) => { setReportId(id); setTab("report"); }}
+            adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
           />
         )}
         {tab === "logistics" && (
@@ -1144,8 +1159,16 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             </div>
             <div>
               <RemoveAllBar
-                label="Remove All CETs" count={educators.length} onClear={() => saveEducators([])}
-                warningText={`This will permanently delete all ${educators.length} CET${educators.length === 1 ? "" : "s"}. Past observations will remain in History but will no longer show a linked CET profile. This cannot be undone and is restricted to App Admins.`}
+                label="Remove All CETs" count={educators.length}
+                onClear={(match) => {
+                  if (isMasterAdmin(match)) {
+                    saveEducators([]);
+                  } else {
+                    const scope = match.memberFederations || [];
+                    saveEducators(educators.filter(e => !(e.memberFederations || []).some(mf => scope.includes(mf))));
+                  }
+                }}
+                warningText={`This deletes all ${educators.length} CET${educators.length === 1 ? "" : "s"} — or, if you're a Federation Admin, only the CETs tagged to your own Member Federation(s). Past observations will remain in History but will no longer show a linked CET profile. This cannot be undone and is restricted to App Admins.`}
                 adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
               />
               <CetTab educators={educators} saveEducators={saveEducators} observations={visibleObservations}
@@ -1157,8 +1180,8 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             />
             <div>
               <RemoveAllBar
-                label="Remove All Coaches" count={coaches.length} onClear={() => saveCoaches([])}
-                warningText={`This will permanently delete all ${coaches.length} coach${coaches.length === 1 ? "" : "es"}. Past observations will remain in History but will no longer show a linked coach profile. This cannot be undone and is restricted to App Admins.`}
+                label="Remove All Coaches" count={coaches.length} onClear={() => saveCoaches([])} masterOnly
+                warningText={`This will permanently delete all ${coaches.length} coach${coaches.length === 1 ? "" : "es"}. Past observations will remain in History but will no longer show a linked coach profile. This cannot be undone and is restricted to Master Admins — coach profiles aren't tagged to a Member Federation, so this action can't be safely scoped to a Federation Admin.`}
                 adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
               />
               <CoachesTab
@@ -1187,7 +1210,9 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             coaches={coaches} educators={educators} observations={visibleObservations}
             coachId={historyCoachId} setCoachId={setHistoryCoachId}
             onView={(id) => { setReportId(id); setTab("report"); }}
-            onClearHistory={() => saveObservations(observations.filter(o => o.status === "draft"))}
+            onClearHistory={(mfScope) => saveObservations(observations.filter(o =>
+              o.status === "draft" || (mfScope && !mfScope.includes(o.memberFederation))
+            ))}
             onDeleteObservation={handleDeleteObservation}
             adminSettings={adminSettings}
             saveAdminSettings={saveAdminSettings}
@@ -1624,17 +1649,19 @@ function StatCard({ label, value, icon: Icon }) {
   );
 }
 
-function RemoveAllBar({ label, count, onClear, warningText, adminSettings, adminLockouts, recordAdminAttempt }) {
+function RemoveAllBar({ label, count, onClear, warningText, adminSettings, adminLockouts, recordAdminAttempt, masterOnly }) {
   const [confirmClear, setConfirmClear] = useState(false);
   const [adminName, setAdminName] = useState("");
   const [pin, setPin] = useState("");
   const [clearError, setClearError] = useState(false);
+  const [scopeError, setScopeError] = useState("");
 
   function handleOpenConfirm() {
     setConfirmClear(true);
     setAdminName("");
     setPin("");
     setClearError(false);
+    setScopeError("");
   }
 
   function handleConfirmClear() {
@@ -1648,12 +1675,18 @@ function RemoveAllBar({ label, count, onClear, warningText, adminSettings, admin
       setClearError(true);
       return;
     }
+    if (masterOnly && !isMasterAdmin(match)) {
+      recordAdminAttempt(adminName, true);
+      setScopeError("Only a Master Admin can do this.");
+      return;
+    }
     recordAdminAttempt(adminName, true);
-    onClear();
+    onClear(match);
     setConfirmClear(false);
     setAdminName("");
     setPin("");
     setClearError(false);
+    setScopeError("");
   }
 
   function handleCancelClear() {
@@ -1661,6 +1694,7 @@ function RemoveAllBar({ label, count, onClear, warningText, adminSettings, admin
     setAdminName("");
     setPin("");
     setClearError(false);
+    setScopeError("");
   }
 
   if (count === 0) return null;
@@ -1696,6 +1730,7 @@ function RemoveAllBar({ label, count, onClear, warningText, adminSettings, admin
                 : "Incorrect admin name or PIN."}
             </p>
           )}
+          {scopeError && <p className="text-xs text-red-600 pl-6">{scopeError}</p>}
         </div>
       )}
     </div>
@@ -1736,6 +1771,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
   const [mergeAuthError, setMergeAuthError] = useState(false);
   const [mergingKey, setMergingKey] = useState(null);
   const [mergeResultMsg, setMergeResultMsg] = useState("");
+  const [mergeAuthScopeError, setMergeAuthScopeError] = useState("");
 
   const duplicateGroups = (() => {
     const byName = {};
@@ -1769,9 +1805,16 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
       setMergeAuthError(true);
       return;
     }
+    if (!isMasterAdmin(match)) {
+      recordAdminAttempt(mergeAuthName, true);
+      setMergeAuthError(false);
+      setMergeAuthScopeError("Only a Master Admin can merge coach profiles — coach profiles aren't tagged to a Member Federation.");
+      return;
+    }
     recordAdminAttempt(mergeAuthName, true);
     setMergeAuthed(true);
     setMergeAuthError(false);
+    setMergeAuthScopeError("");
   }
 
   async function mergeGroup(group) {
@@ -2035,6 +2078,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
                     : "Incorrect admin name or PIN."}
                 </p>
               )}
+              {mergeAuthScopeError && <p className="text-xs text-red-600">{mergeAuthScopeError}</p>}
             </div>
           ) : (
             <div className="space-y-2">
@@ -2290,6 +2334,43 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [editingMfId, setEditingMfId] = useState(null);
   const [editingMfSelection, setEditingMfSelection] = useState([]);
+  const [selectedCetIds, setSelectedCetIds] = useState(() => new Set());
+  const [bulkMfPicker, setBulkMfPicker] = useState("");
+  const [bulkMfMsg, setBulkMfMsg] = useState("");
+
+  function toggleCetSelected(id) {
+    setSelectedCetIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllVisible(list) {
+    const ids = list.map(c => c.id);
+    const allSelected = ids.every(id => selectedCetIds.has(id));
+    setSelectedCetIds(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => { if (allSelected) next.delete(id); else next.add(id); });
+      return next;
+    });
+  }
+
+  function applyBulkMf(mode) {
+    // mode: "add" merges the picked MF onto whatever each selected CET
+    // already has; "replace" overwrites their assignment with just this MF.
+    if (!bulkMfPicker || selectedCetIds.size === 0) return;
+    saveEducators(educators.map(c => {
+      if (!selectedCetIds.has(c.id)) return c;
+      const current = c.memberFederations || [];
+      const next = mode === "replace" ? [bulkMfPicker] : [...new Set([...current, bulkMfPicker])];
+      return { ...c, memberFederations: next };
+    }));
+    const mfLabel = (MEMBER_FEDERATIONS.find(m => m.key === bulkMfPicker) || {}).label || bulkMfPicker;
+    setBulkMfMsg(`${mode === "replace" ? "Set" : "Added"} ${mfLabel} for ${selectedCetIds.size} CET${selectedCetIds.size === 1 ? "" : "s"}.`);
+    setSelectedCetIds(new Set());
+    setBulkMfPicker("");
+  }
 
   function toggleCetMf(key) {
     setCetMfSelection(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
@@ -2319,11 +2400,12 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
   const [mergeAuthName, setMergeAuthName] = useState("");
   const [mergeAuthPin, setMergeAuthPin] = useState("");
   const [mergeAuthed, setMergeAuthed] = useState(false);
+  const [mergeAuthMatch, setMergeAuthMatch] = useState(null);
   const [mergeAuthError, setMergeAuthError] = useState(false);
   const [mergingKey, setMergingKey] = useState(null);
   const [mergeResultMsg, setMergeResultMsg] = useState("");
 
-  const duplicateGroups = (() => {
+  const allDuplicateGroups = (() => {
     const byName = {};
     educators.forEach(c => {
       const key = (c.name || "").trim().toLowerCase();
@@ -2333,6 +2415,13 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
     });
     return Object.values(byName).filter(g => g.length > 1).sort((a, b) => a[0].name.localeCompare(b[0].name));
   })();
+
+  // A Federation Admin only sees/acts on groups where at least one profile
+  // is already tagged to one of their own Member Federation(s) — Master
+  // sees and can merge every group.
+  const duplicateGroups = (!mergeAuthed || isMasterAdmin(mergeAuthMatch))
+    ? allDuplicateGroups
+    : allDuplicateGroups.filter(g => g.some(c => (c.memberFederations || []).some(mf => (mergeAuthMatch.memberFederations || []).includes(mf))));
 
   function cetCompletenessScore(c) {
     let score = 0;
@@ -2354,6 +2443,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
     }
     recordAdminAttempt(mergeAuthName, true);
     setMergeAuthed(true);
+    setMergeAuthMatch(match);
     setMergeAuthError(false);
   }
 
@@ -2367,7 +2457,8 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
       const duplicateIds = new Set(sorted.slice(1).map(d => d.id));
       const mergedClub = (canonical.club || "").trim() || sorted.slice(1).map(d => (d.club || "").trim()).find(Boolean) || "";
       const mergedLevel = (canonical.level || "").trim() || sorted.slice(1).map(d => (d.level || "").trim()).find(Boolean) || "";
-      const updatedCanonical = { ...canonical, club: mergedClub, level: mergedLevel };
+      const mergedMfs = [...new Set([...(canonical.memberFederations || []), ...sorted.slice(1).flatMap(d => d.memberFederations || [])])];
+      const updatedCanonical = { ...canonical, club: mergedClub, level: mergedLevel, memberFederations: mergedMfs };
       const nextEducators = educators.filter(c => !duplicateIds.has(c.id)).map(c => c.id === canonical.id ? updatedCanonical : c);
       await saveEducators(nextEducators);
       setMergeResultMsg(`Merged ${group.length} profiles for "${canonical.name}" into one.`);
@@ -2520,6 +2611,9 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
           ) : (
             <div className="space-y-2">
               {mergeResultMsg && <p className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{mergeResultMsg}</p>}
+              {duplicateGroups.length === 0 && (
+                <p className="text-xs text-amber-700">No duplicate CETs found for your Member Federation(s).</p>
+              )}
               {duplicateGroups.map(group => {
                 const groupKey = group.map(c => c.id).join(",");
                 const combinedObsCount = observations.filter(o => (o.coachEducatorName || "").toLowerCase() === group[0].name.trim().toLowerCase()).length;
@@ -2655,24 +2749,51 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
             if (filtered.length === 0) {
               return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">{q ? `No CETs match "${searchQuery}".` : "No CETs added yet."}</div>;
             }
+            const visibleSelectedCount = filtered.filter(c => selectedCetIds.has(c.id)).length;
             return (
-              <div className="grid sm:grid-cols-2 gap-3">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500 cursor-pointer">
+                    <input type="checkbox" checked={filtered.length > 0 && visibleSelectedCount === filtered.length}
+                      onChange={() => toggleSelectAllVisible(filtered)} className="rounded border-slate-300" />
+                    Select all ({filtered.length})
+                  </label>
+                  {selectedCetIds.size > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+                      <span className="text-xs font-semibold text-indigo-700">{selectedCetIds.size} selected</span>
+                      <select value={bulkMfPicker} onChange={e => setBulkMfPicker(e.target.value)} className="border border-indigo-300 rounded-lg px-2 py-1.5 text-xs bg-white">
+                        <option value="">Choose Member Federation...</option>
+                        {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
+                      </select>
+                      <button onClick={() => applyBulkMf("add")} disabled={!bulkMfPicker}
+                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:text-slate-300 whitespace-nowrap">Add to Selected</button>
+                      <button onClick={() => applyBulkMf("replace")} disabled={!bulkMfPicker}
+                        className="text-xs font-semibold text-slate-600 hover:text-slate-700 disabled:text-slate-300 whitespace-nowrap">Replace Selected's MF</button>
+                    </div>
+                  )}
+                </div>
+                {bulkMfMsg && <p className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{bulkMfMsg}</p>}
+                <div className="grid sm:grid-cols-2 gap-3">
                 {filtered.map(c => {
                   const obsCount = observations.filter(o => (o.coachEducatorName || "").toLowerCase() === c.name.toLowerCase()).length;
                   return (
                     <div key={c.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:border-slate-400 transition-colors">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1">
-                          <p className="font-semibold text-slate-900">{c.name}</p>
-                          <p className="text-xs text-slate-400">{[c.club, c.level].filter(Boolean).join(" · ") || "No details"}</p>
-                          {(c.memberFederations || []).length > 0 && (
-                            <div className="flex gap-1 flex-wrap mt-1.5">
-                              {c.memberFederations.map(key => {
-                                const mf = MEMBER_FEDERATIONS.find(m => m.key === key);
-                                return <span key={key} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700">{mf ? mf.label : key}</span>;
-                              })}
-                            </div>
+                        <div className="flex items-start gap-2 flex-1">
+                          <input type="checkbox" checked={selectedCetIds.has(c.id)} onChange={() => toggleCetSelected(c.id)}
+                            className="rounded border-slate-300 mt-1 shrink-0" />
+                          <div className="flex-1">
+                            <p className="font-semibold text-slate-900">{c.name}</p>
+                            <p className="text-xs text-slate-400">{[c.club, c.level].filter(Boolean).join(" · ") || "No details"}</p>
+                            {(c.memberFederations || []).length > 0 && (
+                              <div className="flex gap-1 flex-wrap mt-1.5">
+                                {c.memberFederations.map(key => {
+                                  const mf = MEMBER_FEDERATIONS.find(m => m.key === key);
+                                  return <span key={key} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700">{mf ? mf.label : key}</span>;
+                                })}
+                              </div>
                           )}
+                          </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className="text-xs font-medium bg-slate-100 text-slate-600 px-2 py-1 rounded-full">{obsCount} obs.</span>
@@ -2714,6 +2835,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                     </div>
                   );
                 })}
+                </div>
               </div>
             );
           })()}
@@ -3228,7 +3350,108 @@ function buildCandidateHtml(task, coach, observations) {
   </body></html>`;
 }
 
-function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport }) {
+function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, adminSettings, adminLockouts, recordAdminAttempt }) {
+  // Duplicate detection & merge for Completed Tasks — a different problem
+  // from duplicate coach/CET profiles: this catches the same person, same
+  // course, showing up as TWO separate attendance/checklist records (from
+  // importing the same roster more than once). Grouped by coach name +
+  // course number; a merge takes the higher attendance/online-modules %
+  // and unions every completed checklist item across the duplicates,
+  // since each is a partial capture of real, additive progress — not one
+  // "more correct" record to keep and one to throw away.
+  const [showDupTasks, setShowDupTasks] = useState(false);
+  const [dupTaskAuthName, setDupTaskAuthName] = useState("");
+  const [dupTaskAuthPin, setDupTaskAuthPin] = useState("");
+  const [dupTaskAuthed, setDupTaskAuthed] = useState(false);
+  const [dupTaskAuthError, setDupTaskAuthError] = useState(false);
+  const [dupTaskScopeError, setDupTaskScopeError] = useState("");
+  const [mergingTaskKey, setMergingTaskKey] = useState(null);
+  const [dupTaskResultMsg, setDupTaskResultMsg] = useState("");
+
+  const duplicateTaskGroups = (() => {
+    const byKey = {};
+    completedTasks.forEach(t => {
+      const nameKey = (t.coachName || "").trim().toLowerCase();
+      const courseKey = (t.courseNumber || "").trim();
+      if (!nameKey || !courseKey) return;
+      const key = `${nameKey}__${courseKey}`;
+      if (!byKey[key]) byKey[key] = [];
+      byKey[key].push(t);
+    });
+    return Object.values(byKey).filter(g => g.length > 1).sort((a, b) => a[0].coachName.localeCompare(b[0].coachName));
+  })();
+
+  function handleDupTaskAuth() {
+    if (isLockedOut(adminLockouts, dupTaskAuthName)) {
+      setDupTaskAuthError(true);
+      return;
+    }
+    const match = findAdminMatch(adminSettings.admins, dupTaskAuthName, dupTaskAuthPin);
+    if (!match) {
+      recordAdminAttempt(dupTaskAuthName, false);
+      setDupTaskAuthError(true);
+      return;
+    }
+    if (!isMasterAdmin(match)) {
+      recordAdminAttempt(dupTaskAuthName, true);
+      setDupTaskAuthError(false);
+      setDupTaskScopeError("Only a Master Admin can merge Completed Tasks records — they aren't tagged to a Member Federation.");
+      return;
+    }
+    recordAdminAttempt(dupTaskAuthName, true);
+    setDupTaskAuthed(true);
+    setDupTaskAuthError(false);
+    setDupTaskScopeError("");
+  }
+
+  async function mergeTaskGroup(group) {
+    const groupKey = group.map(t => t.id).join(",");
+    setMergingTaskKey(groupKey);
+    setDupTaskResultMsg("");
+    try {
+      const sorted = [...group].sort((a, b) => (b.attendancePercent || 0) - (a.attendancePercent || 0));
+      const canonical = sorted[0];
+      const others = sorted.slice(1);
+      const all = [canonical, ...others];
+      const duplicateIds = new Set(others.map(t => t.id));
+
+      const sessionPlansDone = {};
+      const sessionPlansOutcomes = {};
+      all.forEach(t => {
+        Object.entries(t.sessionPlansDone || {}).forEach(([k, v]) => { if (v) sessionPlansDone[k] = true; });
+        Object.entries(t.sessionPlansOutcomes || {}).forEach(([k, v]) => { if (v && !sessionPlansOutcomes[k]) sessionPlansOutcomes[k] = v; });
+      });
+
+      const merged = {
+        ...canonical,
+        attendancePercent: Math.max(...all.map(t => t.attendancePercent || 0)),
+        onlineModulesPercent: Math.max(...all.map(t => t.onlineModulesPercent || 0)),
+        formativeAssessmentDone: all.some(t => t.formativeAssessmentDone),
+        checkpoint: all.map(t => (t.checkpoint || "").trim()).find(Boolean) || "",
+        videoLink: all.map(t => (t.videoLink || "").trim()).find(Boolean) || "",
+        team: all.map(t => (t.team || "").trim()).find(Boolean) || "",
+        cet: all.map(t => (t.cet || "").trim()).find(Boolean) || "",
+        goalscoringPresentationDone: all.some(t => t.goalscoringPresentationDone),
+        gamePlanDone: all.some(t => t.gamePlanDone),
+        analysisSessionPlanDone: all.some(t => t.analysisSessionPlanDone),
+        annualPlanDone: all.some(t => t.annualPlanDone),
+        sixWeekCycleDone: all.some(t => t.sixWeekCycleDone),
+        fcDetailsDone: all.some(t => t.fcDetailsDone),
+        practicalSessionDone: all.some(t => t.practicalSessionDone),
+        practicalSessionOutcome: all.map(t => t.practicalSessionOutcome).find(Boolean) || "",
+        sessionPlansDone, sessionPlansOutcomes,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const nextTasks = completedTasks.filter(t => !duplicateIds.has(t.id)).map(t => t.id === canonical.id ? merged : t);
+      await saveCompletedTasks(nextTasks);
+      setDupTaskResultMsg(`Merged ${group.length} records for "${canonical.coachName}" on course #${canonical.courseNumber} into one.`);
+    } catch (e) {
+      setDupTaskResultMsg("Something went wrong merging that group — nothing was changed. Try again.");
+    }
+    setMergingTaskKey(null);
+  }
+
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyCompletedTaskForm());
@@ -3940,8 +4163,67 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           <button onClick={openAddForm} className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-100">
             <Plus className="w-4 h-4" /> {showForm && !editingId ? "Close" : "Add Record"}
           </button>
+          {duplicateTaskGroups.length > 0 && (
+            <button onClick={() => setShowDupTasks(s => !s)} className="flex items-center gap-1.5 text-sm font-semibold text-amber-700 border border-amber-300 px-3 py-2 rounded-lg hover:bg-amber-50">
+              <AlertCircle className="w-4 h-4" /> {duplicateTaskGroups.length} Duplicate Record{duplicateTaskGroups.length === 1 ? "" : "s"}
+            </button>
+          )}
         </div>
       </div>
+
+      {showDupTasks && duplicateTaskGroups.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+          <p className="text-sm font-semibold text-amber-900">Duplicate Completed Tasks Records</p>
+          <p className="text-xs text-amber-700">Same coach, same course number, showing up as more than one record — usually from importing the same roster twice. Merging keeps the higher attendance/online modules %, and combines every completed checklist item across the duplicates.</p>
+
+          {!dupTaskAuthed ? (
+            <div className="space-y-2 pt-1">
+              <p className="text-xs text-amber-700">Enter an admin name and PIN to merge duplicates.</p>
+              <div className="grid sm:grid-cols-2 gap-2">
+                <input value={dupTaskAuthName} onChange={e => { setDupTaskAuthName(e.target.value); setDupTaskAuthError(false); }} placeholder="Admin name"
+                  className={`border rounded-lg px-3 py-2 text-sm ${dupTaskAuthError ? "border-red-400" : "border-amber-300"}`} />
+                <input type="password" inputMode="numeric" maxLength={4} value={dupTaskAuthPin}
+                  onChange={e => { setDupTaskAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setDupTaskAuthError(false); }} placeholder="Admin PIN"
+                  className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${dupTaskAuthError ? "border-red-400" : "border-amber-300"}`} />
+              </div>
+              <button onClick={handleDupTaskAuth} className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700">Unlock</button>
+              {dupTaskAuthError && (
+                <p className="text-xs text-red-600">
+                  {isLockedOut(adminLockouts, dupTaskAuthName)
+                    ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, dupTaskAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, dupTaskAuthName) === 1 ? "" : "s"}.`
+                    : "Incorrect admin name or PIN."}
+                </p>
+              )}
+              {dupTaskScopeError && <p className="text-xs text-red-600">{dupTaskScopeError}</p>}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {dupTaskResultMsg && <p className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{dupTaskResultMsg}</p>}
+              {duplicateTaskGroups.map(group => {
+                const groupKey = group.map(t => t.id).join(",");
+                return (
+                  <div key={groupKey} className="bg-white rounded-lg border border-amber-200 p-3">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <p className="text-sm font-semibold text-slate-800">{group[0].coachName} <span className="text-xs font-normal text-slate-400">#{group[0].courseNumber} · {group.length} records</span></p>
+                      <button onClick={() => mergeTaskGroup(group)} disabled={mergingTaskKey === groupKey}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-600 px-3 py-1.5 rounded-lg hover:bg-amber-700 disabled:bg-slate-300 whitespace-nowrap">
+                        {mergingTaskKey === groupKey ? "Merging..." : "Merge into One"}
+                      </button>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      {group.map(t => (
+                        <div key={t.id} className="text-xs text-slate-500 bg-slate-50 rounded-md px-2.5 py-1.5">
+                          Attendance {t.attendancePercent}% · Online Modules {t.onlineModulesPercent || 0}%
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {showCourseworkUpload && (
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
@@ -6133,6 +6415,12 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
         setReopening(false);
         return;
       }
+      if (!adminHasMfAccess(match, obs.memberFederation)) {
+        await kvSet("adminLockouts", { ...lockouts, [key]: { failCount: 0, lockedUntil: 0 } });
+        setReopenError("This report belongs to a different Member Federation — only a Master Admin or that federation's admin can reopen it.");
+        setReopening(false);
+        return;
+      }
       await kvSet("adminLockouts", { ...lockouts, [key]: { failCount: 0, lockedUntil: 0 } });
       resetReopenAuth();
       onEditDraft(obs);
@@ -6613,6 +6901,7 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
   }, [autoOpenAdmin]);
   const [panelAuthed, setPanelAuthed] = useState(false);
   const [signedInAdminName, setSignedInAdminName] = useState("");
+  const [signedInAdminMatch, setSignedInAdminMatch] = useState(null);
   const [panelName, setPanelName] = useState("");
   const [panelPin, setPanelPin] = useState("");
   const [panelAuthError, setPanelAuthError] = useState(false);
@@ -6625,6 +6914,8 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
   const [newAdminName, setNewAdminName] = useState("");
   const [newAdminPin, setNewAdminPin] = useState("");
   const [addAdminError, setAddAdminError] = useState("");
+  const [newAdminRole, setNewAdminRole] = useState("master");
+  const [newAdminMfSelection, setNewAdminMfSelection] = useState([]);
   const [resetAllPin, setResetAllPin] = useState("");
   const [resetAllPinConfirm, setResetAllPinConfirm] = useState("");
   const [resetAllError, setResetAllError] = useState("");
@@ -6641,6 +6932,7 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
 
   const maxAdmins = adminSettings.maxAdmins || MAX_ADMINS;
   const iAmLeadAdmin = panelAuthed && isLeadAdmin(adminSettings, signedInAdminName);
+  const iAmMaster = panelAuthed && isMasterAdmin(signedInAdminMatch);
 
   function observationCourseType(o) {
     if (o.sessionType === "informal") return "Informal";
@@ -6685,7 +6977,8 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
   }
 
   function handleClearHistory() {
-    onClearHistory();
+    const mfScope = iAmMaster ? null : (signedInAdminMatch.memberFederations || []);
+    onClearHistory(mfScope);
     setClearConfirmStep(false);
   }
 
@@ -6702,8 +6995,16 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
       return match?.videoLink || "";
     }
     const includeCoach = (coachId) => exportAllCoaches || exportCoachIds.includes(coachId);
-    const filteredObservations = observations.filter(o => includeCoach(o.coachId));
-    const filteredCompletedTasks = completedTasksData.filter(t => includeCoach(t.coachId));
+    // A Federation Admin's export is limited to observations tagged to
+    // their own Member Federation(s). Completed Tasks records aren't
+    // MF-tagged directly, so as a best-effort match, a scoped export only
+    // includes tasks for coaches who also appear in that scoped
+    // observation set — not a perfect MF filter, but avoids pulling in
+    // clearly unrelated attendance data.
+    const mfScope = iAmMaster ? null : (signedInAdminMatch.memberFederations || []);
+    const filteredObservations = observations.filter(o => includeCoach(o.coachId) && (!mfScope || mfScope.includes(o.memberFederation)));
+    const scopedCoachIds = mfScope ? new Set(filteredObservations.map(o => o.coachId)) : null;
+    const filteredCompletedTasks = completedTasksData.filter(t => includeCoach(t.coachId) && (!scopedCoachIds || scopedCoachIds.has(t.coachId)));
     const esc = (s) => (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const sections = filteredObservations.map((o, idx) => {
       const total = totalForObs(o);
@@ -6788,10 +7089,12 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
     setShowAdminPanel(false);
     setPanelAuthed(false);
     setSignedInAdminName("");
+    setSignedInAdminMatch(null);
     setPanelName(""); setPanelPin(""); setPanelAuthError(false);
     setLeadBlockedMessage(""); setKickedOutMessage("");
     setNewPin(""); setNewPinConfirm(""); setPinChangeError(""); setPinChangeSuccess(false);
     setNewAdminName(""); setNewAdminPin(""); setNewAdminPinSelf(""); setNewAdminPinSelfConfirm(""); setNewAdminPinMode("me"); setAddAdminError("");
+    setNewAdminRole("master"); setNewAdminMfSelection([]);
     setLeadAdminNameInput(""); setLeadAdminError(""); setLeadAdminSuccess(false);
   }
 
@@ -6849,8 +7152,10 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
     setLeadAdminSuccess(false);
     const name = leadAdminNameInput.trim();
     if (!name) { setLeadAdminError("Enter the name of the admin to make Lead Admin."); return; }
-    if (!isAdminMatch(name)) { setLeadAdminError("That name doesn't match any admin currently on file."); return; }
-    saveAdminSettings({ ...adminSettings, leadAdminName: name });
+    const targetAdmin = adminSettings.admins.find(a => a.name.trim().toLowerCase() === name.trim().toLowerCase());
+    if (!targetAdmin) { setLeadAdminError("That name doesn't match any admin currently on file."); return; }
+    if (!isMasterAdmin(targetAdmin)) { setLeadAdminError("Lead Admin can only be a Master Admin."); return; }
+    saveAdminSettings({ ...adminSettings, leadAdminName: targetAdmin.name });
     setLeadAdminError("");
     setLeadAdminSuccess(true);
     setLeadAdminNameInput("");
@@ -6869,19 +7174,26 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
     }
     recordAdminAttempt(panelName, true);
 
-    const iAmLead = isLeadAdmin(adminSettings, match.name);
-    const current = await readAdminSession();
-    if (current && current.activeAdmin && (current.activeAdmin.toLowerCase() !== match.name.toLowerCase()) && current.isLead && !iAmLead) {
-      setLeadBlockedMessage(`${current.activeAdmin} (Lead Admin) is currently in Admin Settings — try again once they've left.`);
-      setPanelAuthError(false);
-      return;
+    // The exclusive "Lead Admin locks everyone else out" session applies
+    // only among Master admins — MF-scoped admins work on disjoint slices
+    // of data day-to-day, so there's no real conflict in letting them (and
+    // Masters) work concurrently without blocking or kicking each other.
+    if (isMasterAdmin(match)) {
+      const iAmLead = isLeadAdmin(adminSettings, match.name);
+      const current = await readAdminSession();
+      if (current && current.activeAdmin && (current.activeAdmin.toLowerCase() !== match.name.toLowerCase()) && current.isLead && !iAmLead) {
+        setLeadBlockedMessage(`${current.activeAdmin} (Lead Admin) is currently in Admin Settings — try again once they've left.`);
+        setPanelAuthError(false);
+        return;
+      }
+      try {
+        await kvSet("adminSession", { activeAdmin: match.name, isLead: iAmLead, since: Date.now() });
+      } catch (e) { /* if this fails, worst case is the kick-out feature doesn't engage this session — access itself still works */ }
     }
-    try {
-      await kvSet("adminSession", { activeAdmin: match.name, isLead: iAmLead, since: Date.now() });
-    } catch (e) { /* if this fails, worst case is the kick-out feature doesn't engage this session — access itself still works */ }
 
     setPanelAuthed(true);
     setSignedInAdminName(match.name);
+    setSignedInAdminMatch(match);
     setMaxAdminsInput(String(adminSettings.maxAdmins || MAX_ADMINS));
     setPanelAuthError(false);
     setLeadBlockedMessage("");
@@ -6889,17 +7201,22 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
   }
 
   useEffect(() => {
-    if (!panelAuthed || iAmLeadAdmin) return;
+    // Only Master sessions participate in the kick-out poll — an MF-admin
+    // never registers a shared adminSession, so they're never a target of
+    // (or vulnerable to) this mechanism.
+    if (!panelAuthed || iAmLeadAdmin || !iAmMaster) return;
     const interval = setInterval(async () => {
       const current = await readAdminSession();
       if (current && current.activeAdmin && current.activeAdmin.toLowerCase() !== signedInAdminName.toLowerCase()) {
         setKickedOutMessage(`You've been signed out — ${current.activeAdmin} (Lead Admin) entered Admin Settings. Any changes you'd already saved are unaffected; anything you were mid-edit on will need to be redone.`);
         setPanelAuthed(false);
         setSignedInAdminName("");
+        setSignedInAdminMatch(null);
       }
     }, 4000);
     return () => clearInterval(interval);
-  }, [panelAuthed, iAmLeadAdmin, signedInAdminName]);
+  }, [panelAuthed, iAmLeadAdmin, iAmMaster, signedInAdminName]);
+
 
   function handleChangePin() {
     setPinChangeSuccess(false);
@@ -6921,9 +7238,13 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
   }
 
   function handleAddAdmin() {
+    if (!iAmMaster) {
+      setAddAdminError("Only a Master Admin can add admins.");
+      return;
+    }
     const name = newAdminName.trim();
     if (adminSettings.admins.length >= maxAdmins) {
-      setAddAdminError(`Only ${maxAdmins} admin${maxAdmins === 1 ? "" : "s"} allowed — Admin 1 can raise this limit in settings below.`);
+      setAddAdminError(`Only ${maxAdmins} admin${maxAdmins === 1 ? "" : "s"} allowed — a Master Admin can raise this limit in settings below.`);
       return;
     }
     if (!name) {
@@ -6932,6 +7253,10 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
     }
     if (isAdminMatch(name)) {
       setAddAdminError("This person is already an admin.");
+      return;
+    }
+    if (newAdminRole === "mf" && newAdminMfSelection.length === 0) {
+      setAddAdminError("Select at least one Member Federation for a federation-scoped admin.");
       return;
     }
     let pinToUse;
@@ -6952,12 +7277,17 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
       }
       pinToUse = newAdminPin;
     }
-    saveAdminSettings({ ...adminSettings, admins: [...adminSettings.admins, { name, pin: pinToUse }] });
+    const newAdmin = newAdminRole === "mf"
+      ? { name, pin: pinToUse, role: "mf", memberFederations: newAdminMfSelection }
+      : { name, pin: pinToUse, role: "master" };
+    saveAdminSettings({ ...adminSettings, admins: [...adminSettings.admins, newAdmin] });
     setNewAdminName("");
     setNewAdminPin("");
     setNewAdminPinSelf("");
     setNewAdminPinSelfConfirm("");
     setNewAdminPinMode("me");
+    setNewAdminRole("master");
+    setNewAdminMfSelection([]);
     setAddAdminError("");
   }
 
@@ -6973,11 +7303,17 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
       <div className="bg-white border border-slate-200 rounded-xl p-3 grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
         <select value={coachId || ""} onChange={e => setCoachId(e.target.value || null)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
           <option value="">All coaches</option>
-          {[...coaches].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {[...coaches]
+            .filter(c => observations.some(o => o.coachId === c.id))
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <select value={cetFilter} onChange={e => setCetFilter(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
           <option value="">All CETs</option>
-          {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
+          {[...educators]
+            .filter(e => observations.some(o => (o.coachEducatorName || "").toLowerCase() === e.name.toLowerCase()))
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
         </select>
         <select value={courseNumberFilter} onChange={e => setCourseNumberFilter(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
           <option value="">All course numbers</option>
@@ -7050,24 +7386,40 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
             </div>
           ) : (
             <div className="space-y-4">
-              <p className="text-xs text-emerald-600 font-medium flex items-center gap-1.5">
+              <p className="text-xs text-emerald-600 font-medium flex items-center gap-1.5 flex-wrap">
                 Signed in as Admin: {signedInAdminName}
                 {iAmLeadAdmin && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full"><Lock className="w-2.5 h-2.5" /> Lead Admin</span>}
+                {!iAmMaster && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded-full">
+                    {(signedInAdminMatch.memberFederations || []).join(", ")} Admin
+                  </span>
+                )}
               </p>
               {iAmLeadAdmin && (
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                   As Lead Admin, no other admin can enter these settings while you're here — and if one was already in when you entered, they've just been signed out.
                 </p>
               )}
+              {!iAmMaster && (
+                <p className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+                  You're a Federation Admin — Clear History, Remove All CETs, Reopen Report, Merge Duplicate CETs, and PDF export below are scoped to your Member Federation(s) only. Data export/import and Coach-related admin actions are Master Admin only.
+                </p>
+              )}
 
-              <div className="grid sm:grid-cols-2 gap-3">
-                <DataExportTool />
-                <DataImportTool />
-              </div>
+              {iAmMaster && (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <DataExportTool />
+                  <DataImportTool />
+                </div>
+              )}
 
               <div>
                 <p className="text-sm font-semibold text-slate-800 mb-1">Export Observation History</p>
-                <p className="text-xs text-slate-500 mb-2">Downloads one HTML file with a Completed Tasks summary table for every coach, followed by every finished (submitted) observation report (including pitch maps). Open the downloaded file in a browser tab and use Print → Save as PDF.</p>
+                <p className="text-xs text-slate-500 mb-2">
+                  {iAmMaster
+                    ? "Downloads one HTML file with a Completed Tasks summary table for every coach, followed by every finished (submitted) observation report (including pitch maps). Open the downloaded file in a browser tab and use Print → Save as PDF."
+                    : "Downloads one HTML file covering just your Member Federation's submitted observation reports (including pitch maps), plus a best-effort Completed Tasks summary for the same coaches. Open the downloaded file in a browser tab and use Print → Save as PDF."}
+                </p>
                 <button onClick={handleExportPdf}
                   disabled={observations.length === 0}
                   className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white">
@@ -7077,20 +7429,34 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
 
               <div className="border-t border-slate-100 pt-3">
                 <p className="text-sm font-semibold text-red-700 mb-1">Clear History</p>
-                <p className="text-xs text-slate-500 mb-2">Permanently delete all {observations.length} observation{observations.length === 1 ? "" : "s"} for every Coach Educator using this app. This cannot be undone.</p>
-                {!clearConfirmStep ? (
-                  <button onClick={() => setClearConfirmStep(true)} disabled={observations.length === 0}
-                    className="flex items-center gap-1.5 text-sm font-semibold text-red-600 border border-red-200 px-3 py-2 rounded-lg hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-white">
-                    <Trash2 className="w-4 h-4" /> Clear All History
-                  </button>
-                ) : (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-                    <p className="text-xs text-red-700 flex-1">Are you sure? This deletes all {observations.length} observation{observations.length === 1 ? "" : "s"} permanently.</p>
-                    <button onClick={handleClearHistory} className="text-xs font-semibold text-red-700 hover:text-red-800 whitespace-nowrap">Confirm Delete</button>
-                    <button onClick={() => setClearConfirmStep(false)} className="text-xs text-slate-500 hover:text-slate-700 whitespace-nowrap">Cancel</button>
-                  </div>
-                )}
+                {(() => {
+                  const clearScope = iAmMaster ? null : (signedInAdminMatch.memberFederations || []);
+                  const clearableCount = clearScope
+                    ? observations.filter(o => clearScope.includes(o.memberFederation)).length
+                    : observations.length;
+                  return (
+                    <>
+                      <p className="text-xs text-slate-500 mb-2">
+                        {clearScope
+                          ? `Permanently delete ${clearableCount} observation${clearableCount === 1 ? "" : "s"} for your Member Federation${clearScope.length === 1 ? "" : "s"} (${clearScope.join(", ")}). Other federations' history is untouched. This cannot be undone.`
+                          : `Permanently delete all ${observations.length} observation${observations.length === 1 ? "" : "s"} for every Coach Educator using this app. This cannot be undone.`}
+                      </p>
+                      {!clearConfirmStep ? (
+                        <button onClick={() => setClearConfirmStep(true)} disabled={clearableCount === 0}
+                          className="flex items-center gap-1.5 text-sm font-semibold text-red-600 border border-red-200 px-3 py-2 rounded-lg hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-white">
+                          <Trash2 className="w-4 h-4" /> {clearScope ? "Clear My Federation's History" : "Clear All History"}
+                        </button>
+                      ) : (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                          <p className="text-xs text-red-700 flex-1">Are you sure? This deletes {clearableCount} observation{clearableCount === 1 ? "" : "s"} permanently.</p>
+                          <button onClick={handleClearHistory} className="text-xs font-semibold text-red-700 hover:text-red-800 whitespace-nowrap">Confirm Delete</button>
+                          <button onClick={() => setClearConfirmStep(false)} className="text-xs text-slate-500 hover:text-slate-700 whitespace-nowrap">Cancel</button>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="border-t border-slate-100 pt-3">
@@ -7102,15 +7468,45 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
                 <div className="flex flex-wrap gap-2 mb-2">
                   {adminSettings.admins.map((a, i) => (
                     <span key={a.name} className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 flex items-center gap-1">
-                      Admin {i + 1}: {a.name}
+                      {a.name}
                       {isLeadAdmin(adminSettings, a.name) && <Lock className="w-3 h-3 text-amber-600" />}
+                      {a.role === "mf"
+                        ? <span className="text-[10px] font-bold text-indigo-600">· {(a.memberFederations || []).join(", ")}</span>
+                        : <span className="text-[10px] font-bold text-slate-400">· Master</span>}
                     </span>
                   ))}
                 </div>
-                {adminSettings.admins.length < maxAdmins ? (
+                {!iAmMaster ? (
+                  <p className="text-xs text-slate-400">Only a Master Admin can add or manage admins.</p>
+                ) : adminSettings.admins.length < maxAdmins ? (
                   <div className="space-y-2">
                     <input value={newAdminName} onChange={e => { setNewAdminName(e.target.value); setAddAdminError(""); }}
                       placeholder={`Name for Admin ${adminSettings.admins.length + 1}`} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                    <div className="flex gap-2">
+                      <button onClick={() => { setNewAdminRole("master"); setNewAdminMfSelection([]); setAddAdminError(""); }} type="button"
+                        className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "master" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
+                        Master Admin
+                      </button>
+                      <button onClick={() => { setNewAdminRole("mf"); setAddAdminError(""); }} type="button"
+                        className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "mf" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
+                        Federation Admin
+                      </button>
+                    </div>
+                    {newAdminRole === "mf" && (
+                      <div>
+                        <p className="text-xs font-medium text-slate-500 mb-1">Member Federation(s)</p>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {MEMBER_FEDERATIONS.map(mf => (
+                            <button key={mf.key} type="button" onClick={() => setNewAdminMfSelection(prev => prev.includes(mf.key) ? prev.filter(k => k !== mf.key) : [...prev, mf.key])}
+                              className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                                newAdminMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                              }`}>
+                              {mf.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <button onClick={() => { setNewAdminPinMode("me"); setAddAdminError(""); }} type="button"
                         className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminPinMode === "me" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
@@ -7181,9 +7577,9 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
                 </div>
               )}
 
-              {adminSettings.admins[0] && adminSettings.admins[0].name.toLowerCase() === signedInAdminName.toLowerCase() && (
+              {iAmMaster && (
                 <div className="border-t border-slate-100 pt-3">
-                  <p className="text-sm font-semibold text-slate-800 mb-1">Admin Slots (Admin 1 only)</p>
+                  <p className="text-sm font-semibold text-slate-800 mb-1">Admin Slots (Master Admin only)</p>
                   <p className="text-xs text-slate-500 mb-2">Set how many admin slots this app allows in total (currently {maxAdmins}).</p>
                   <div className="flex items-center gap-2 mb-1">
                     <input type="number" min="1" value={maxAdminsInput}
@@ -7196,9 +7592,9 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, onV
                 </div>
               )}
 
-              {adminSettings.admins[0] && adminSettings.admins[0].name.toLowerCase() === signedInAdminName.toLowerCase() && (
+              {iAmMaster && (
                 <div className="border-t border-slate-100 pt-3">
-                  <p className="text-sm font-semibold text-slate-800 mb-1">Full PIN Reset (Admin 1 only)</p>
+                  <p className="text-sm font-semibold text-slate-800 mb-1">Full PIN Reset (Master Admin only)</p>
                   <p className="text-xs text-slate-500 mb-2">Sets this same PIN for every admin on the list at once — use if a PIN's been forgotten or you want to start fresh.</p>
                   <div className="grid sm:grid-cols-2 gap-2 mb-2">
                     <input type="password" inputMode="numeric" maxLength={4} value={resetAllPin}
