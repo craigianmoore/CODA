@@ -1147,7 +1147,8 @@ export default function CoachObservationApp() {
                 warningText={`This will permanently delete all ${educators.length} CET${educators.length === 1 ? "" : "s"}. Past observations will remain in History but will no longer show a linked CET profile. This cannot be undone and is restricted to App Admins.`}
                 adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
               />
-              <CetTab educators={educators} saveEducators={saveEducators} observations={visibleObservations} />
+              <CetTab educators={educators} saveEducators={saveEducators} observations={visibleObservations}
+                adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt} />
             </div>
             <CoursesTab
               courses={courses} saveCourses={saveCourses} adminSettings={adminSettings}
@@ -1162,6 +1163,9 @@ export default function CoachObservationApp() {
               <CoachesTab
                 coaches={coaches} observations={visibleObservations}
                 saveCoaches={saveCoaches}
+                allObservations={observations} saveObservations={saveObservations}
+                completedTasks={completedTasks} saveCompletedTasks={saveCompletedTasks}
+                adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
                 goHistory={(cid) => { setHistoryCoachId(cid); setTab("history"); }}
               />
             </div>
@@ -1697,7 +1701,7 @@ function RemoveAllBar({ label, count, onClear, warningText, adminSettings, admin
   );
 }
 
-function CoachesTab({ coaches, observations, saveCoaches, goHistory }) {
+function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveObservations, completedTasks, saveCompletedTasks, adminSettings, adminLockouts, recordAdminAttempt, goHistory }) {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [club, setClub] = useState("");
@@ -1716,6 +1720,91 @@ function CoachesTab({ coaches, observations, saveCoaches, goHistory }) {
   const [idpForm, setIdpForm] = useState(emptyIdp());
   const [idpParsing, setIdpParsing] = useState(false);
   const [idpError, setIdpError] = useState("");
+
+  // Duplicate detection & merge — real need after importing data from a
+  // second export lineage under different ids for the same real people
+  // (matching on import is by id, not name, so the same person can end up
+  // with two profiles). Grouped by exact trimmed/lowercased name; a merge
+  // keeps one canonical coach record, reassigns every observation and
+  // completed-task record from the other(s) onto it, merges whatever
+  // fields the duplicates had, then removes the now-redundant profiles.
+  const [showDuplicates, setShowDuplicates] = useState(false);
+  const [mergeAuthName, setMergeAuthName] = useState("");
+  const [mergeAuthPin, setMergeAuthPin] = useState("");
+  const [mergeAuthed, setMergeAuthed] = useState(false);
+  const [mergeAuthError, setMergeAuthError] = useState(false);
+  const [mergingKey, setMergingKey] = useState(null);
+  const [mergeResultMsg, setMergeResultMsg] = useState("");
+
+  const duplicateGroups = (() => {
+    const byName = {};
+    coaches.forEach(c => {
+      const key = (c.name || "").trim().toLowerCase();
+      if (!key) return;
+      if (!byName[key]) byName[key] = [];
+      byName[key].push(c);
+    });
+    return Object.values(byName).filter(g => g.length > 1).sort((a, b) => a[0].name.localeCompare(b[0].name));
+  })();
+
+  function coachCompletenessScore(c) {
+    let score = 0;
+    if ((c.club || "").trim()) score++;
+    if ((c.level || "").trim()) score++;
+    if ((c.faNumber || "").trim()) score++;
+    if ((c.topics || []).length) score += c.topics.length;
+    if (idpHasContent(c.idp)) score += 3;
+    return score;
+  }
+
+  function handleMergeAuth() {
+    if (isLockedOut(adminLockouts, mergeAuthName)) {
+      setMergeAuthError(true);
+      return;
+    }
+    const match = findAdminMatch(adminSettings.admins, mergeAuthName, mergeAuthPin);
+    if (!match) {
+      recordAdminAttempt(mergeAuthName, false);
+      setMergeAuthError(true);
+      return;
+    }
+    recordAdminAttempt(mergeAuthName, true);
+    setMergeAuthed(true);
+    setMergeAuthError(false);
+  }
+
+  async function mergeGroup(group) {
+    const groupKey = group.map(c => c.id).join(",");
+    setMergingKey(groupKey);
+    setMergeResultMsg("");
+    try {
+      const sorted = [...group].sort((a, b) => coachCompletenessScore(b) - coachCompletenessScore(a));
+      const canonical = sorted[0];
+      const duplicates = sorted.slice(1);
+      const duplicateIds = new Set(duplicates.map(d => d.id));
+
+      const mergedTopics = [...new Set([...(canonical.topics || []), ...duplicates.flatMap(d => d.topics || [])])];
+      const mergedClub = (canonical.club || "").trim() || duplicates.map(d => (d.club || "").trim()).find(Boolean) || "";
+      const mergedLevel = (canonical.level || "").trim() || duplicates.map(d => (d.level || "").trim()).find(Boolean) || "";
+      const mergedFa = (canonical.faNumber || "").trim() || duplicates.map(d => (d.faNumber || "").trim()).find(Boolean) || "";
+      const mergedIdp = idpHasContent(canonical.idp) ? canonical.idp : duplicates.map(d => d.idp).find(idpHasContent) || canonical.idp;
+
+      const updatedCanonical = { ...canonical, club: mergedClub, level: mergedLevel, faNumber: mergedFa, topics: mergedTopics, idp: mergedIdp };
+
+      const nextCoaches = coaches.filter(c => !duplicateIds.has(c.id)).map(c => c.id === canonical.id ? updatedCanonical : c);
+      const nextObservations = (allObservations || []).map(o => duplicateIds.has(o.coachId) ? { ...o, coachId: canonical.id } : o);
+      const nextCompletedTasks = (completedTasks || []).map(t => duplicateIds.has(t.coachId) ? { ...t, coachId: canonical.id } : t);
+
+      await saveCoaches(nextCoaches);
+      if (saveObservations) await saveObservations(nextObservations);
+      if (saveCompletedTasks) await saveCompletedTasks(nextCompletedTasks);
+
+      setMergeResultMsg(`Merged ${group.length} profiles for "${canonical.name}" into one.`);
+    } catch (e) {
+      setMergeResultMsg("Something went wrong merging that group — nothing was changed. Try again.");
+    }
+    setMergingKey(null);
+  }
 
   function openIdpEditor(coach) {
     setIdpEditingId(coach.id);
@@ -1914,8 +2003,70 @@ function CoachesTab({ coaches, observations, saveCoaches, goHistory }) {
           <button onClick={() => { setShowForm(s => !s); setShowUpload(false); }} className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-100">
             <Plus className="w-4 h-4" /> Add Coach
           </button>
+          {duplicateGroups.length > 0 && (
+            <button onClick={() => setShowDuplicates(s => !s)} className="flex items-center gap-1.5 text-sm font-semibold text-amber-700 border border-amber-300 px-3 py-2 rounded-lg hover:bg-amber-50">
+              <AlertCircle className="w-4 h-4" /> {duplicateGroups.length} Duplicate{duplicateGroups.length === 1 ? "" : "s"} Found
+            </button>
+          )}
         </div>
       </div>
+
+      {showDuplicates && duplicateGroups.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+          <p className="text-sm font-semibold text-amber-900">Duplicate Coaches</p>
+          <p className="text-xs text-amber-700">Same name found on more than one profile — usually from importing data twice under different IDs. Merging keeps one profile, moves all observations and completed tasks onto it, and combines whatever details each had.</p>
+
+          {!mergeAuthed ? (
+            <div className="space-y-2 pt-1">
+              <p className="text-xs text-amber-700">Enter an admin name and PIN to merge duplicates.</p>
+              <div className="grid sm:grid-cols-2 gap-2">
+                <input value={mergeAuthName} onChange={e => { setMergeAuthName(e.target.value); setMergeAuthError(false); }} placeholder="Admin name"
+                  className={`border rounded-lg px-3 py-2 text-sm ${mergeAuthError ? "border-red-400" : "border-amber-300"}`} />
+                <input type="password" inputMode="numeric" maxLength={4} value={mergeAuthPin}
+                  onChange={e => { setMergeAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setMergeAuthError(false); }} placeholder="Admin PIN"
+                  className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${mergeAuthError ? "border-red-400" : "border-amber-300"}`} />
+              </div>
+              <button onClick={handleMergeAuth} className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700">Unlock</button>
+              {mergeAuthError && (
+                <p className="text-xs text-red-600">
+                  {isLockedOut(adminLockouts, mergeAuthName)
+                    ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, mergeAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, mergeAuthName) === 1 ? "" : "s"}.`
+                    : "Incorrect admin name or PIN."}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {mergeResultMsg && <p className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{mergeResultMsg}</p>}
+              {duplicateGroups.map(group => {
+                const groupKey = group.map(c => c.id).join(",");
+                return (
+                  <div key={groupKey} className="bg-white rounded-lg border border-amber-200 p-3">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <p className="text-sm font-semibold text-slate-800">{group[0].name} <span className="text-xs font-normal text-slate-400">({group.length} profiles)</span></p>
+                      <button onClick={() => mergeGroup(group)} disabled={mergingKey === groupKey}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-600 px-3 py-1.5 rounded-lg hover:bg-amber-700 disabled:bg-slate-300 whitespace-nowrap">
+                        {mergingKey === groupKey ? "Merging..." : "Merge into One"}
+                      </button>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      {group.map(c => {
+                        const obsCount = (allObservations || observations).filter(o => o.coachId === c.id).length;
+                        return (
+                          <div key={c.id} className="text-xs text-slate-500 bg-slate-50 rounded-md px-2.5 py-1.5">
+                            <p className="text-slate-700 font-medium">{[c.club, c.level].filter(Boolean).join(" · ") || "No details"}</p>
+                            <p>{obsCount} observation{obsCount === 1 ? "" : "s"} · {(c.topics || []).length} topic{(c.topics || []).length === 1 ? "" : "s"}{c.faNumber ? ` · FA: ${c.faNumber}` : ""}{idpHasContent(c.idp) ? " · IDP on file" : ""}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {showUpload && (
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
@@ -2122,7 +2273,7 @@ function CoachesTab({ coaches, observations, saveCoaches, goHistory }) {
   );
 }
 
-function CetTab({ educators, saveEducators, observations }) {
+function CetTab({ educators, saveEducators, observations, adminSettings, adminLockouts, recordAdminAttempt }) {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [org, setOrg] = useState("");
@@ -2135,6 +2286,74 @@ function CetTab({ educators, saveEducators, observations }) {
   const [includeDuplicates, setIncludeDuplicates] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  // Duplicate detection & merge — CETs are referenced by name string
+  // everywhere (observations.coachEducatorName, completedTasks.cet), not
+  // by id, so merging never needs to reassign anything: whichever profile
+  // survives already covers every observation and completed-task record
+  // with that name. Just combine details and remove the redundant one(s).
+  const [showDuplicates, setShowDuplicates] = useState(false);
+  const [mergeAuthName, setMergeAuthName] = useState("");
+  const [mergeAuthPin, setMergeAuthPin] = useState("");
+  const [mergeAuthed, setMergeAuthed] = useState(false);
+  const [mergeAuthError, setMergeAuthError] = useState(false);
+  const [mergingKey, setMergingKey] = useState(null);
+  const [mergeResultMsg, setMergeResultMsg] = useState("");
+
+  const duplicateGroups = (() => {
+    const byName = {};
+    educators.forEach(c => {
+      const key = (c.name || "").trim().toLowerCase();
+      if (!key) return;
+      if (!byName[key]) byName[key] = [];
+      byName[key].push(c);
+    });
+    return Object.values(byName).filter(g => g.length > 1).sort((a, b) => a[0].name.localeCompare(b[0].name));
+  })();
+
+  function cetCompletenessScore(c) {
+    let score = 0;
+    if ((c.club || "").trim()) score++;
+    if ((c.level || "").trim()) score++;
+    return score;
+  }
+
+  function handleMergeAuth() {
+    if (isLockedOut(adminLockouts, mergeAuthName)) {
+      setMergeAuthError(true);
+      return;
+    }
+    const match = findAdminMatch(adminSettings.admins, mergeAuthName, mergeAuthPin);
+    if (!match) {
+      recordAdminAttempt(mergeAuthName, false);
+      setMergeAuthError(true);
+      return;
+    }
+    recordAdminAttempt(mergeAuthName, true);
+    setMergeAuthed(true);
+    setMergeAuthError(false);
+  }
+
+  async function mergeGroup(group) {
+    const groupKey = group.map(c => c.id).join(",");
+    setMergingKey(groupKey);
+    setMergeResultMsg("");
+    try {
+      const sorted = [...group].sort((a, b) => cetCompletenessScore(b) - cetCompletenessScore(a));
+      const canonical = sorted[0];
+      const duplicateIds = new Set(sorted.slice(1).map(d => d.id));
+      const mergedClub = (canonical.club || "").trim() || sorted.slice(1).map(d => (d.club || "").trim()).find(Boolean) || "";
+      const mergedLevel = (canonical.level || "").trim() || sorted.slice(1).map(d => (d.level || "").trim()).find(Boolean) || "";
+      const updatedCanonical = { ...canonical, club: mergedClub, level: mergedLevel };
+      const nextEducators = educators.filter(c => !duplicateIds.has(c.id)).map(c => c.id === canonical.id ? updatedCanonical : c);
+      await saveEducators(nextEducators);
+      setMergeResultMsg(`Merged ${group.length} profiles for "${canonical.name}" into one.`);
+    } catch (e) {
+      setMergeResultMsg("Something went wrong merging that group — nothing was changed. Try again.");
+    }
+    setMergingKey(null);
+  }
+
 
   function handleLevelOptionChange(value) {
     setLevelOption(value);
@@ -2241,10 +2460,69 @@ function CetTab({ educators, saveEducators, observations }) {
             <button onClick={() => { setShowForm(s => !s); setShowUpload(false); }} className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-100">
               <Plus className="w-4 h-4" /> Add CET
             </button>
+            {duplicateGroups.length > 0 && (
+              <button onClick={() => setShowDuplicates(s => !s)} className="flex items-center gap-1.5 text-sm font-semibold text-amber-700 border border-amber-300 px-3 py-2 rounded-lg hover:bg-amber-50">
+                <AlertCircle className="w-4 h-4" /> {duplicateGroups.length} Duplicate{duplicateGroups.length === 1 ? "" : "s"} Found
+              </button>
+            )}
           </div>
         </div>
         <p className="text-sm text-slate-500">The CET library used for the Coach Education Tutor dropdown in New Observation.</p>
       </div>
+
+      {showDuplicates && duplicateGroups.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+          <p className="text-sm font-semibold text-amber-900">Duplicate CETs</p>
+          <p className="text-xs text-amber-700">Same name found on more than one profile — usually from importing data twice under different IDs. Since observations and completed tasks reference CETs by name, merging just combines details and removes the redundant profile — nothing else needs updating.</p>
+
+          {!mergeAuthed ? (
+            <div className="space-y-2 pt-1">
+              <p className="text-xs text-amber-700">Enter an admin name and PIN to merge duplicates.</p>
+              <div className="grid sm:grid-cols-2 gap-2">
+                <input value={mergeAuthName} onChange={e => { setMergeAuthName(e.target.value); setMergeAuthError(false); }} placeholder="Admin name"
+                  className={`border rounded-lg px-3 py-2 text-sm ${mergeAuthError ? "border-red-400" : "border-amber-300"}`} />
+                <input type="password" inputMode="numeric" maxLength={4} value={mergeAuthPin}
+                  onChange={e => { setMergeAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setMergeAuthError(false); }} placeholder="Admin PIN"
+                  className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${mergeAuthError ? "border-red-400" : "border-amber-300"}`} />
+              </div>
+              <button onClick={handleMergeAuth} className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700">Unlock</button>
+              {mergeAuthError && (
+                <p className="text-xs text-red-600">
+                  {isLockedOut(adminLockouts, mergeAuthName)
+                    ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, mergeAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, mergeAuthName) === 1 ? "" : "s"}.`
+                    : "Incorrect admin name or PIN."}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {mergeResultMsg && <p className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{mergeResultMsg}</p>}
+              {duplicateGroups.map(group => {
+                const groupKey = group.map(c => c.id).join(",");
+                const combinedObsCount = observations.filter(o => (o.coachEducatorName || "").toLowerCase() === group[0].name.trim().toLowerCase()).length;
+                return (
+                  <div key={groupKey} className="bg-white rounded-lg border border-amber-200 p-3">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <p className="text-sm font-semibold text-slate-800">{group[0].name} <span className="text-xs font-normal text-slate-400">({group.length} profiles · {combinedObsCount} total obs.)</span></p>
+                      <button onClick={() => mergeGroup(group)} disabled={mergingKey === groupKey}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-600 px-3 py-1.5 rounded-lg hover:bg-amber-700 disabled:bg-slate-300 whitespace-nowrap">
+                        {mergingKey === groupKey ? "Merging..." : "Merge into One"}
+                      </button>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      {group.map(c => (
+                        <div key={c.id} className="text-xs text-slate-500 bg-slate-50 rounded-md px-2.5 py-1.5">
+                          <p className="text-slate-700 font-medium">{[c.club, c.level].filter(Boolean).join(" · ") || "No details"}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {showUpload && (
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
