@@ -8063,7 +8063,6 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     if (maxScoreFilter !== "" && (total == null || total > Number(maxScoreFilter))) return false;
     return true;
   });
-  const sorted = [...filtered].sort((a, b) => new Date(b.date) - new Date(a.date));
   const filtersActive = !!(coachId || cetFilter || courseNumberFilter || courseTypeFilter || dateFromFilter || dateToFilter || competenceFilter || minScoreFilter !== "" || maxScoreFilter !== "");
 
   function clearAllFilters() {
@@ -8985,62 +8984,103 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
         </div>
       )}
 
-      {sorted.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">
           {filtersActive ? "No observations match these filters." : "No observations found."}
         </div>
       ) : (
-        <div className="space-y-2">
-          {sorted.map(o => {
-            const total = totalForObs(o);
-            const oSessionNumber = (o.courseNumber && o.coachId) ? computeSessionNumber(observations, o.coachId, o.courseNumber, o.id, o.date) : null;
-            return (
-              <div key={o.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:border-slate-400 transition-colors">
-                <div onClick={() => onView(o.id)} className="flex items-center justify-between cursor-pointer">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
-                      <Calendar className="w-4 h-4 text-slate-500" />
+        <div className="space-y-4">
+          {(() => {
+            function renderObsRow(o) {
+              const total = totalForObs(o);
+              const oSessionNumber = (o.courseNumber && o.coachId) ? computeSessionNumber(observations, o.coachId, o.courseNumber, o.id, o.date) : null;
+              return (
+                <div key={o.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:border-slate-400 transition-colors">
+                  <div onClick={() => onView(o.id)} className="flex items-center justify-between cursor-pointer">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
+                        <Calendar className="w-4 h-4 text-slate-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">{o.coachName}</p>
+                        <p className="text-xs text-slate-400">
+                          {o.sessionType === "formal" ? `Formal · ${o.formalCourseName || "Course"}${o.courseNumber ? ` (#${o.courseNumber})` : ""}` : "Informal"} · {new Date(o.date).toLocaleDateString("en-GB")} · {o.coachEducatorName}
+                          {oSessionNumber ? ` · Session ${oSessionNumber}` : ""}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">{o.coachName}</p>
-                      <p className="text-xs text-slate-400">
-                        {o.sessionType === "formal" ? `Formal · ${o.formalCourseName || "Course"}${o.courseNumber ? ` (#${o.courseNumber})` : ""}` : "Informal"} · {new Date(o.date).toLocaleDateString("en-GB")} · {o.coachEducatorName}
-                        {oSessionNumber ? ` · Session ${oSessionNumber}` : ""}
+                    <div className="flex items-center gap-2">
+                      {o.assessmentOutcome && (
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          o.assessmentOutcome === "Competent" ? "bg-emerald-100 text-emerald-700"
+                          : o.assessmentOutcome === "Not Yet Competent" ? "bg-red-100 text-red-700"
+                          : "bg-slate-100 text-slate-500"
+                        }`}>{o.assessmentOutcome}</span>
+                      )}
+                      {total !== null && <span className="text-xs font-medium text-slate-400">{total}/{MAX_TOTAL_SCORE}</span>}
+                      <ChevronRight className="w-4 h-4 text-slate-300" />
+                      {onDeleteObservation && (
+                        <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteObsId(o.id); }}
+                          className="text-slate-300 hover:text-red-600 p-1 rounded-md hover:bg-red-50">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {confirmDeleteObsId === o.id && (
+                    <div className="mt-3 flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg p-2.5">
+                      <p className="text-xs text-red-700 flex-1">
+                        Delete this observation for {o.coachName}? Any linked Completed Tasks record will revert to no record for this item (unless another observation still covers it).
                       </p>
+                      <button onClick={(e) => { e.stopPropagation(); onDeleteObservation(o.id); setConfirmDeleteObsId(null); }}
+                        className="text-xs font-semibold text-red-700 hover:text-red-800 whitespace-nowrap">Delete</button>
+                      <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteObsId(null); }}
+                        className="text-xs text-slate-500 hover:text-slate-700 whitespace-nowrap">Cancel</button>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Grouped under a Course Number heading, coaches alphabetical
+            // within each — observations without a course number (informal
+            // sessions, workshops, foundation courses) fall into their own
+            // section at the end, also alphabetical.
+            const byCourseNumber = {};
+            const noCourseNumber = [];
+            filtered.forEach(o => {
+              const num = (o.courseNumber || "").trim();
+              if (num) {
+                if (!byCourseNumber[num]) byCourseNumber[num] = { courseNumber: num, courseTitle: o.formalCourseName || "", records: [] };
+                byCourseNumber[num].records.push(o);
+              } else {
+                noCourseNumber.push(o);
+              }
+            });
+            const courseGroups = Object.values(byCourseNumber).sort(courseNumericSort);
+            const alphaSort = (a, b) => (a.coachName || "").localeCompare(b.coachName || "");
+
+            return (
+              <>
+                {courseGroups.map(g => (
+                  <div key={g.courseNumber}>
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">#{g.courseNumber} — {g.courseTitle || "Course"} ({g.records.length})</p>
+                    <div className="space-y-2">
+                      {[...g.records].sort(alphaSort).map(o => renderObsRow(o))}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {o.assessmentOutcome && (
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                        o.assessmentOutcome === "Competent" ? "bg-emerald-100 text-emerald-700"
-                        : o.assessmentOutcome === "Not Yet Competent" ? "bg-red-100 text-red-700"
-                        : "bg-slate-100 text-slate-500"
-                      }`}>{o.assessmentOutcome}</span>
-                    )}
-                    {total !== null && <span className="text-xs font-medium text-slate-400">{total}/{MAX_TOTAL_SCORE}</span>}
-                    <ChevronRight className="w-4 h-4 text-slate-300" />
-                    {onDeleteObservation && (
-                      <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteObsId(o.id); }}
-                        className="text-slate-300 hover:text-red-600 p-1 rounded-md hover:bg-red-50">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {confirmDeleteObsId === o.id && (
-                  <div className="mt-3 flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg p-2.5">
-                    <p className="text-xs text-red-700 flex-1">
-                      Delete this observation for {o.coachName}? Any linked Completed Tasks record will revert to no record for this item (unless another observation still covers it).
-                    </p>
-                    <button onClick={(e) => { e.stopPropagation(); onDeleteObservation(o.id); setConfirmDeleteObsId(null); }}
-                      className="text-xs font-semibold text-red-700 hover:text-red-800 whitespace-nowrap">Delete</button>
-                    <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteObsId(null); }}
-                      className="text-xs text-slate-500 hover:text-slate-700 whitespace-nowrap">Cancel</button>
+                ))}
+                {noCourseNumber.length > 0 && (
+                  <div>
+                    {courseGroups.length > 0 && <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">No Course Number ({noCourseNumber.length})</p>}
+                    <div className="space-y-2">
+                      {[...noCourseNumber].sort(alphaSort).map(o => renderObsRow(o))}
+                    </div>
                   </div>
                 )}
-              </div>
+              </>
             );
-          })}
+          })()}
         </div>
       )}
     </div>
