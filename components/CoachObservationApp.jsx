@@ -2442,6 +2442,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
   const [parsing, setParsing] = useState(false);
   const [includeDuplicates, setIncludeDuplicates] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [mfFilter, setMfFilter] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [editingMfId, setEditingMfId] = useState(null);
   const [editingMfSelection, setEditingMfSelection] = useState([]);
@@ -2878,18 +2879,25 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
         <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">No CETs added yet.</div>
       ) : (
         <>
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search by first or last name..."
-              className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-sm" />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search by first or last name..."
+                className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-sm" />
+            </div>
+            <select value={mfFilter} onChange={e => setMfFilter(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+              <option value="">All Member Federations</option>
+              {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
+            </select>
           </div>
           {(() => {
             const q = searchQuery.trim().toLowerCase();
             const filtered = [...educators]
               .sort((a, b) => a.name.localeCompare(b.name))
-              .filter(c => !q || c.name.toLowerCase().split(/\s+/).some(part => part.includes(q)));
+              .filter(c => !q || c.name.toLowerCase().split(/\s+/).some(part => part.includes(q)))
+              .filter(c => !mfFilter || (c.memberFederations || []).includes(mfFilter));
             if (filtered.length === 0) {
-              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">{q ? `No CETs match "${searchQuery}".` : "No CETs added yet."}</div>;
+              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">{q || mfFilter ? "No CETs match these filters." : "No CETs added yet."}</div>;
             }
             const visibleSelectedCount = filtered.filter(c => selectedCetIds.has(c.id)).length;
             return (
@@ -7903,9 +7911,16 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       setAddAdminError("This person is already an admin.");
       return;
     }
-    if (effectiveRole === "lead" && newAdminMfSelection.length === 0) {
-      setAddAdminError("Select at least one Member Federation for a Lead Admin.");
-      return;
+    if (effectiveRole === "lead") {
+      if (newAdminMfSelection.length === 0) {
+        setAddAdminError("Select at least one Member Federation for a Lead Admin.");
+        return;
+      }
+      const existingLeadCount = adminSettings.admins.filter(a => a.role === "lead").length;
+      if (existingLeadCount >= 4) {
+        setAddAdminError("There are already 4 Lead Admins — the maximum across all Member Federations. Remove one before adding another.");
+        return;
+      }
     }
     if (effectiveRole === "course") {
       if (!newAdminCourseMf) {
@@ -8260,7 +8275,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         </button>
                         <button onClick={() => { setNewAdminRole("lead"); setAddAdminError(""); }} type="button"
                           className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "lead" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
-                          Lead Admin
+                          Lead Admin ({adminSettings.admins.filter(a => a.role === "lead").length}/4)
                         </button>
                         <button onClick={() => { setNewAdminRole("course"); setAddAdminError(""); }} type="button"
                           className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "course" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
