@@ -3381,6 +3381,7 @@ function emptyCompletedTaskForm() {
     fcDetailsDone: false,
     practicalSessionDone: false,
     practicalSessionOutcome: "",
+    courseworkNotes: {},
   };
 }
 
@@ -3721,6 +3722,10 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     }));
   }
 
+  function setCourseworkNote(label, text) {
+    setForm(prev => ({ ...prev, courseworkNotes: { ...prev.courseworkNotes, [label]: text } }));
+  }
+
   function toggleSixWeekCycle() {
     setForm(prev => {
       const next = !prev.sixWeekCycleDone;
@@ -3803,6 +3808,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       fcDetailsDone: task.fcDetailsDone != null ? !!task.fcDetailsDone : !!task.sixWeekCycleFcDone,
       practicalSessionDone: !!task.practicalSessionDone,
       practicalSessionOutcome: task.practicalSessionOutcome || "",
+      courseworkNotes: task.courseworkNotes || {},
     });
     const matchedCoach = coaches.find(c => c.id === task.coachId);
     setCoachSearchQuery(matchedCoach ? matchedCoach.name : "");
@@ -3843,6 +3849,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       fcDetailsDone: form.sixWeekCycleDone ? form.fcDetailsDone : false,
       practicalSessionDone: form.practicalSessionDone,
       practicalSessionOutcome: form.practicalSessionOutcome || "",
+      courseworkNotes: form.courseworkNotes || {},
       updatedAt: new Date().toISOString(),
     };
     if (editingId) {
@@ -3910,7 +3917,10 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [progressAuthPin, setProgressAuthPin] = useState("");
   const [progressAuthError, setProgressAuthError] = useState(false);
   const [progressAuthForTaskId, setProgressAuthForTaskId] = useState(null);
-  const [selectedBlockByTask, setSelectedBlockByTask] = useState({});
+  // Which single past block (if any) is currently unlocked for editing,
+  // per task — Master Admin only. Reset once they leave that block.
+  const [reopenedBlockByTask, setReopenedBlockByTask] = useState({});
+  const [reopenAuthForTaskBlock, setReopenAuthForTaskBlock] = useState(null);
 
   function blockOptionsForTask(task) {
     if (isADiploma(task.courseTitle)) return DIPLOMA_BLOCK_OPTIONS_A;
@@ -3918,24 +3928,16 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     return [];
   }
 
-  function currentBlockForTask(task) {
+  // The block currently being tracked — the first one with no status
+  // recorded yet, or the last block if every one has already been set.
+  // Only this block (plus a Master-reopened past block) is editable;
+  // everything before it is shown as locked history as the course
+  // progresses through its blocks.
+  function activeBlockForTask(task) {
     const opts = blockOptionsForTask(task);
     if (opts.length === 0) return null;
-    return selectedBlockByTask[task.id] || opts[0];
-  }
-
-  // If the selected block has no status recorded yet, suggest whatever the
-  // previous block's status was as the starting point — carried forward,
-  // not locked in, since the admin can still change it.
-  function displayedStatusForBlock(task, block) {
-    const opts = blockOptionsForTask(task);
     const statuses = task.blockStatuses || {};
-    if (statuses[block]) return { status: statuses[block], inherited: false };
-    const idx = opts.indexOf(block);
-    for (let i = idx - 1; i >= 0; i--) {
-      if (statuses[opts[i]]) return { status: statuses[opts[i]], inherited: true };
-    }
-    return { status: null, inherited: false };
+    return opts.find(b => !statuses[b]) || opts[opts.length - 1];
   }
 
   function handleProgressAuth() {
@@ -3954,6 +3956,19 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     setProgressAuthMatch(match);
     setProgressAuthError(false);
     setProgressAuthForTaskId(null);
+    // A fresh sign-in resolves any pending reopen request too, if this
+    // admin turns out to be Master. If they're valid but not Master, the
+    // reopen request stays open with a clear reason rather than silently
+    // doing nothing.
+    if (reopenAuthForTaskBlock) {
+      if (isMasterAdmin(match)) {
+        const { taskId, block } = reopenAuthForTaskBlock;
+        setReopenedBlockByTask(prev => ({ ...prev, [taskId]: block }));
+        setReopenAuthForTaskBlock(null);
+      } else {
+        setProgressAuthError(true);
+      }
+    }
   }
 
   function setBlockStatus(task, block, status) {
@@ -3965,6 +3980,18 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     saveCompletedTasks(completedTasks.map(t => t.id === task.id
       ? { ...t, blockStatuses: { ...(t.blockStatuses || {}), [block]: status }, updatedAt: new Date().toISOString() }
       : t));
+  }
+
+  // Reopening an already-locked past block is Master Admin only, stricter
+  // than the course-scoped access that governs the active block.
+  function requestReopenBlock(task, block) {
+    if (progressAuthed && isMasterAdmin(progressAuthMatch)) {
+      setReopenedBlockByTask(prev => ({ ...prev, [task.id]: block }));
+      return;
+    }
+    setReopenAuthForTaskBlock({ taskId: task.id, block });
+    setProgressAuthForTaskId(null);
+    setProgressAuthName(""); setProgressAuthPin(""); setProgressAuthError(false);
   }
 
 
@@ -4300,7 +4327,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course</label>
             <select value={form.courseOption} onChange={e => handleCourseOptionChange(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
               <option value="">Select from Course Library...</option>
-              {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+              {courses.filter(c => form.memberFederation === "FA" || !isADiploma(c.title)).map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
               <option value="__other__">Other (type your own)</option>
             </select>
             {form.courseOption === "__other__" && (
@@ -4339,6 +4366,11 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 className="w-full text-sm outline-none" />
               <span className="text-sm text-slate-400">%</span>
             </div>
+            {Number(form.onlineModulesPercent || 0) < 100 && (
+              <input value={form.courseworkNotes?.["Online Modules"] || ""} onChange={e => setCourseworkNote("Online Modules", e.target.value)}
+                placeholder="Short note (optional)..." maxLength={140}
+                className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1" />
+            )}
           </div>
         </div>
         <div>
@@ -4347,10 +4379,17 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer border-t border-slate-100 pt-3">
-          <input type="checkbox" checked={!!form.formativeAssessmentDone} onChange={() => setField("formativeAssessmentDone", !form.formativeAssessmentDone)} className="rounded border-slate-300" />
-          Formative Assessment (in course) Completed
-        </label>
+        <div className="border-t border-slate-100 pt-3">
+          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input type="checkbox" checked={!!form.formativeAssessmentDone} onChange={() => setField("formativeAssessmentDone", !form.formativeAssessmentDone)} className="rounded border-slate-300" />
+            Formative Assessment (in course) Completed
+          </label>
+          {!form.formativeAssessmentDone && (
+            <input value={form.courseworkNotes?.["Formative Assessment"] || ""} onChange={e => setCourseworkNote("Formative Assessment", e.target.value)}
+              placeholder="Short note (optional)..." maxLength={140}
+              className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1" />
+          )}
+        </div>
 
         <div>
           <label className="text-xs font-medium text-slate-500 mb-1.5 block">Video Link</label>
@@ -4388,6 +4427,11 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 <input type="checkbox" checked={form.practicalSessionDone} onChange={() => setField("practicalSessionDone", !form.practicalSessionDone)} className="rounded border-slate-300" />
               </span>
             </label>
+            {!form.practicalSessionDone && (
+              <input value={form.courseworkNotes?.["Practical Session"] || ""} onChange={e => setCourseworkNote("Practical Session", e.target.value)}
+                placeholder="Short note (optional)..." maxLength={140}
+                className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1" />
+            )}
           </div>
         ) : isBDiploma(form.courseTitle) ? (
           <>
@@ -4398,20 +4442,27 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               ) : (
                 <div className="space-y-1.5">
                   {selectedCoach.topics.slice(0, 4).map(topic => (
-                    <label key={topic} className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
-                      <span className="flex items-center gap-1.5 flex-wrap">
-                        {topic}
-                        {isTopicSuggestedByGap(topic, selectedCoach?.idp?.performanceGap) && (
-                          <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Suggested focus</span>
-                        )}
-                      </span>
-                      <span className="flex items-center gap-2">
-                        {form.sessionPlansOutcomes?.[topic] && (
-                          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${outcomeBadgeClass(form.sessionPlansOutcomes[topic])}`}>{form.sessionPlansOutcomes[topic]}</span>
-                        )}
-                        <input type="checkbox" checked={!!form.sessionPlansDone?.[topic]} onChange={() => toggleSessionPlanTopic(topic)} className="rounded border-slate-300" />
-                      </span>
-                    </label>
+                    <div key={topic}>
+                      <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
+                        <span className="flex items-center gap-1.5 flex-wrap">
+                          {topic}
+                          {isTopicSuggestedByGap(topic, selectedCoach?.idp?.performanceGap) && (
+                            <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Suggested focus</span>
+                          )}
+                        </span>
+                        <span className="flex items-center gap-2">
+                          {form.sessionPlansOutcomes?.[topic] && (
+                            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${outcomeBadgeClass(form.sessionPlansOutcomes[topic])}`}>{form.sessionPlansOutcomes[topic]}</span>
+                          )}
+                          <input type="checkbox" checked={!!form.sessionPlansDone?.[topic]} onChange={() => toggleSessionPlanTopic(topic)} className="rounded border-slate-300" />
+                        </span>
+                      </label>
+                      {!form.sessionPlansDone?.[topic] && (
+                        <input value={form.courseworkNotes?.[topic] || ""} onChange={e => setCourseworkNote(topic, e.target.value)}
+                          placeholder="Short note (optional)..." maxLength={140}
+                          className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1" />
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -4419,35 +4470,49 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
 
             <div className="border-t border-slate-100 pt-3 space-y-2">
               <p className="text-sm font-semibold text-slate-800 mb-1">Coursework</p>
-              <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
-                <span>Goalscoring Presentation</span>
-                <span className="flex items-center gap-2">
-                  {form.team && <span className="text-xs text-slate-400">({form.team})</span>}
-                  <input type="checkbox" checked={form.goalscoringPresentationDone} onChange={() => setField("goalscoringPresentationDone", !form.goalscoringPresentationDone)} className="rounded border-slate-300" />
-                </span>
-              </label>
-              <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
-                <span>Game Plan</span>
-                <input type="checkbox" checked={form.gamePlanDone} onChange={() => setField("gamePlanDone", !form.gamePlanDone)} className="rounded border-slate-300" />
-              </label>
-              <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
-                <span>Analysis Session Plan</span>
-                <input type="checkbox" checked={form.analysisSessionPlanDone} onChange={() => setField("analysisSessionPlanDone", !form.analysisSessionPlanDone)} className="rounded border-slate-300" />
-              </label>
-              <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
-                <span>Annual (Yearly) Plan</span>
-                <input type="checkbox" checked={form.annualPlanDone} onChange={() => setField("annualPlanDone", !form.annualPlanDone)} className="rounded border-slate-300" />
-              </label>
-              <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
-                <span>6WC (6 Week Cycle)</span>
-                <input type="checkbox" checked={form.sixWeekCycleDone} onChange={toggleSixWeekCycle} className="rounded border-slate-300" />
-              </label>
+              {[
+                { label: "Goalscoring Presentation", key: "goalscoringPresentationDone", extra: form.team ? <span className="text-xs text-slate-400">({form.team})</span> : null },
+                { label: "Game Plan", key: "gamePlanDone" },
+                { label: "Analysis Session Plan", key: "analysisSessionPlanDone" },
+                { label: "Annual (Yearly) Plan", key: "annualPlanDone" },
+              ].map(item => (
+                <div key={item.key}>
+                  <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
+                    <span>{item.label}</span>
+                    <span className="flex items-center gap-2">
+                      {item.extra}
+                      <input type="checkbox" checked={form[item.key]} onChange={() => setField(item.key, !form[item.key])} className="rounded border-slate-300" />
+                    </span>
+                  </label>
+                  {!form[item.key] && (
+                    <input value={form.courseworkNotes?.[item.label] || ""} onChange={e => setCourseworkNote(item.label, e.target.value)}
+                      placeholder="Short note (optional)..." maxLength={140}
+                      className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1" />
+                  )}
+                </div>
+              ))}
+              <div>
+                <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
+                  <span>6WC (6 Week Cycle)</span>
+                  <input type="checkbox" checked={form.sixWeekCycleDone} onChange={toggleSixWeekCycle} className="rounded border-slate-300" />
+                </label>
+                {!form.sixWeekCycleDone && (
+                  <input value={form.courseworkNotes?.["6WC (6 Week Cycle)"] || ""} onChange={e => setCourseworkNote("6WC (6 Week Cycle)", e.target.value)}
+                    placeholder="Short note (optional)..." maxLength={140}
+                    className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1" />
+                )}
+              </div>
               <label className={`flex items-center justify-between gap-2 text-sm pl-5 ${form.sixWeekCycleDone ? "text-slate-700 cursor-pointer" : "text-slate-300 cursor-not-allowed"}`}>
                 <span>with FC (football conditioning) details</span>
                 <input type="checkbox" checked={form.fcDetailsDone} disabled={!form.sixWeekCycleDone}
                   onChange={() => setField("fcDetailsDone", !form.fcDetailsDone)}
                   className="rounded border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed" />
               </label>
+              {form.sixWeekCycleDone && !form.fcDetailsDone && (
+                <input value={form.courseworkNotes?.["with FC (football conditioning) details"] || ""} onChange={e => setCourseworkNote("with FC (football conditioning) details", e.target.value)}
+                  placeholder="Short note (optional)..." maxLength={140}
+                  className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1 ml-5" />
+              )}
             </div>
           </>
         ) : null}
@@ -4995,7 +5060,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                       .sort((a, b) => new Date(b.date) - new Date(a.date))[0]
                                                   : null;
                                                 return (
-                                                  <div key={i} className="flex items-center justify-between gap-2 text-xs">
+                                                  <div key={i}>
+                                                  <div className="flex items-center justify-between gap-2 text-xs">
                                                     <span className={`flex items-center gap-1.5 ${item.done ? "text-slate-700" : "text-slate-400"}`}>
                                                       {item.done ? <Check className="w-3 h-3 text-emerald-600 shrink-0" /> : <span className="w-3 h-3 rounded-full border border-slate-300 inline-block shrink-0" />}
                                                       {itemReport && onViewReport ? (
@@ -5011,6 +5077,10 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                         <span className={`font-semibold px-1.5 py-0.5 rounded-full ${outcomeBadgeClass(item.outcome)}`}>{item.outcome}</span>
                                                       )}
                                                     </span>
+                                                  </div>
+                                                  {!item.done && t.courseworkNotes?.[item.label] && (
+                                                    <p className="text-[11px] text-slate-400 italic pl-4.5 ml-0.5">{t.courseworkNotes[item.label]}</p>
+                                                  )}
                                                   </div>
                                                 );
                                               })}
@@ -5053,39 +5123,52 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                         )}
                                         {blockOptionsForTask(t).length > 0 && (() => {
                                           const blockOpts = blockOptionsForTask(t);
-                                          const currentBlock = currentBlockForTask(t);
-                                          const { status: displayedStatus, inherited } = displayedStatusForBlock(t, currentBlock);
-                                          const canSet = progressAuthed && adminHasCourseAccess(progressAuthMatch, t.courseNumber, t.memberFederation);
+                                          const activeBlock = activeBlockForTask(t);
+                                          const activeIdx = blockOpts.indexOf(activeBlock);
+                                          const statuses = t.blockStatuses || {};
+                                          const canSetActive = progressAuthed && adminHasCourseAccess(progressAuthMatch, t.courseNumber, t.memberFederation);
+                                          const reopenedBlock = reopenedBlockByTask[t.id];
+                                          // Only blocks up to and including the active one are shown — a block
+                                          // that hasn't started yet has nothing to display.
+                                          const visibleBlocks = blockOpts.slice(0, activeIdx + 1);
                                           return (
-                                            <div className="rounded-lg border border-violet-200 bg-violet-50 p-2.5 space-y-1.5">
-                                              <div className="flex items-center justify-between gap-2">
-                                                <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Progress Tracking</p>
-                                                <div className="flex gap-1">
-                                                  {blockOpts.map(b => (
-                                                    <button key={b} onClick={() => setSelectedBlockByTask(prev => ({ ...prev, [t.id]: b }))}
-                                                      className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${currentBlock === b ? "bg-violet-600 text-white" : "bg-white text-violet-500 border border-violet-200"}`}>
-                                                      {b.replace("Block ", "B")}
-                                                    </button>
-                                                  ))}
-                                                </div>
-                                              </div>
-                                              <div className="flex gap-1.5 flex-wrap">
-                                                {PROGRESS_STATUSES.map(s => (
-                                                  <button key={s} onClick={() => setBlockStatus(t, currentBlock, s)}
-                                                    className={`text-xs font-medium px-2 py-1 rounded-full border transition-colors ${
-                                                      displayedStatus === s
-                                                        ? s === "Tracking Ahead" ? "bg-emerald-100 text-emerald-700 border-emerald-300"
-                                                        : s === "Needs Assistance" ? "bg-red-100 text-red-700 border-red-300"
-                                                        : "bg-amber-100 text-amber-700 border-amber-300"
-                                                        : "bg-white text-slate-400 border-slate-200"
-                                                    } ${!canSet ? "opacity-70 cursor-pointer" : ""}`}>
-                                                    {s}
-                                                  </button>
-                                                ))}
-                                              </div>
-                                              {inherited && displayedStatus && (
-                                                <p className="text-[10px] text-violet-500">Carried forward from the previous block — tap a status to set {currentBlock} explicitly.</p>
-                                              )}
+                                            <div className="rounded-lg border border-violet-200 bg-violet-50 p-2.5 space-y-2">
+                                              <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Progress Tracking</p>
+                                              {visibleBlocks.map(block => {
+                                                const isActive = block === activeBlock;
+                                                const isReopened = reopenedBlock === block;
+                                                const locked = !isActive && !isReopened;
+                                                const status = statuses[block] || null;
+                                                return (
+                                                  <div key={block} className={locked ? "opacity-80" : ""}>
+                                                    <div className="flex items-center justify-between gap-2 mb-1">
+                                                      <p className="text-[10px] font-semibold text-violet-600">{block}{locked ? " (locked)" : ""}</p>
+                                                      {locked && (
+                                                        <button onClick={() => requestReopenBlock(t, block)} className="text-[10px] font-semibold text-violet-500 hover:text-violet-700 flex items-center gap-0.5">
+                                                          <Lock className="w-2.5 h-2.5" /> Reopen (Master Admin)
+                                                        </button>
+                                                      )}
+                                                    </div>
+                                                    <div className="flex gap-1.5 flex-wrap">
+                                                      {PROGRESS_STATUSES.map(s => (
+                                                        <button key={s} disabled={locked} onClick={() => setBlockStatus(t, block, s)}
+                                                          className={`text-xs font-medium px-2 py-1 rounded-full border transition-colors ${
+                                                            status === s
+                                                              ? s === "Tracking Ahead" ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                                                              : s === "Needs Assistance" ? "bg-red-100 text-red-700 border-red-300"
+                                                              : "bg-amber-100 text-amber-700 border-amber-300"
+                                                              : "bg-white text-slate-400 border-slate-200"
+                                                          } ${locked ? "cursor-not-allowed" : !canSetActive ? "opacity-70 cursor-pointer" : ""}`}>
+                                                          {s}
+                                                        </button>
+                                                      ))}
+                                                    </div>
+                                                    {!status && isActive && (
+                                                      <p className="text-[10px] text-violet-500 mt-1">Not yet set for {block}.</p>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })}
                                               {progressAuthForTaskId === t.id && (
                                                 <div className="border-t border-violet-200 pt-2 space-y-1.5">
                                                   <p className="text-[10px] text-violet-700">Enter an admin name and PIN with access to this course to set progress.</p>
@@ -5103,6 +5186,28 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                       {isLockedOut(adminLockouts, progressAuthName)
                                                         ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, progressAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, progressAuthName) === 1 ? "" : "s"}.`
                                                         : "Incorrect admin name or PIN, or no access to this course."}
+                                                    </p>
+                                                  )}
+                                                </div>
+                                              )}
+                                              {reopenAuthForTaskBlock && reopenAuthForTaskBlock.taskId === t.id && (
+                                                <div className="border-t border-violet-200 pt-2 space-y-1.5">
+                                                  <p className="text-[10px] text-violet-700">Reopening {reopenAuthForTaskBlock.block} needs a Master Admin name and PIN.</p>
+                                                  <div className="flex gap-1.5">
+                                                    <input value={progressAuthName} onChange={e => { setProgressAuthName(e.target.value); setProgressAuthError(false); }} placeholder="Master Admin name"
+                                                      className={`flex-1 border rounded-lg px-2 py-1.5 text-xs ${progressAuthError ? "border-red-400" : "border-violet-300"}`} />
+                                                    <input type="password" inputMode="numeric" maxLength={4} value={progressAuthPin}
+                                                      onChange={e => { setProgressAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setProgressAuthError(false); }}
+                                                      onKeyDown={e => { if (e.key === "Enter") handleProgressAuth(); }}
+                                                      placeholder="PIN" className={`w-20 border rounded-lg px-2 py-1.5 text-xs text-center tracking-widest ${progressAuthError ? "border-red-400" : "border-violet-300"}`} />
+                                                    <button onClick={handleProgressAuth} className="text-xs font-semibold text-violet-700 hover:text-violet-800 whitespace-nowrap">Unlock</button>
+                                                  </div>
+                                                  <button onClick={() => setReopenAuthForTaskBlock(null)} className="text-[10px] text-slate-500 hover:text-slate-700">Cancel</button>
+                                                  {progressAuthError && (
+                                                    <p className="text-[10px] text-red-600">
+                                                      {isLockedOut(adminLockouts, progressAuthName)
+                                                        ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, progressAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, progressAuthName) === 1 ? "" : "s"}.`
+                                                        : "Incorrect admin name or PIN, or this admin isn't a Master Admin."}
                                                     </p>
                                                   )}
                                                 </div>
@@ -5992,7 +6097,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course / qualification name</label>
                 <select value={formalCourseOption} onChange={e => handleFormalCourseOptionChange(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
                   <option value="">Select from Course Library...</option>
-                  {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                  {courses.filter(c => memberFederation === "FA" || !isADiploma(c.title)).map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                   <option value="__other__">Other (type your own)</option>
                 </select>
                 {formalCourseOption === "__other__" && (

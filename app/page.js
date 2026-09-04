@@ -109,10 +109,11 @@ export default function LandingPage() {
               a credibility rail, not decoration: this is who CODA reports
               to and who it's built for. */}
           <div className="w-full lg:w-auto shrink-0 flex flex-row lg:flex-col items-center gap-3 flex-wrap lg:flex-nowrap">
-            <div className="bg-white rounded-md p-2 flex items-center justify-center w-16 h-16 shrink-0">
+            <Link href="/app?mf=FA" title="Log an observation as Football Australia"
+              className="bg-white rounded-md p-2 flex items-center justify-center w-16 h-16 shrink-0 hover:bg-white hover:scale-105 transition-all">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={FA_LOGO_URL} alt="Football Australia" className="max-w-full max-h-full object-contain" />
-            </div>
+            </Link>
             <div className="hidden lg:block w-10 h-px bg-white/15" />
             {MEMBER_FEDERATIONS.map(mf => (
               <Link key={mf.key} href={`/app?mf=${mf.key}`} title={`Log an observation as ${mf.label}`}
