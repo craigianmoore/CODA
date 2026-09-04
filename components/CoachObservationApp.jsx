@@ -232,7 +232,7 @@ function outstandingRequirements(t, coachTopics) {
   if (isCDiploma(t.courseTitle)) {
     if (t.practicalSessionOutcome === "Not Yet Competent") reqs.push("redo Practical");
     else if (!t.practicalSessionDone) reqs.push("Practical");
-  } else if (isBDiploma(t.courseTitle)) {
+  } else if (isBDiploma(t.courseTitle) || isADiploma(t.courseTitle)) {
     const { done, total } = courseworkProgress(t, coachTopics);
     if (done < total) reqs.push("Coursework");
   }
@@ -252,7 +252,7 @@ function courseworkItems(record, coachTopics, team) {
   if (isCDiploma(record.courseTitle)) {
     return [{ label: "Practical Session", done: !!record.practicalSessionDone, outcome: record.practicalSessionOutcome || "", team: team || "" }, onlineModulesItem, formativeAssessmentItem];
   }
-  if (isBDiploma(record.courseTitle)) {
+  if (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) {
     const topics = (coachTopics || []).slice(0, 4);
     const sessionItems = topics.map(t => ({
       label: t,
@@ -264,6 +264,7 @@ function courseworkItems(record, coachTopics, team) {
       { label: "Game Plan", done: !!record.gamePlanDone, outcome: "" },
       { label: "Analysis Session Plan", done: !!record.analysisSessionPlanDone, outcome: "" },
       { label: "Annual (Yearly) Plan", done: !!record.annualPlanDone, outcome: "" },
+      ...(isBDiploma(record.courseTitle) ? [{ label: "25 Min Coaching Session (Candidate Folder, Block 2→3)", done: !!record.coachingSession25MinDone, outcome: "" }] : []),
       { label: "6WC (6 Week Cycle)", done: !!record.sixWeekCycleDone, outcome: "" },
       { label: "with FC (football conditioning) details", done: !!record.fcDetailsDone, outcome: "" },
     ];
@@ -1104,7 +1105,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
       if (matchIdx !== -1) {
         const task = completedTasks[matchIdx];
         const updatedTask = { ...task };
-        if (isBDiploma(task.courseTitle) && obs.sessionTopic) {
+        if ((isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) && obs.sessionTopic) {
           updatedTask.sessionPlansDone = { ...(task.sessionPlansDone || {}), [obs.sessionTopic]: true };
           updatedTask.sessionPlansOutcomes = { ...(task.sessionPlansOutcomes || {}), [obs.sessionTopic]: obs.assessmentOutcome || "" };
         } else if (isCDiploma(task.courseTitle)) {
@@ -1149,7 +1150,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
           ((obsToDelete.courseNumber && (o.courseNumber || "").trim() === obsToDelete.courseNumber.trim()) ||
            (!obsToDelete.courseNumber && o.formalCourseName === obsToDelete.formalCourseName));
 
-        if (isBDiploma(task.courseTitle) && obsToDelete.sessionTopic) {
+        if ((isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) && obsToDelete.sessionTopic) {
           const remaining = nextObservations
             .filter(o => sameSlot(o) && o.sessionTopic === obsToDelete.sessionTopic)
             .sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -3383,6 +3384,7 @@ function emptyCompletedTaskForm() {
     gamePlanDone: false,
     analysisSessionPlanDone: false,
     annualPlanDone: false,
+    coachingSession25MinDone: false,
     sixWeekCycleDone: false,
     fcDetailsDone: false,
     practicalSessionDone: false,
@@ -3397,9 +3399,8 @@ function courseworkProgress(record, coachTopics) {
   if (isCDiploma(record.courseTitle)) {
     return { done: (record.practicalSessionDone ? 1 : 0) + onlineDone + formativeDone, total: 3 };
   }
-  if (isBDiploma(record.courseTitle)) {
-    const topics = (coachTopics || []).slice(0, 4);
-    const sessionDone = topics.filter(t => record.sessionPlansDone && record.sessionPlansDone[t]).length;
+  if (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) {
+    const isB = isBDiploma(record.courseTitle);
     const fixedDone = [
       record.goalscoringPresentationDone,
       record.gamePlanDone,
@@ -3407,8 +3408,9 @@ function courseworkProgress(record, coachTopics) {
       record.annualPlanDone,
       record.sixWeekCycleDone,
       record.fcDetailsDone,
+      ...(isB ? [record.coachingSession25MinDone] : []),
     ].filter(Boolean).length;
-    return { done: sessionDone + fixedDone + onlineDone + formativeDone, total: topics.length + 6 + 2 };
+    return { done: sessionDone + fixedDone + onlineDone + formativeDone, total: topics.length + (isB ? 7 : 6) + 2 };
   }
   return { done: 0, total: 0 };
 }
@@ -3665,6 +3667,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
         gamePlanDone: all.some(t => t.gamePlanDone),
         analysisSessionPlanDone: all.some(t => t.analysisSessionPlanDone),
         annualPlanDone: all.some(t => t.annualPlanDone),
+        coachingSession25MinDone: all.some(t => t.coachingSession25MinDone),
         sixWeekCycleDone: all.some(t => t.sixWeekCycleDone),
         fcDetailsDone: all.some(t => t.fcDetailsDone),
         practicalSessionDone: all.some(t => t.practicalSessionDone),
@@ -3810,6 +3813,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       gamePlanDone: !!task.gamePlanDone,
       analysisSessionPlanDone: !!task.analysisSessionPlanDone,
       annualPlanDone: !!task.annualPlanDone,
+      coachingSession25MinDone: !!task.coachingSession25MinDone,
       sixWeekCycleDone: task.sixWeekCycleDone != null ? !!task.sixWeekCycleDone : !!task.sixWeekCycleFcDone,
       fcDetailsDone: task.fcDetailsDone != null ? !!task.fcDetailsDone : !!task.sixWeekCycleFcDone,
       practicalSessionDone: !!task.practicalSessionDone,
@@ -3851,6 +3855,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       gamePlanDone: form.gamePlanDone,
       analysisSessionPlanDone: form.analysisSessionPlanDone,
       annualPlanDone: form.annualPlanDone,
+      coachingSession25MinDone: form.coachingSession25MinDone,
       sixWeekCycleDone: form.sixWeekCycleDone,
       fcDetailsDone: form.sixWeekCycleDone ? form.fcDetailsDone : false,
       practicalSessionDone: form.practicalSessionDone,
@@ -4088,7 +4093,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
 
   function selectDiplomaType(type) {
     setCourseworkDiplomaType(type);
-    setCourseworkCourseTitle(type === "C" ? "AFC/FA C Diploma" : "AFC/FA B Diploma");
+    setCourseworkCourseTitle(type === "C" ? "AFC/FA C Diploma" : type === "A" ? "AFC/FA A Diploma" : "AFC/FA B Diploma");
     setCourseworkPreview(null);
     if (courseworkHeaders) {
       setCourseworkGoalscoringHeader(
@@ -4246,7 +4251,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           id: uid(),
           coachId: coach.id,
           coachName: coach.name,
-          courseTitle: courseworkCourseTitle.trim() || (courseworkDiplomaType === "C" ? "AFC/FA C Diploma" : "AFC/FA B Diploma"),
+          courseTitle: courseworkCourseTitle.trim() || (courseworkDiplomaType === "C" ? "AFC/FA C Diploma" : courseworkDiplomaType === "A" ? "AFC/FA A Diploma" : "AFC/FA B Diploma"),
           courseNumber: courseworkCourseNumber.trim(),
           memberFederation: courseworkMemberFederation,
           attendancePercent: p.pct,
@@ -4260,6 +4265,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           gamePlanDone: false,
           analysisSessionPlanDone: false,
           annualPlanDone: false,
+          coachingSession25MinDone: false,
           sixWeekCycleDone: false,
           fcDetailsDone: false,
           practicalSessionDone: false,
@@ -4329,13 +4335,14 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     let updated = { ...task };
     if (isCDiploma(task.courseTitle) && label === "Practical Session") {
       updated.practicalSessionDone = !task.practicalSessionDone;
-    } else if (isBDiploma(task.courseTitle)) {
+    } else if (isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) {
       if (coachTopics.includes(label)) {
         updated.sessionPlansDone = { ...(task.sessionPlansDone || {}), [label]: !(task.sessionPlansDone || {})[label] };
       } else if (label === "Goalscoring Presentation") updated.goalscoringPresentationDone = !task.goalscoringPresentationDone;
       else if (label === "Game Plan") updated.gamePlanDone = !task.gamePlanDone;
       else if (label === "Analysis Session Plan") updated.analysisSessionPlanDone = !task.analysisSessionPlanDone;
       else if (label === "Annual (Yearly) Plan") updated.annualPlanDone = !task.annualPlanDone;
+      else if (label === "25 Min Coaching Session (Candidate Folder, Block 2→3)") updated.coachingSession25MinDone = !task.coachingSession25MinDone;
       else if (label === "6WC (6 Week Cycle)") {
         const next = !task.sixWeekCycleDone;
         updated.sixWeekCycleDone = next;
@@ -4586,7 +4593,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1" />
             )}
           </div>
-        ) : isBDiploma(form.courseTitle) ? (
+        ) : (isBDiploma(form.courseTitle) || isADiploma(form.courseTitle)) ? (
           <>
             <div className="border-t border-slate-100 pt-3">
               <p className="text-sm font-semibold text-slate-800 mb-2">Session Plans</p>
@@ -4628,6 +4635,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 { label: "Game Plan", key: "gamePlanDone" },
                 { label: "Analysis Session Plan", key: "analysisSessionPlanDone" },
                 { label: "Annual (Yearly) Plan", key: "annualPlanDone" },
+                ...(isBDiploma(form.courseTitle) ? [{ label: "25 Min Coaching Session (Candidate Folder, Block 2→3)", key: "coachingSession25MinDone" }] : []),
               ].map(item => (
                 <div key={item.key}>
                   <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
@@ -4785,7 +4793,12 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           <p className="text-sm font-semibold text-slate-800">Import Diploma Coursework Attendance</p>
           <div>
             <label className="text-xs font-medium text-slate-500 mb-1.5 block">Diploma level</label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <button onClick={() => selectDiplomaType("A")} type="button"
+                className={`text-left p-3 rounded-lg border-2 transition-colors ${courseworkDiplomaType === "A" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
+                <p className="text-sm font-semibold text-slate-800">A Diploma</p>
+                <p className="text-xs text-slate-400">Full coursework: session plans + 6 milestone items, 4 blocks</p>
+              </button>
               <button onClick={() => selectDiplomaType("B")} type="button"
                 className={`text-left p-3 rounded-lg border-2 transition-colors ${courseworkDiplomaType === "B" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
                 <p className="text-sm font-semibold text-slate-800">B Diploma</p>
@@ -4800,7 +4813,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           </div>
           <p className="text-xs text-slate-500">
             Upload the coursework CSV, then confirm which column holds the coach's name before generating the preview. Attendance % is
-            calculated automatically: a cell counts as attended if it's "Y" or a three-digit block number — starting with 2 for B Diploma
+            calculated automatically: a cell counts as attended if it's "Y" or a three-digit block number — starting with 2 for A/B Diploma
             (out of a fixed 9 sessions) or starting with 1 for C Diploma (out of a fixed 4 sessions); blank or "N" counts as not attended.
             Coaches are matched by name against your roster, and anyone not already on file is added automatically.
           </p>
@@ -5265,7 +5278,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                 const itemReport = item.done && (t.courseNumber || "").trim()
                                                   ? (observations || [])
                                                       .filter(o => o.status !== "draft" && o.coachId === t.coachId && (o.courseNumber || "").trim() === (t.courseNumber || "").trim() &&
-                                                        ((isBDiploma(t.courseTitle) && o.sessionTopic === item.label) || (isCDiploma(t.courseTitle) && item.label === "Practical Session")))
+                                                        (((isBDiploma(t.courseTitle) || isADiploma(t.courseTitle)) && o.sessionTopic === item.label) || (isCDiploma(t.courseTitle) && item.label === "Practical Session")))
                                                       .sort((a, b) => new Date(b.date) - new Date(a.date))[0]
                                                   : null;
                                                 return (
@@ -5859,12 +5872,19 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   }, [coachId]);
 
   useEffect(() => {
-    if (!isBDiploma(formalCourseName) || diplomaBlock || !matchedCompletedTask) return;
+    if ((!isBDiploma(formalCourseName) && !isADiploma(formalCourseName)) || diplomaBlock || !matchedCompletedTask) return;
     const days = Math.round(((matchedCompletedTask.attendancePercent || 0) / 100) * 9);
     let block = "";
-    if (days >= 1 && days <= 2) block = "Block 1";
-    else if (days >= 3 && days <= 5) block = "Block 2";
-    else if (days >= 6 && days <= 9) block = "Block 3";
+    if (isADiploma(formalCourseName)) {
+      if (days >= 1 && days <= 2) block = "Block 1";
+      else if (days >= 3 && days <= 4) block = "Block 2";
+      else if (days >= 5 && days <= 6) block = "Block 3";
+      else if (days >= 7 && days <= 9) block = "Block 4";
+    } else {
+      if (days >= 1 && days <= 2) block = "Block 1";
+      else if (days >= 3 && days <= 5) block = "Block 2";
+      else if (days >= 6 && days <= 9) block = "Block 3";
+    }
     if (block) setDiplomaBlock(block);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchedCompletedTask?.attendancePercent, formalCourseName]);
@@ -5930,7 +5950,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     const otherFieldsOk = SESSION_PLAN_FIELDS.filter(f => f.required && f.key !== "sizeOfPitch" && f.key !== "numberOfPlayers").every(f => sessionPlan[f.key].trim().length > 0);
     const numberOfPlayersOk = sessionPlan.numberOfPlayers.trim().length > 0;
     const pitchSizeOk = sessionPlan.pitchLength.trim().length > 0 && sessionPlan.pitchWidth.trim().length > 0;
-    const sessionTopicRequired = sessionType === "formal" && (isBDiploma(formalCourseName) || isCDiploma(formalCourseName));
+    const sessionTopicRequired = sessionType === "formal" && (isBDiploma(formalCourseName) || isADiploma(formalCourseName) || isCDiploma(formalCourseName));
     const sessionTopicOk = sessionTopicRequired ? sessionTopic.trim().length > 0 : true;
     return objectiveOk && otherFieldsOk && numberOfPlayersOk && pitchSizeOk && sessionPlan.typeOfSession.length > 0 && sessionTopicOk;
   }
@@ -5981,7 +6001,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
       sessionType,
       formalCourseName: sessionType === "formal" ? formalCourseName.trim() : "",
       diplomaBlock: sessionType === "formal" && (isBDiploma(formalCourseName) || isADiploma(formalCourseName)) ? diplomaBlock : "",
-      courseNumber: sessionType === "formal" && (isCDiploma(formalCourseName) || isBDiploma(formalCourseName)) ? courseNumber.trim() : "",
+      courseNumber: sessionType === "formal" && (isCDiploma(formalCourseName) || isBDiploma(formalCourseName) || isADiploma(formalCourseName)) ? courseNumber.trim() : "",
       ageGroup: ageGroup.trim(),
       keyOutcomesFocus: keyOutcomesFocus.trim(),
       sessionTopic: sessionTopic.trim(),
@@ -6047,7 +6067,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
       sessionType,
       formalCourseName: sessionType === "formal" ? formalCourseName.trim() : "",
       diplomaBlock: sessionType === "formal" && (isBDiploma(formalCourseName) || isADiploma(formalCourseName)) ? diplomaBlock : "",
-      courseNumber: sessionType === "formal" && (isCDiploma(formalCourseName) || isBDiploma(formalCourseName)) ? courseNumber.trim() : "",
+      courseNumber: sessionType === "formal" && (isCDiploma(formalCourseName) || isBDiploma(formalCourseName) || isADiploma(formalCourseName)) ? courseNumber.trim() : "",
       ageGroup: ageGroup.trim(),
       keyOutcomesFocus: keyOutcomesFocus.trim(),
       sessionTopic: sessionTopic.trim(),
@@ -6313,7 +6333,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                   <input value={formalCourseName} onChange={e => setFormalCourseName(e.target.value)} placeholder="Custom qualification / course name"
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-2" />
                 )}
-                {(isCDiploma(formalCourseName) || isBDiploma(formalCourseName)) && (
+                {(isCDiploma(formalCourseName) || isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && (
                   <div className="mt-2">
                     <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course Number</label>
                     <input value={courseNumber} onChange={e => setCourseNumber(e.target.value)}
@@ -6353,7 +6373,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 {!diplomaBlock && (
                   <p className="text-xs text-red-500 mt-1">Required for B/A Diploma courses.</p>
                 )}
-                {isBDiploma(formalCourseName) && diplomaBlock && matchedCompletedTask && (
+                {(isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && diplomaBlock && matchedCompletedTask && (
                   <p className="text-xs text-slate-400 mt-1">Auto-filled from attendance on file — change it above if needed.</p>
                 )}
               </div>
