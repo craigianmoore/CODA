@@ -1949,6 +1949,10 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
   const [selectedCoachIds, setSelectedCoachIds] = useState(() => new Set());
   const [bulkCoachMfPicker, setBulkCoachMfPicker] = useState("");
   const [bulkCoachMfMsg, setBulkCoachMfMsg] = useState("");
+  const [showBackfillAuth, setShowBackfillAuth] = useState(false);
+  const [backfillAuthName, setBackfillAuthName] = useState("");
+  const [backfillAuthPin, setBackfillAuthPin] = useState("");
+  const [backfillAuthError, setBackfillAuthError] = useState(false);
 
   function startEditCoachMf(coach) {
     setEditingCoachMfId(coach.id);
@@ -1995,6 +1999,53 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
     setBulkCoachMfMsg(`${mode === "replace" ? "Set" : "Added"} ${mfLabel} for ${selectedCoachIds.size} coach${selectedCoachIds.size === 1 ? "" : "es"}.`);
     setSelectedCoachIds(new Set());
     setBulkCoachMfPicker("");
+  }
+
+  // For coaches with no Member Federation set yet, derive it from whatever
+  // federation(s) their existing Completed Tasks and observation records
+  // already show — i.e. wherever they actually did the course — instead
+  // of requiring every one of them to be assigned by hand.
+  const coachesBackfillableCount = coaches.filter(c => (c.memberFederations || []).length === 0).length;
+
+  function backfillCoachMfFromHistory() {
+    const mfsForCoach = {};
+    (completedTasks || []).forEach(t => {
+      if (!t.coachId || !t.memberFederation) return;
+      if (!mfsForCoach[t.coachId]) mfsForCoach[t.coachId] = new Set();
+      mfsForCoach[t.coachId].add(t.memberFederation);
+    });
+    (allObservations || []).forEach(o => {
+      if (!o.coachId || !o.memberFederation) return;
+      if (!mfsForCoach[o.coachId]) mfsForCoach[o.coachId] = new Set();
+      mfsForCoach[o.coachId].add(o.memberFederation);
+    });
+    let updatedCount = 0;
+    const nextCoaches = coaches.map(c => {
+      if ((c.memberFederations || []).length > 0) return c;
+      const derived = mfsForCoach[c.id];
+      if (!derived || derived.size === 0) return c;
+      updatedCount++;
+      return { ...c, memberFederations: [...derived] };
+    });
+    saveCoaches(nextCoaches);
+    setBulkCoachMfMsg(`Assigned Member Federation(s) to ${updatedCount} coach${updatedCount === 1 ? "" : "es"} from their course history. ${coachesBackfillableCount - updatedCount} coach${(coachesBackfillableCount - updatedCount) === 1 ? "" : "es"} had no Completed Tasks or observation record to derive a federation from.`);
+  }
+
+  function handleBackfillAuth() {
+    if (isLockedOut(adminLockouts, backfillAuthName)) {
+      setBackfillAuthError(true);
+      return;
+    }
+    const match = findAdminMatch(adminSettings.admins, backfillAuthName, backfillAuthPin);
+    if (!match || !isMasterAdmin(match)) {
+      recordAdminAttempt(backfillAuthName, !!match);
+      setBackfillAuthError(true);
+      return;
+    }
+    recordAdminAttempt(backfillAuthName, true);
+    backfillCoachMfFromHistory();
+    setShowBackfillAuth(false);
+    setBackfillAuthName(""); setBackfillAuthPin(""); setBackfillAuthError(false);
   }
 
   const [idpEditingId, setIdpEditingId] = useState(null);
@@ -2297,8 +2348,43 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
               <AlertCircle className="w-4 h-4" /> {duplicateGroups.length} Duplicate{duplicateGroups.length === 1 ? "" : "s"} Found
             </button>
           )}
+          {coachesBackfillableCount > 0 && (
+            <button onClick={() => setShowBackfillAuth(s => !s)} className="flex items-center gap-1.5 text-sm font-semibold text-indigo-700 border border-indigo-300 px-3 py-2 rounded-lg hover:bg-indigo-50 whitespace-nowrap">
+              <Award className="w-4 h-4" /> Assign MF from History ({coachesBackfillableCount})
+            </button>
+          )}
         </div>
       </div>
+
+      {showBackfillAuth && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
+          <p className="text-sm font-semibold text-indigo-900">Assign Member Federation from Course History</p>
+          <p className="text-xs text-indigo-700">
+            For the {coachesBackfillableCount} coach{coachesBackfillableCount === 1 ? "" : "es"} with no Member Federation set, this looks at their existing Completed Tasks and observation records
+            and assigns whichever federation(s) those show — i.e. wherever they actually did the course. Coaches with no record at all to derive from are left unchanged. Master Admin only.
+          </p>
+          {bulkCoachMfMsg && <p className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{bulkCoachMfMsg}</p>}
+          <div className="grid sm:grid-cols-2 gap-2">
+            <input value={backfillAuthName} onChange={e => { setBackfillAuthName(e.target.value); setBackfillAuthError(false); }} placeholder="Admin name"
+              className={`border rounded-lg px-3 py-2 text-sm ${backfillAuthError ? "border-red-400" : "border-indigo-300"}`} />
+            <input type="password" inputMode="numeric" maxLength={4} value={backfillAuthPin}
+              onChange={e => { setBackfillAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setBackfillAuthError(false); }}
+              onKeyDown={e => { if (e.key === "Enter") handleBackfillAuth(); }} placeholder="Admin PIN"
+              className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${backfillAuthError ? "border-red-400" : "border-indigo-300"}`} />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleBackfillAuth} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700">Assign Now</button>
+            <button onClick={() => setShowBackfillAuth(false)} className="text-sm text-slate-500 hover:text-slate-700">Cancel</button>
+          </div>
+          {backfillAuthError && (
+            <p className="text-xs text-red-600">
+              {isLockedOut(adminLockouts, backfillAuthName)
+                ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, backfillAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, backfillAuthName) === 1 ? "" : "s"}.`
+                : "Incorrect admin name or PIN, or not a Master Admin."}
+            </p>
+          )}
+        </div>
+      )}
 
       {showDuplicates && duplicateGroups.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
@@ -3712,6 +3798,8 @@ function courseworkProgress(record, coachTopics) {
   }
   if (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) {
     const isB = isBDiploma(record.courseTitle);
+    const topics = (coachTopics || []).slice(0, 4);
+    const sessionDone = topics.filter(t => record.sessionPlansDone && record.sessionPlansDone[t]).length;
     const fixedDone = [
       record.goalscoringPresentationDone,
       record.gamePlanDone,
