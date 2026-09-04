@@ -2459,6 +2459,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
             </div>
             <select value={mfFilter} onChange={e => setMfFilter(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
               <option value="">All Member Federations</option>
+              <option value="__none__">No MF selected</option>
               {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
             </select>
           </div>
@@ -2467,7 +2468,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
             const filtered = [...coaches]
               .sort((a, b) => a.name.localeCompare(b.name))
               .filter(c => !q || c.name.toLowerCase().split(/\s+/).some(part => part.includes(q)))
-              .filter(c => !mfFilter || (c.memberFederations || []).includes(mfFilter));
+              .filter(c => !mfFilter || (mfFilter === "__none__" ? (c.memberFederations || []).length === 0 : (c.memberFederations || []).includes(mfFilter)));
             if (filtered.length === 0) {
               return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">{q || mfFilter ? "No coaches match these filters." : "No coaches added yet."}</div>;
             }
@@ -8066,7 +8067,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   const [restoringKey, setRestoringKey] = useState(null);
 
   const BIN_TABLES = [
-    { table: "coaches", label: "Coaches", masterOnly: true, nameOf: (i) => i.name },
+    { table: "coaches", label: "Coaches", masterOnly: false, nameOf: (i) => i.name },
     { table: "cets", label: "CETs", masterOnly: false, nameOf: (i) => i.name },
     { table: "observations", label: "Observations", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
     { table: "completed_tasks", label: "Completed Tasks", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"}${i.courseNumber ? ` — #${i.courseNumber}` : ""}` },
@@ -8079,11 +8080,12 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
 
   function binItemInScope(tableKey, item) {
     if (iAmMaster) return true;
-    // Lead Admin only — Coaches aren't federation-tagged at all, so that
-    // section is Master-only. CETs use memberFederations; observations
-    // and completed tasks use a single memberFederation.
+    // Lead Admin only — CETs and Coaches both use memberFederations
+    // (Coaches' is optional, so a coach with none set stays Master-only,
+    // same as before); observations and completed tasks use a single
+    // memberFederation.
     const mine = signedInAdminMatch.memberFederations || [];
-    if (tableKey === "cets") return (item.memberFederations || []).some(mf => mine.includes(mf));
+    if (tableKey === "cets" || tableKey === "coaches") return (item.memberFederations || []).some(mf => mine.includes(mf));
     if (tableKey === "observations" || tableKey === "completed_tasks") return mine.includes(item.memberFederation);
     return false;
   }
