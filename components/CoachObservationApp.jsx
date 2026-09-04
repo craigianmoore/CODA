@@ -3820,6 +3820,77 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [bulkMfInputs, setBulkMfInputs] = useState({});
   const [savingCandidatePdfId, setSavingCandidatePdfId] = useState(null);
 
+  // Candidate progress tracking (Tracking Ahead / As Expected / Needs
+  // Assistance), set per diploma block. Visible to any CET; only settable
+  // by a Course Admin (for their own assigned course), Lead Admin (for
+  // their MF), or Master. Auth here persists for the rest of this tab
+  // visit once entered, rather than re-prompting per candidate — the
+  // per-candidate course-access check still applies on every actual save.
+  const PROGRESS_STATUSES = ["Tracking Ahead", "As Expected", "Needs Assistance"];
+  const [progressAuthed, setProgressAuthed] = useState(false);
+  const [progressAuthMatch, setProgressAuthMatch] = useState(null);
+  const [progressAuthName, setProgressAuthName] = useState("");
+  const [progressAuthPin, setProgressAuthPin] = useState("");
+  const [progressAuthError, setProgressAuthError] = useState(false);
+  const [progressAuthForTaskId, setProgressAuthForTaskId] = useState(null);
+  const [selectedBlockByTask, setSelectedBlockByTask] = useState({});
+
+  function blockOptionsForTask(task) {
+    if (isADiploma(task.courseTitle)) return DIPLOMA_BLOCK_OPTIONS_A;
+    if (isBDiploma(task.courseTitle)) return DIPLOMA_BLOCK_OPTIONS_B;
+    return [];
+  }
+
+  function currentBlockForTask(task) {
+    const opts = blockOptionsForTask(task);
+    if (opts.length === 0) return null;
+    return selectedBlockByTask[task.id] || opts[0];
+  }
+
+  // If the selected block has no status recorded yet, suggest whatever the
+  // previous block's status was as the starting point — carried forward,
+  // not locked in, since the admin can still change it.
+  function displayedStatusForBlock(task, block) {
+    const opts = blockOptionsForTask(task);
+    const statuses = task.blockStatuses || {};
+    if (statuses[block]) return { status: statuses[block], inherited: false };
+    const idx = opts.indexOf(block);
+    for (let i = idx - 1; i >= 0; i--) {
+      if (statuses[opts[i]]) return { status: statuses[opts[i]], inherited: true };
+    }
+    return { status: null, inherited: false };
+  }
+
+  function handleProgressAuth() {
+    if (isLockedOut(adminLockouts, progressAuthName)) {
+      setProgressAuthError(true);
+      return;
+    }
+    const match = findAdminMatch(adminSettings.admins, progressAuthName, progressAuthPin);
+    if (!match) {
+      recordAdminAttempt(progressAuthName, false);
+      setProgressAuthError(true);
+      return;
+    }
+    recordAdminAttempt(progressAuthName, true);
+    setProgressAuthed(true);
+    setProgressAuthMatch(match);
+    setProgressAuthError(false);
+    setProgressAuthForTaskId(null);
+  }
+
+  function setBlockStatus(task, block, status) {
+    if (!progressAuthed || !adminHasCourseAccess(progressAuthMatch, task.courseNumber, task.memberFederation)) {
+      setProgressAuthForTaskId(task.id);
+      setProgressAuthName(""); setProgressAuthPin(""); setProgressAuthError(false);
+      return;
+    }
+    saveCompletedTasks(completedTasks.map(t => t.id === task.id
+      ? { ...t, blockStatuses: { ...(t.blockStatuses || {}), [block]: status }, updatedAt: new Date().toISOString() }
+      : t));
+  }
+
+
   async function handleSaveCandidatePdf(t, cardCoach) {
     setSavingCandidatePdfId(t.id);
     try {
@@ -4903,6 +4974,65 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                             )}
                                           </div>
                                         )}
+                                        {blockOptionsForTask(t).length > 0 && (() => {
+                                          const blockOpts = blockOptionsForTask(t);
+                                          const currentBlock = currentBlockForTask(t);
+                                          const { status: displayedStatus, inherited } = displayedStatusForBlock(t, currentBlock);
+                                          const canSet = progressAuthed && adminHasCourseAccess(progressAuthMatch, t.courseNumber, t.memberFederation);
+                                          return (
+                                            <div className="rounded-lg border border-violet-200 bg-violet-50 p-2.5 space-y-1.5">
+                                              <div className="flex items-center justify-between gap-2">
+                                                <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Progress Tracking</p>
+                                                <div className="flex gap-1">
+                                                  {blockOpts.map(b => (
+                                                    <button key={b} onClick={() => setSelectedBlockByTask(prev => ({ ...prev, [t.id]: b }))}
+                                                      className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${currentBlock === b ? "bg-violet-600 text-white" : "bg-white text-violet-500 border border-violet-200"}`}>
+                                                      {b.replace("Block ", "B")}
+                                                    </button>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                              <div className="flex gap-1.5 flex-wrap">
+                                                {PROGRESS_STATUSES.map(s => (
+                                                  <button key={s} onClick={() => setBlockStatus(t, currentBlock, s)}
+                                                    className={`text-xs font-medium px-2 py-1 rounded-full border transition-colors ${
+                                                      displayedStatus === s
+                                                        ? s === "Tracking Ahead" ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                                                        : s === "Needs Assistance" ? "bg-red-100 text-red-700 border-red-300"
+                                                        : "bg-amber-100 text-amber-700 border-amber-300"
+                                                        : "bg-white text-slate-400 border-slate-200"
+                                                    } ${!canSet ? "opacity-70 cursor-pointer" : ""}`}>
+                                                    {s}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                              {inherited && displayedStatus && (
+                                                <p className="text-[10px] text-violet-500">Carried forward from the previous block — tap a status to set {currentBlock} explicitly.</p>
+                                              )}
+                                              {progressAuthForTaskId === t.id && (
+                                                <div className="border-t border-violet-200 pt-2 space-y-1.5">
+                                                  <p className="text-[10px] text-violet-700">Enter an admin name and PIN with access to this course to set progress.</p>
+                                                  <div className="flex gap-1.5">
+                                                    <input value={progressAuthName} onChange={e => { setProgressAuthName(e.target.value); setProgressAuthError(false); }} placeholder="Admin name"
+                                                      className={`flex-1 border rounded-lg px-2 py-1.5 text-xs ${progressAuthError ? "border-red-400" : "border-violet-300"}`} />
+                                                    <input type="password" inputMode="numeric" maxLength={4} value={progressAuthPin}
+                                                      onChange={e => { setProgressAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setProgressAuthError(false); }}
+                                                      onKeyDown={e => { if (e.key === "Enter") handleProgressAuth(); }}
+                                                      placeholder="PIN" className={`w-20 border rounded-lg px-2 py-1.5 text-xs text-center tracking-widest ${progressAuthError ? "border-red-400" : "border-violet-300"}`} />
+                                                    <button onClick={handleProgressAuth} className="text-xs font-semibold text-violet-700 hover:text-violet-800 whitespace-nowrap">Unlock</button>
+                                                  </div>
+                                                  {progressAuthError && (
+                                                    <p className="text-[10px] text-red-600">
+                                                      {isLockedOut(adminLockouts, progressAuthName)
+                                                        ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, progressAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, progressAuthName) === 1 ? "" : "s"}.`
+                                                        : "Incorrect admin name or PIN, or no access to this course."}
+                                                    </p>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })()}
                                         <div className="flex items-center gap-2 flex-wrap">
                                           <button onClick={() => handleSaveCandidatePdf(t, cardCoach)} disabled={savingCandidatePdfId === t.id}
                                             className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 border border-emerald-300 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 disabled:opacity-50">
@@ -7206,6 +7336,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   const [editAdminPinConfirm, setEditAdminPinConfirm] = useState("");
   const [editAdminPinError, setEditAdminPinError] = useState("");
   const [editAdminPinSuccessName, setEditAdminPinSuccessName] = useState("");
+  const [confirmRemoveAdminName, setConfirmRemoveAdminName] = useState(null);
+  const [removeAdminError, setRemoveAdminError] = useState("");
   const [newAdminName, setNewAdminName] = useState("");
   const [newAdminPin, setNewAdminPin] = useState("");
   const [addAdminError, setAddAdminError] = useState("");
@@ -7407,6 +7539,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setNewAdminName(""); setNewAdminPin(""); setNewAdminPinSelf(""); setNewAdminPinSelfConfirm(""); setNewAdminPinMode("me"); setAddAdminError("");
     setNewAdminRole("master"); setNewAdminMfSelection([]);
     setNewAdminCourseMf(""); setNewAdminCourseNumbers([]);
+    setConfirmRemoveAdminName(null); setRemoveAdminError("");
     setSessionHostNameInput(""); setSessionHostError(""); setSessionHostSuccess(false);
   }
 
@@ -7573,6 +7706,47 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setEditAdminPinSuccessName(editingAdminPinName);
     setEditingAdminPinName(null);
     setEditAdminPinValue(""); setEditAdminPinConfirm(""); setEditAdminPinError("");
+  }
+
+  // Removing an admin — this is what actually enables "change who holds
+  // Lead Admin for an MF": remove the old one, then Add Admin the new one
+  // with that Member Federation. A Master can remove anyone. A Lead can
+  // only remove Course Admins belonging to their own MF (the same
+  // "levels above" rule that governs who can add them). The very last
+  // Master Admin can't be removed — that would permanently lock the app's
+  // whole admin system with nobody able to add another.
+  function canRemoveAdmin(targetName) {
+    const target = adminSettings.admins.find(a => a.name.trim().toLowerCase() === targetName.trim().toLowerCase());
+    if (!target) return { ok: false, reason: "Admin not found." };
+    if (target.role !== "lead" && target.role !== "course") {
+      const masterCount = adminSettings.admins.filter(a => a.role !== "lead" && a.role !== "course").length;
+      if (masterCount <= 1) return { ok: false, reason: "This is the last Master Admin — add another Master before removing this one." };
+    }
+    if (iAmMaster) return { ok: true };
+    if (iAmLead && target.role === "course" && target.memberFederation && (signedInAdminMatch.memberFederations || []).includes(target.memberFederation)) {
+      return { ok: true };
+    }
+    return { ok: false, reason: "You don't have permission to remove this admin." };
+  }
+
+  function handleRemoveAdmin(targetName) {
+    const check = canRemoveAdmin(targetName);
+    if (!check.ok) {
+      setRemoveAdminError(check.reason);
+      return;
+    }
+    const remainingAdmins = adminSettings.admins.filter(a => a.name.trim().toLowerCase() !== targetName.trim().toLowerCase());
+    const nextSettings = { ...adminSettings, admins: remainingAdmins };
+    // If the removed admin was the Session Host, the exclusive-lock
+    // reference needs to move to someone who still exists — the first
+    // remaining Master, or cleared entirely if somehow none remain.
+    if (adminSettings.sessionHostName && adminSettings.sessionHostName.trim().toLowerCase() === targetName.trim().toLowerCase()) {
+      const fallbackMaster = remainingAdmins.find(a => a.role !== "lead" && a.role !== "course");
+      nextSettings.sessionHostName = fallbackMaster ? fallbackMaster.name : "";
+    }
+    saveAdminSettings(nextSettings);
+    setConfirmRemoveAdminName(null);
+    setRemoveAdminError("");
   }
 
   function handleAddAdmin() {
@@ -7842,8 +8016,10 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                     <span key={a.name} className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 flex items-center gap-1.5">
                       {a.name}
                       {isSessionHost(adminSettings, a.name) && <Lock className="w-3 h-3 text-amber-600" />}
-                      {a.role === "mf"
-                        ? <span className="text-[10px] font-bold text-indigo-600">· {(a.memberFederations || []).join(", ")}</span>
+                      {a.role === "lead"
+                        ? <span className="text-[10px] font-bold text-indigo-600">· Lead: {(a.memberFederations || []).join(", ")}</span>
+                        : a.role === "course"
+                        ? <span className="text-[10px] font-bold text-violet-600">· Course: {a.memberFederation} (#{(a.assignedCourseNumbers || []).join(", #")})</span>
                         : <span className="text-[10px] font-bold text-slate-400">· Master</span>}
                       {iAmMaster && (
                         <button onClick={() => editingAdminPinName === a.name ? setEditingAdminPinName(null) : startEditAdminPin(a.name)}
@@ -7851,9 +8027,23 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           Edit PIN
                         </button>
                       )}
+                      {canRemoveAdmin(a.name).ok && (
+                        <button onClick={() => { setConfirmRemoveAdminName(a.name); setRemoveAdminError(""); }}
+                          className="text-[10px] font-bold text-red-600 hover:text-red-800 ml-0.5">
+                          Remove
+                        </button>
+                      )}
                     </span>
                   ))}
                 </div>
+                {confirmRemoveAdminName && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 mb-3 flex items-center gap-2">
+                    <p className="text-xs text-red-700 flex-1">Remove {confirmRemoveAdminName} as an admin? Their PIN and admin access are gone — everything else they've done in CODA stays.</p>
+                    <button onClick={() => handleRemoveAdmin(confirmRemoveAdminName)} className="text-xs font-semibold text-red-700 hover:text-red-800 whitespace-nowrap">Confirm Remove</button>
+                    <button onClick={() => setConfirmRemoveAdminName(null)} className="text-xs text-slate-500 hover:text-slate-700 whitespace-nowrap">Cancel</button>
+                  </div>
+                )}
+                {removeAdminError && <p className="text-xs text-red-600 mb-2">{removeAdminError}</p>}
                 {editAdminPinSuccessName && (
                   <p className="text-xs text-emerald-600 mb-2">PIN updated for {editAdminPinSuccessName}.</p>
                 )}
