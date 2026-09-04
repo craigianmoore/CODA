@@ -7151,6 +7151,11 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
   const [newPinConfirm, setNewPinConfirm] = useState("");
   const [pinChangeError, setPinChangeError] = useState("");
   const [pinChangeSuccess, setPinChangeSuccess] = useState(false);
+  const [editingAdminPinName, setEditingAdminPinName] = useState(null);
+  const [editAdminPinValue, setEditAdminPinValue] = useState("");
+  const [editAdminPinConfirm, setEditAdminPinConfirm] = useState("");
+  const [editAdminPinError, setEditAdminPinError] = useState("");
+  const [editAdminPinSuccessName, setEditAdminPinSuccessName] = useState("");
   const [newAdminName, setNewAdminName] = useState("");
   const [newAdminPin, setNewAdminPin] = useState("");
   const [addAdminError, setAddAdminError] = useState("");
@@ -7477,6 +7482,32 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
     setNewPin(""); setNewPinConfirm("");
   }
 
+  function startEditAdminPin(name) {
+    setEditingAdminPinName(name);
+    setEditAdminPinValue("");
+    setEditAdminPinConfirm("");
+    setEditAdminPinError("");
+    setEditAdminPinSuccessName("");
+  }
+
+  function handleSaveAdminPin() {
+    if (!/^\d{4}$/.test(editAdminPinValue)) {
+      setEditAdminPinError("PIN must be exactly 4 digits.");
+      return;
+    }
+    if (editAdminPinValue !== editAdminPinConfirm) {
+      setEditAdminPinError("PINs do not match.");
+      return;
+    }
+    const updatedAdmins = adminSettings.admins.map(a =>
+      a.name.trim().toLowerCase() === editingAdminPinName.trim().toLowerCase() ? { ...a, pin: editAdminPinValue } : a
+    );
+    saveAdminSettings({ ...adminSettings, admins: updatedAdmins });
+    setEditAdminPinSuccessName(editingAdminPinName);
+    setEditingAdminPinName(null);
+    setEditAdminPinValue(""); setEditAdminPinConfirm(""); setEditAdminPinError("");
+  }
+
   function handleAddAdmin() {
     if (!iAmMaster) {
       setAddAdminError("Only a Master Admin can add admins.");
@@ -7707,15 +7738,42 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
                 </p>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {adminSettings.admins.map((a, i) => (
-                    <span key={a.name} className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 flex items-center gap-1">
+                    <span key={a.name} className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 flex items-center gap-1.5">
                       {a.name}
                       {isLeadAdmin(adminSettings, a.name) && <Lock className="w-3 h-3 text-amber-600" />}
                       {a.role === "mf"
                         ? <span className="text-[10px] font-bold text-indigo-600">· {(a.memberFederations || []).join(", ")}</span>
                         : <span className="text-[10px] font-bold text-slate-400">· Master</span>}
+                      {iAmMaster && (
+                        <button onClick={() => editingAdminPinName === a.name ? setEditingAdminPinName(null) : startEditAdminPin(a.name)}
+                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 ml-1">
+                          Edit PIN
+                        </button>
+                      )}
                     </span>
                   ))}
                 </div>
+                {editAdminPinSuccessName && (
+                  <p className="text-xs text-emerald-600 mb-2">PIN updated for {editAdminPinSuccessName}.</p>
+                )}
+                {editingAdminPinName && (
+                  <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 mb-3 space-y-2">
+                    <p className="text-xs font-semibold text-indigo-800">Set a new PIN for {editingAdminPinName}</p>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      <input type="password" inputMode="numeric" maxLength={4} value={editAdminPinValue}
+                        onChange={e => { setEditAdminPinValue(e.target.value.replace(/\D/g, "").slice(0, 4)); setEditAdminPinError(""); }}
+                        placeholder="New PIN" className="border border-indigo-300 rounded-lg px-3 py-2 text-sm text-center tracking-widest bg-white" />
+                      <input type="password" inputMode="numeric" maxLength={4} value={editAdminPinConfirm}
+                        onChange={e => { setEditAdminPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 4)); setEditAdminPinError(""); }}
+                        placeholder="Confirm PIN" className="border border-indigo-300 rounded-lg px-3 py-2 text-sm text-center tracking-widest bg-white" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={handleSaveAdminPin} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Save PIN</button>
+                      <button onClick={() => setEditingAdminPinName(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+                    </div>
+                    {editAdminPinError && <p className="text-xs text-red-600">{editAdminPinError}</p>}
+                  </div>
+                )}
                 {!iAmMaster ? (
                   <p className="text-xs text-slate-400">Only a Master Admin can add or manage admins.</p>
                 ) : adminSettings.admins.length < maxAdmins ? (
