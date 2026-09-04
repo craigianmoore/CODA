@@ -338,35 +338,65 @@ const EDUCATOR_ROLES = {
 
 const ADMIN_LOCKOUT_THRESHOLD = 3;
 const ADMIN_LOCKOUT_MS = 30 * 60 * 1000;
-const DEFAULT_ADMIN_SETTINGS = { admins: [{ name: "Craig Moore", pin: "8938", role: "master" }], maxAdmins: 2, leadAdminName: "Craig Moore" };
+const DEFAULT_ADMIN_SETTINGS = { admins: [{ name: "Craig Moore", pin: "8938", role: "master" }], maxAdmins: 2, sessionHostName: "Craig Moore" };
 const MAX_ADMINS = 2;
 
 function migrateAdminSettings(raw) {
   if (!raw) return DEFAULT_ADMIN_SETTINGS;
   const admins = Array.isArray(raw.admins) ? raw.admins : DEFAULT_ADMIN_SETTINGS.admins;
   const migratedAdmins = admins.map(a => {
-    // Every admin from before the Master/MF-scoped split becomes Master —
+    // Every admin from before the Master/Federation split becomes Master —
     // preserves exactly the full access they already had, nobody currently
-    // working loses anything on this migration.
+    // working loses anything on this migration. The old "mf" role becomes
+    // "lead" (Lead Admin), same scope and behaviour, just renamed.
     if (typeof a === "string") return { name: a, pin: raw.pin || DEFAULT_ADMIN_SETTINGS.admins[0].pin, role: "master" };
-    const role = a.role === "mf" ? "mf" : "master";
-    return { name: a.name || "", pin: a.pin || "", role, memberFederations: role === "mf" ? (a.memberFederations || []) : undefined };
+    const role = (a.role === "mf" || a.role === "lead") ? "lead" : (a.role === "course" ? "course" : "master");
+    if (role === "lead") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || [] };
+    if (role === "course") return { name: a.name || "", pin: a.pin || "", role, memberFederation: a.memberFederation || "", assignedCourseNumbers: a.assignedCourseNumbers || [] };
+    return { name: a.name || "", pin: a.pin || "", role: "master" };
   }).filter(a => a.name);
   return {
     admins: migratedAdmins.length ? migratedAdmins : DEFAULT_ADMIN_SETTINGS.admins,
     maxAdmins: raw.maxAdmins || MAX_ADMINS,
-    leadAdminName: raw.leadAdminName || (migratedAdmins[0] && migratedAdmins[0].name) || DEFAULT_ADMIN_SETTINGS.leadAdminName,
+    sessionHostName: raw.sessionHostName || (migratedAdmins[0] && migratedAdmins[0].name) || DEFAULT_ADMIN_SETTINGS.sessionHostName,
   };
 }
 
-// An admin with no role, or role !== "mf", is treated as Master — full
-// access, matching every admin's behaviour before this feature existed.
-function isMasterAdmin(adminMatch) {
-  return !adminMatch || adminMatch.role !== "mf";
+// Three tiers: "master" (no role, or role isn't "lead"/"course") has full
+// access everywhere; "lead" (Lead Admin — an MF's Technical Director /
+// Coach Education Manager) is scoped to one or more Member Federations;
+// "course" (Course Admin, appointed by Master or Lead) is scoped to
+// specific course numbers within one federation — narrower than Lead.
+function adminTier(adminMatch) {
+  if (!adminMatch) return "master";
+  if (adminMatch.role === "lead") return "lead";
+  if (adminMatch.role === "course") return "course";
+  return "master";
 }
+function isMasterAdmin(adminMatch) {
+  return adminTier(adminMatch) === "master";
+}
+function isCourseAdmin(adminMatch) {
+  return adminTier(adminMatch) === "course";
+}
+// MF-level access (Clear History, Remove All CETs, Merge Duplicate CETs) —
+// Master always; Lead if the MF matches theirs; Course Admins never get
+// blanket MF access, only specific courses (see adminHasCourseAccess).
 function adminHasMfAccess(adminMatch, mfKey) {
-  if (isMasterAdmin(adminMatch)) return true;
-  return (adminMatch.memberFederations || []).includes(mfKey);
+  const tier = adminTier(adminMatch);
+  if (tier === "master") return true;
+  if (tier === "lead") return (adminMatch.memberFederations || []).includes(mfKey);
+  return false;
+}
+// Course-level access (Reopen Report, Export PDF) — Master always; Lead if
+// the MF matches theirs (they can act on every course in their MF); Course
+// Admin only if this specific course number is one of theirs.
+function adminHasCourseAccess(adminMatch, courseNumber, mfKey) {
+  const tier = adminTier(adminMatch);
+  if (tier === "master") return true;
+  if (tier === "lead") return (adminMatch.memberFederations || []).includes(mfKey);
+  if (tier === "course") return (adminMatch.assignedCourseNumbers || []).includes((courseNumber || "").trim());
+  return false;
 }
 
 function findAdminMatch(admins, name, pin) {
@@ -390,8 +420,8 @@ function lockoutRemainingMinutes(adminLockouts, name) {
   return Math.max(1, Math.ceil((entry.lockedUntil - Date.now()) / 60000));
 }
 
-function isLeadAdmin(adminSettings, name) {
-  return (adminSettings.leadAdminName || "").trim().toLowerCase() === (name || "").trim().toLowerCase();
+function isSessionHost(adminSettings, name) {
+  return (adminSettings.sessionHostName || "").trim().toLowerCase() === (name || "").trim().toLowerCase();
 }
 
 const VIEW_MODES = [
@@ -1211,6 +1241,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
         {tab === "history" && (
           <HistoryTab
             coaches={coaches} educators={educators} observations={visibleObservations}
+            completedTasks={completedTasks}
             coachId={historyCoachId} setCoachId={setHistoryCoachId}
             cetFilter={historyCetFilter} setCetFilter={setHistoryCetFilter}
             onView={(id) => { setReportId(id); setTab("report"); }}
@@ -1684,6 +1715,11 @@ function RemoveAllBar({ label, count, onClear, warningText, adminSettings, admin
       setScopeError("Only a Master Admin can do this.");
       return;
     }
+    if (!masterOnly && isCourseAdmin(match)) {
+      recordAdminAttempt(adminName, true);
+      setScopeError("Course Admins can't remove CETs — this needs a Lead Admin or Master Admin.");
+      return;
+    }
     recordAdminAttempt(adminName, true);
     onClear(match);
     setConfirmClear(false);
@@ -1720,7 +1756,8 @@ function RemoveAllBar({ label, count, onClear, warningText, adminSettings, admin
             <input value={adminName} onChange={e => { setAdminName(e.target.value); setClearError(false); }} placeholder="Admin name"
               className={`border rounded-lg px-3 py-2 text-sm ${clearError ? "border-red-400" : "border-red-200"}`} />
             <input type="password" inputMode="numeric" maxLength={4} value={pin}
-              onChange={e => { setPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setClearError(false); }} placeholder="Admin PIN"
+              onChange={e => { setPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setClearError(false); }}
+              onKeyDown={e => { if (e.key === "Enter") handleConfirmClear(); }} placeholder="Admin PIN"
               className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${clearError ? "border-red-400" : "border-red-200"}`} />
           </div>
           <div className="pl-6 flex items-center gap-2">
@@ -2072,6 +2109,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
                   className={`border rounded-lg px-3 py-2 text-sm ${mergeAuthError ? "border-red-400" : "border-amber-300"}`} />
                 <input type="password" inputMode="numeric" maxLength={4} value={mergeAuthPin}
                   onChange={e => { setMergeAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setMergeAuthError(false); }} placeholder="Admin PIN"
+                    onKeyDown={e => { if (e.key === "Enter") handleMergeAuth(); }}
                   className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${mergeAuthError ? "border-red-400" : "border-amber-300"}`} />
               </div>
               <button onClick={handleMergeAuth} className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700">Unlock</button>
@@ -2428,6 +2466,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
   const [mergeAuthed, setMergeAuthed] = useState(false);
   const [mergeAuthMatch, setMergeAuthMatch] = useState(null);
   const [mergeAuthError, setMergeAuthError] = useState(false);
+  const [mergeAuthScopeError, setMergeAuthScopeError] = useState("");
   const [mergingKey, setMergingKey] = useState(null);
   const [mergeResultMsg, setMergeResultMsg] = useState("");
 
@@ -2465,6 +2504,12 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
     if (!match) {
       recordAdminAttempt(mergeAuthName, false);
       setMergeAuthError(true);
+      return;
+    }
+    if (isCourseAdmin(match)) {
+      recordAdminAttempt(mergeAuthName, true);
+      setMergeAuthError(false);
+      setMergeAuthScopeError("Course Admins can't merge duplicate CETs — this needs a Lead Admin or Master Admin.");
       return;
     }
     recordAdminAttempt(mergeAuthName, true);
@@ -2623,6 +2668,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                   className={`border rounded-lg px-3 py-2 text-sm ${mergeAuthError ? "border-red-400" : "border-amber-300"}`} />
                 <input type="password" inputMode="numeric" maxLength={4} value={mergeAuthPin}
                   onChange={e => { setMergeAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setMergeAuthError(false); }} placeholder="Admin PIN"
+                    onKeyDown={e => { if (e.key === "Enter") handleMergeAuth(); }}
                   className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${mergeAuthError ? "border-red-400" : "border-amber-300"}`} />
               </div>
               <button onClick={handleMergeAuth} className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700">Unlock</button>
@@ -2633,6 +2679,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                     : "Incorrect admin name or PIN."}
                 </p>
               )}
+              {mergeAuthScopeError && <p className="text-xs text-red-600">{mergeAuthScopeError}</p>}
             </div>
           ) : (
             <div className="space-y-2">
@@ -3118,6 +3165,7 @@ function CoursesTab({ courses, saveCourses, adminSettings, adminLockouts, record
               className={`border rounded-lg px-3 py-2 text-sm ${exportError ? "border-red-400" : "border-slate-300"}`} />
             <input type="password" inputMode="numeric" maxLength={4} value={exportPin}
               onChange={e => { setExportPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setExportError(false); }} placeholder="Admin PIN"
+                onKeyDown={e => { if (e.key === "Enter") handleConfirmExport(); }}
               className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${exportError ? "border-red-400" : "border-slate-300"}`} />
           </div>
           <div className="flex items-center gap-2">
@@ -4323,6 +4371,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                   className={`border rounded-lg px-3 py-2 text-sm ${dupTaskAuthError ? "border-red-400" : "border-amber-300"}`} />
                 <input type="password" inputMode="numeric" maxLength={4} value={dupTaskAuthPin}
                   onChange={e => { setDupTaskAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setDupTaskAuthError(false); }} placeholder="Admin PIN"
+                    onKeyDown={e => { if (e.key === "Enter") handleDupTaskAuth(); }}
                   className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${dupTaskAuthError ? "border-red-400" : "border-amber-300"}`} />
               </div>
               <button onClick={handleDupTaskAuth} className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700">Unlock</button>
@@ -6650,9 +6699,9 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
         setReopening(false);
         return;
       }
-      if (!adminHasMfAccess(match, obs.memberFederation)) {
+      if (!adminHasCourseAccess(match, obs.courseNumber, obs.memberFederation)) {
         await kvSet("adminLockouts", { ...lockouts, [key]: { failCount: 0, lockedUntil: 0 } });
-        setReopenError("This report belongs to a different Member Federation — only a Master Admin or that federation's admin can reopen it.");
+        setReopenError("You don't have access to reopen this report — check with a Lead Admin or Master Admin for your federation.");
         setReopening(false);
         return;
       }
@@ -6713,6 +6762,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
                   className={`border rounded-lg px-3 py-2 text-sm ${reopenError ? "border-red-400" : "border-slate-300"}`} />
                 <input type="password" inputMode="numeric" maxLength={4} value={reopenPin}
                   onChange={e => { setReopenPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setReopenError(""); }} placeholder="Admin PIN"
+                    onKeyDown={e => { if (e.key === "Enter") handleReopenSubmit(); }}
                   className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${reopenError ? "border-red-400" : "border-slate-300"}`} />
               </div>
               {reopenError && <p className="text-xs text-red-600">{reopenError}</p>}
@@ -7114,7 +7164,7 @@ function DataImportTool({ onImported }) {
   );
 }
 
-function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cetFilter, setCetFilter, onView, onClearHistory, onDeleteObservation, adminSettings, saveAdminSettings, adminLockouts, recordAdminAttempt, autoOpenAdmin, onAutoOpenHandled }) {
+function HistoryTab({ coaches, educators, observations, completedTasks, coachId, setCoachId, cetFilter, setCetFilter, onView, onClearHistory, onDeleteObservation, adminSettings, saveAdminSettings, adminLockouts, recordAdminAttempt, autoOpenAdmin, onAutoOpenHandled }) {
   const [courseNumberFilter, setCourseNumberFilter] = useState("");
   const [courseTypeFilter, setCourseTypeFilter] = useState("");
   const [dateFromFilter, setDateFromFilter] = useState("");
@@ -7145,7 +7195,7 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
   const [panelName, setPanelName] = useState("");
   const [panelPin, setPanelPin] = useState("");
   const [panelAuthError, setPanelAuthError] = useState(false);
-  const [leadBlockedMessage, setLeadBlockedMessage] = useState("");
+  const [sessionHostBlockedMessage, setSessionHostBlockedMessage] = useState("");
   const [kickedOutMessage, setKickedOutMessage] = useState("");
   const [newPin, setNewPin] = useState("");
   const [newPinConfirm, setNewPinConfirm] = useState("");
@@ -7161,6 +7211,8 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
   const [addAdminError, setAddAdminError] = useState("");
   const [newAdminRole, setNewAdminRole] = useState("master");
   const [newAdminMfSelection, setNewAdminMfSelection] = useState([]);
+  const [newAdminCourseMf, setNewAdminCourseMf] = useState("");
+  const [newAdminCourseNumbers, setNewAdminCourseNumbers] = useState([]);
   const [resetAllPin, setResetAllPin] = useState("");
   const [resetAllPinConfirm, setResetAllPinConfirm] = useState("");
   const [resetAllError, setResetAllError] = useState("");
@@ -7171,13 +7223,28 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
   const [newAdminPinMode, setNewAdminPinMode] = useState("me");
   const [newAdminPinSelf, setNewAdminPinSelf] = useState("");
   const [newAdminPinSelfConfirm, setNewAdminPinSelfConfirm] = useState("");
-  const [leadAdminNameInput, setLeadAdminNameInput] = useState("");
-  const [leadAdminError, setLeadAdminError] = useState("");
-  const [leadAdminSuccess, setLeadAdminSuccess] = useState(false);
+  const [sessionHostNameInput, setSessionHostNameInput] = useState("");
+  const [sessionHostError, setSessionHostError] = useState("");
+  const [sessionHostSuccess, setSessionHostSuccess] = useState(false);
 
   const maxAdmins = adminSettings.maxAdmins || MAX_ADMINS;
-  const iAmLeadAdmin = panelAuthed && isLeadAdmin(adminSettings, signedInAdminName);
+  const iAmSessionHost = panelAuthed && isSessionHost(adminSettings, signedInAdminName);
   const iAmMaster = panelAuthed && isMasterAdmin(signedInAdminMatch);
+  const iAmLead = panelAuthed && adminTier(signedInAdminMatch) === "lead";
+  // A Lead Admin's role picker is hidden (they only ever add Course
+  // Admins), so newAdminRole may still hold its unused "master" default —
+  // this is what the form conditionals actually key off, not the raw state.
+  const formEffectiveRole = iAmLead ? "course" : newAdminRole;
+  const canManageAdmins = iAmMaster || iAmLead;
+  // Course numbers known within a given MF, derived from Completed Tasks —
+  // used to build the Course Admin course-number picker without relying on
+  // free-typed numbers that could typo.
+  function courseNumbersForMf(mfKey) {
+    return [...new Set(
+      completedTasks.filter(t => t.memberFederation === mfKey && (t.courseNumber || "").trim())
+        .map(t => t.courseNumber.trim())
+    )].sort((a, b) => courseNumericSort({ courseNumber: a }, { courseNumber: b }));
+  }
 
   function observationCourseType(o) {
     if (o.sessionType === "informal") return "Informal";
@@ -7240,15 +7307,14 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
       return match?.videoLink || "";
     }
     const includeCoach = (coachId) => exportAllCoaches || exportCoachIds.includes(coachId);
-    // A Federation Admin's export is limited to observations tagged to
-    // their own Member Federation(s). Completed Tasks records aren't
-    // MF-tagged directly, so as a best-effort match, a scoped export only
-    // includes tasks for coaches who also appear in that scoped
-    // observation set — not a perfect MF filter, but avoids pulling in
-    // clearly unrelated attendance data.
-    const mfScope = iAmMaster ? null : (signedInAdminMatch.memberFederations || []);
-    const filteredObservations = observations.filter(o => includeCoach(o.coachId) && (!mfScope || mfScope.includes(o.memberFederation)));
-    const scopedCoachIds = mfScope ? new Set(filteredObservations.map(o => o.coachId)) : null;
+    // A Lead Admin's export is limited to observations tagged to their own
+    // Member Federation(s); a Course Admin's to just their assigned course
+    // numbers. Completed Tasks records aren't tagged the same way, so as a
+    // best-effort match, a scoped export only includes tasks for coaches
+    // who also appear in that scoped observation set — not a perfect
+    // filter, but avoids pulling in clearly unrelated attendance data.
+    const filteredObservations = observations.filter(o => includeCoach(o.coachId) && adminHasCourseAccess(signedInAdminMatch, o.courseNumber, o.memberFederation));
+    const scopedCoachIds = iAmMaster ? null : new Set(filteredObservations.map(o => o.coachId));
     const filteredCompletedTasks = completedTasksData.filter(t => includeCoach(t.coachId) && (!scopedCoachIds || scopedCoachIds.has(t.coachId)));
     const esc = (s) => (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const sections = filteredObservations.map((o, idx) => {
@@ -7336,11 +7402,12 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
     setSignedInAdminName("");
     setSignedInAdminMatch(null);
     setPanelName(""); setPanelPin(""); setPanelAuthError(false);
-    setLeadBlockedMessage(""); setKickedOutMessage("");
+    setSessionHostBlockedMessage(""); setKickedOutMessage("");
     setNewPin(""); setNewPinConfirm(""); setPinChangeError(""); setPinChangeSuccess(false);
     setNewAdminName(""); setNewAdminPin(""); setNewAdminPinSelf(""); setNewAdminPinSelfConfirm(""); setNewAdminPinMode("me"); setAddAdminError("");
     setNewAdminRole("master"); setNewAdminMfSelection([]);
-    setLeadAdminNameInput(""); setLeadAdminError(""); setLeadAdminSuccess(false);
+    setNewAdminCourseMf(""); setNewAdminCourseNumbers([]);
+    setSessionHostNameInput(""); setSessionHostError(""); setSessionHostSuccess(false);
   }
 
   // Reads the shared Lead-Admin session lock straight from kv_settings
@@ -7393,17 +7460,17 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
     setMaxAdminsSuccess(true);
   }
 
-  function handleSetLeadAdmin() {
-    setLeadAdminSuccess(false);
-    const name = leadAdminNameInput.trim();
-    if (!name) { setLeadAdminError("Enter the name of the admin to make Lead Admin."); return; }
+  function handleSetSessionHost() {
+    setSessionHostSuccess(false);
+    const name = sessionHostNameInput.trim();
+    if (!name) { setSessionHostError("Enter the name of the admin to make Session Host."); return; }
     const targetAdmin = adminSettings.admins.find(a => a.name.trim().toLowerCase() === name.trim().toLowerCase());
-    if (!targetAdmin) { setLeadAdminError("That name doesn't match any admin currently on file."); return; }
-    if (!isMasterAdmin(targetAdmin)) { setLeadAdminError("Lead Admin can only be a Master Admin."); return; }
-    saveAdminSettings({ ...adminSettings, leadAdminName: targetAdmin.name });
-    setLeadAdminError("");
-    setLeadAdminSuccess(true);
-    setLeadAdminNameInput("");
+    if (!targetAdmin) { setSessionHostError("That name doesn't match any admin currently on file."); return; }
+    if (!isMasterAdmin(targetAdmin)) { setSessionHostError("Session Host can only be a Master Admin."); return; }
+    saveAdminSettings({ ...adminSettings, sessionHostName: targetAdmin.name });
+    setSessionHostError("");
+    setSessionHostSuccess(true);
+    setSessionHostNameInput("");
   }
 
   async function handleUnlockPanel() {
@@ -7419,15 +7486,15 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
     }
     recordAdminAttempt(panelName, true);
 
-    // The exclusive "Lead Admin locks everyone else out" session applies
+    // The exclusive "Session Host locks everyone else out" session applies
     // only among Master admins — MF-scoped admins work on disjoint slices
     // of data day-to-day, so there's no real conflict in letting them (and
     // Masters) work concurrently without blocking or kicking each other.
     if (isMasterAdmin(match)) {
-      const iAmLead = isLeadAdmin(adminSettings, match.name);
+      const iAmLead = isSessionHost(adminSettings, match.name);
       const current = await readAdminSession();
       if (current && current.activeAdmin && (current.activeAdmin.toLowerCase() !== match.name.toLowerCase()) && current.isLead && !iAmLead) {
-        setLeadBlockedMessage(`${current.activeAdmin} (Lead Admin) is currently in Admin Settings — try again once they've left.`);
+        setSessionHostBlockedMessage(`${current.activeAdmin} (Session Host) is currently in Admin Settings — try again once they've left.`);
         setPanelAuthError(false);
         return;
       }
@@ -7441,7 +7508,7 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
     setSignedInAdminMatch(match);
     setMaxAdminsInput(String(adminSettings.maxAdmins || MAX_ADMINS));
     setPanelAuthError(false);
-    setLeadBlockedMessage("");
+    setSessionHostBlockedMessage("");
     setKickedOutMessage("");
   }
 
@@ -7449,18 +7516,18 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
     // Only Master sessions participate in the kick-out poll — an MF-admin
     // never registers a shared adminSession, so they're never a target of
     // (or vulnerable to) this mechanism.
-    if (!panelAuthed || iAmLeadAdmin || !iAmMaster) return;
+    if (!panelAuthed || iAmSessionHost || !iAmMaster) return;
     const interval = setInterval(async () => {
       const current = await readAdminSession();
       if (current && current.activeAdmin && current.activeAdmin.toLowerCase() !== signedInAdminName.toLowerCase()) {
-        setKickedOutMessage(`You've been signed out — ${current.activeAdmin} (Lead Admin) entered Admin Settings. Any changes you'd already saved are unaffected; anything you were mid-edit on will need to be redone.`);
+        setKickedOutMessage(`You've been signed out — ${current.activeAdmin} (Session Host) entered Admin Settings. Any changes you'd already saved are unaffected; anything you were mid-edit on will need to be redone.`);
         setPanelAuthed(false);
         setSignedInAdminName("");
         setSignedInAdminMatch(null);
       }
     }, 4000);
     return () => clearInterval(interval);
-  }, [panelAuthed, iAmLeadAdmin, iAmMaster, signedInAdminName]);
+  }, [panelAuthed, iAmSessionHost, iAmMaster, signedInAdminName]);
 
 
   function handleChangePin() {
@@ -7509,10 +7576,16 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
   }
 
   function handleAddAdmin() {
-    if (!iAmMaster) {
-      setAddAdminError("Only a Master Admin can add admins.");
+    const iAmLead = adminTier(signedInAdminMatch) === "lead";
+    if (!iAmMaster && !iAmLead) {
+      setAddAdminError("Only a Master Admin or Lead Admin can add admins.");
       return;
     }
+    // A Lead Admin's role picker is hidden entirely (they only ever add
+    // Course Admins) — newAdminRole may still hold its "master" default
+    // since they never got a control to change it, so the effective role
+    // is forced here rather than trusting the raw state for their case.
+    const effectiveRole = iAmLead ? "course" : newAdminRole;
     const name = newAdminName.trim();
     if (adminSettings.admins.length >= maxAdmins) {
       setAddAdminError(`Only ${maxAdmins} admin${maxAdmins === 1 ? "" : "s"} allowed — a Master Admin can raise this limit in settings below.`);
@@ -7526,9 +7599,28 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
       setAddAdminError("This person is already an admin.");
       return;
     }
-    if (newAdminRole === "mf" && newAdminMfSelection.length === 0) {
-      setAddAdminError("Select at least one Member Federation for a federation-scoped admin.");
+    if (effectiveRole === "lead" && newAdminMfSelection.length === 0) {
+      setAddAdminError("Select at least one Member Federation for a Lead Admin.");
       return;
+    }
+    if (effectiveRole === "course") {
+      if (!newAdminCourseMf) {
+        setAddAdminError("Select the Member Federation this Course Admin belongs to.");
+        return;
+      }
+      if (iAmLead && !(signedInAdminMatch.memberFederations || []).includes(newAdminCourseMf)) {
+        setAddAdminError("You can only add Course Admins for your own Member Federation.");
+        return;
+      }
+      if (newAdminCourseNumbers.length === 0) {
+        setAddAdminError("Select at least one course number for this Course Admin.");
+        return;
+      }
+      const existingCourseAdminsInMf = adminSettings.admins.filter(a => a.role === "course" && a.memberFederation === newAdminCourseMf).length;
+      if (existingCourseAdminsInMf >= 4) {
+        setAddAdminError(`This Member Federation already has 4 Course Admins — the maximum. Remove one before adding another.`);
+        return;
+      }
     }
     let pinToUse;
     if (newAdminPinMode === "them") {
@@ -7548,8 +7640,10 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
       }
       pinToUse = newAdminPin;
     }
-    const newAdmin = newAdminRole === "mf"
-      ? { name, pin: pinToUse, role: "mf", memberFederations: newAdminMfSelection }
+    const newAdmin = effectiveRole === "lead"
+      ? { name, pin: pinToUse, role: "lead", memberFederations: newAdminMfSelection }
+      : effectiveRole === "course"
+      ? { name, pin: pinToUse, role: "course", memberFederation: newAdminCourseMf, assignedCourseNumbers: newAdminCourseNumbers }
       : { name, pin: pinToUse, role: "master" };
     saveAdminSettings({ ...adminSettings, admins: [...adminSettings.admins, newAdmin] });
     setNewAdminName("");
@@ -7559,6 +7653,8 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
     setNewAdminPinMode("me");
     setNewAdminRole("master");
     setNewAdminMfSelection([]);
+    setNewAdminCourseMf("");
+    setNewAdminCourseNumbers([]);
     setAddAdminError("");
   }
 
@@ -7637,10 +7733,11 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
             <div className="space-y-2">
               <p className="text-xs text-slate-500">Enter an admin name and the current PIN to manage admin settings.</p>
               <div className="grid sm:grid-cols-2 gap-2">
-                <input value={panelName} onChange={e => { setPanelName(e.target.value); setPanelAuthError(false); setLeadBlockedMessage(""); }}
+                <input value={panelName} onChange={e => { setPanelName(e.target.value); setPanelAuthError(false); setSessionHostBlockedMessage(""); }}
                   placeholder="Admin name" className={`border rounded-lg px-3 py-2 text-sm ${panelAuthError ? "border-red-400" : "border-slate-300"}`} />
                 <input type="password" inputMode="numeric" maxLength={4} value={panelPin}
-                  onChange={e => { setPanelPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setPanelAuthError(false); setLeadBlockedMessage(""); }}
+                  onChange={e => { setPanelPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setPanelAuthError(false); setSessionHostBlockedMessage(""); }}
+                    onKeyDown={e => { if (e.key === "Enter") handleUnlockPanel(); }}
                   placeholder="Current PIN" className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${panelAuthError ? "border-red-400" : "border-slate-300"}`} />
               </div>
               {panelAuthError && (
@@ -7650,8 +7747,8 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
                     : "Incorrect admin name or PIN."}
                 </p>
               )}
-              {leadBlockedMessage && (
-                <p className="text-xs text-red-600 flex items-center gap-1.5"><Lock className="w-3.5 h-3.5 shrink-0" /> {leadBlockedMessage}</p>
+              {sessionHostBlockedMessage && (
+                <p className="text-xs text-red-600 flex items-center gap-1.5"><Lock className="w-3.5 h-3.5 shrink-0" /> {sessionHostBlockedMessage}</p>
               )}
               <button onClick={handleUnlockPanel} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold">Unlock</button>
             </div>
@@ -7659,21 +7756,23 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
             <div className="space-y-4">
               <p className="text-xs text-emerald-600 font-medium flex items-center gap-1.5 flex-wrap">
                 Signed in as Admin: {signedInAdminName}
-                {iAmLeadAdmin && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full"><Lock className="w-2.5 h-2.5" /> Lead Admin</span>}
+                {iAmSessionHost && <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full"><Lock className="w-2.5 h-2.5" /> Session Host</span>}
                 {!iAmMaster && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded-full">
                     {(signedInAdminMatch.memberFederations || []).join(", ")} Admin
                   </span>
                 )}
               </p>
-              {iAmLeadAdmin && (
+              {iAmSessionHost && (
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  As Lead Admin, no other admin can enter these settings while you're here — and if one was already in when you entered, they've just been signed out.
+                  As Session Host, no other admin can enter these settings while you're here — and if one was already in when you entered, they've just been signed out.
                 </p>
               )}
               {!iAmMaster && (
                 <p className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
-                  You're a Federation Admin — Clear History, Remove All CETs, Reopen Report, Merge Duplicate CETs, and PDF export below are scoped to your Member Federation(s) only. Data export/import and Coach-related admin actions are Master Admin only.
+                  {iAmLead
+                    ? "You're a Lead Admin — Clear History, Remove All CETs, Reopen Report, Merge Duplicate CETs, and PDF export below are scoped to your Member Federation(s) only. You can also add Course Admins for your federation. Data export/import and Coach-related admin actions are Master Admin only."
+                    : "You're a Course Admin — Reopen Report and PDF export below are scoped to your assigned course number(s) only. Clear History, Remove All CETs, Merge Duplicates, Data export/import, and Coach-related admin actions are not available at this level."}
                 </p>
               )}
 
@@ -7698,6 +7797,7 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
                 </button>
               </div>
 
+              {(iAmMaster || iAmLead) && (
               <div className="border-t border-slate-100 pt-3">
                 <p className="text-sm font-semibold text-red-700 mb-1">Clear History</p>
                 {(() => {
@@ -7729,18 +7829,19 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
                   );
                 })()}
               </div>
+              )}
 
               <div className="border-t border-slate-100 pt-3">
                 <p className="text-sm font-semibold text-slate-800 mb-1">Admins</p>
                 <p className="text-xs text-slate-500 mb-2">
                   Maximum {maxAdmins} admin{maxAdmins === 1 ? "" : "s"}, each with their own individual PIN.
-                  {" "}Lead Admin: <strong>{adminSettings.leadAdminName || "—"}</strong>.
+                  {" "}Session Host: <strong>{adminSettings.sessionHostName || "—"}</strong>.
                 </p>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {adminSettings.admins.map((a, i) => (
                     <span key={a.name} className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 flex items-center gap-1.5">
                       {a.name}
-                      {isLeadAdmin(adminSettings, a.name) && <Lock className="w-3 h-3 text-amber-600" />}
+                      {isSessionHost(adminSettings, a.name) && <Lock className="w-3 h-3 text-amber-600" />}
                       {a.role === "mf"
                         ? <span className="text-[10px] font-bold text-indigo-600">· {(a.memberFederations || []).join(", ")}</span>
                         : <span className="text-[10px] font-bold text-slate-400">· Master</span>}
@@ -7765,6 +7866,7 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
                         placeholder="New PIN" className="border border-indigo-300 rounded-lg px-3 py-2 text-sm text-center tracking-widest bg-white" />
                       <input type="password" inputMode="numeric" maxLength={4} value={editAdminPinConfirm}
                         onChange={e => { setEditAdminPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 4)); setEditAdminPinError(""); }}
+                          onKeyDown={e => { if (e.key === "Enter") handleSaveAdminPin(); }}
                         placeholder="Confirm PIN" className="border border-indigo-300 rounded-lg px-3 py-2 text-sm text-center tracking-widest bg-white" />
                     </div>
                     <div className="flex gap-2">
@@ -7774,23 +7876,32 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
                     {editAdminPinError && <p className="text-xs text-red-600">{editAdminPinError}</p>}
                   </div>
                 )}
-                {!iAmMaster ? (
-                  <p className="text-xs text-slate-400">Only a Master Admin can add or manage admins.</p>
+                {!canManageAdmins ? (
+                  <p className="text-xs text-slate-400">Only a Master Admin or Lead Admin can add or manage admins.</p>
                 ) : adminSettings.admins.length < maxAdmins ? (
                   <div className="space-y-2">
                     <input value={newAdminName} onChange={e => { setNewAdminName(e.target.value); setAddAdminError(""); }}
                       placeholder={`Name for Admin ${adminSettings.admins.length + 1}`} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-                    <div className="flex gap-2">
-                      <button onClick={() => { setNewAdminRole("master"); setNewAdminMfSelection([]); setAddAdminError(""); }} type="button"
-                        className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "master" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
-                        Master Admin
-                      </button>
-                      <button onClick={() => { setNewAdminRole("mf"); setAddAdminError(""); }} type="button"
-                        className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "mf" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
-                        Federation Admin
-                      </button>
-                    </div>
-                    {newAdminRole === "mf" && (
+                    {iAmMaster && (
+                      <div className="flex gap-2">
+                        <button onClick={() => { setNewAdminRole("master"); setNewAdminMfSelection([]); setAddAdminError(""); }} type="button"
+                          className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "master" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
+                          Master Admin
+                        </button>
+                        <button onClick={() => { setNewAdminRole("lead"); setAddAdminError(""); }} type="button"
+                          className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "lead" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
+                          Lead Admin
+                        </button>
+                        <button onClick={() => { setNewAdminRole("course"); setAddAdminError(""); }} type="button"
+                          className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "course" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
+                          Course Admin
+                        </button>
+                      </div>
+                    )}
+                    {iAmLead && (
+                      <p className="text-xs text-slate-500">As a Lead Admin, you can add Course Admins for your own Member Federation.</p>
+                    )}
+                    {formEffectiveRole === "lead" && iAmMaster && (
                       <div>
                         <p className="text-xs font-medium text-slate-500 mb-1">Member Federation(s)</p>
                         <div className="flex gap-1.5 flex-wrap">
@@ -7803,6 +7914,44 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
                             </button>
                           ))}
                         </div>
+                      </div>
+                    )}
+                    {formEffectiveRole === "course" && (
+                      <div className="space-y-2">
+                        <div>
+                          <p className="text-xs font-medium text-slate-500 mb-1">Member Federation</p>
+                          <div className="flex gap-1.5 flex-wrap">
+                            {(iAmLead ? MEMBER_FEDERATIONS.filter(mf => (signedInAdminMatch.memberFederations || []).includes(mf.key)) : MEMBER_FEDERATIONS).map(mf => (
+                              <button key={mf.key} type="button" onClick={() => { setNewAdminCourseMf(mf.key); setNewAdminCourseNumbers([]); }}
+                                className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                                  newAdminCourseMf === mf.key ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                                }`}>
+                                {mf.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {newAdminCourseMf && (
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 mb-1">
+                              Course number(s) — {adminSettings.admins.filter(a => a.role === "course" && a.memberFederation === newAdminCourseMf).length}/4 Course Admins already set for this federation
+                            </p>
+                            {courseNumbersForMf(newAdminCourseMf).length === 0 ? (
+                              <p className="text-xs text-slate-400">No courses tagged to this federation yet in Completed Tasks.</p>
+                            ) : (
+                              <div className="flex gap-1.5 flex-wrap">
+                                {courseNumbersForMf(newAdminCourseMf).map(num => (
+                                  <button key={num} type="button" onClick={() => setNewAdminCourseNumbers(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num])}
+                                    className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                                      newAdminCourseNumbers.includes(num) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                                    }`}>
+                                    #{num}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                     <div className="flex gap-2">
@@ -7819,6 +7968,7 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
                       <div className="grid sm:grid-cols-2 gap-2">
                         <input type="password" inputMode="numeric" maxLength={4} value={newAdminPin}
                           onChange={e => { setNewAdminPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setAddAdminError(""); }}
+                            onKeyDown={e => { if (e.key === "Enter") handleAddAdmin(); }}
                           placeholder="Their 4-digit PIN" className="border border-slate-300 rounded-lg px-3 py-2 text-sm text-center tracking-widest" />
                         <button onClick={handleAddAdmin} className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">Add Admin</button>
                       </div>
@@ -7833,6 +7983,7 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
                             placeholder="New PIN" className="border border-slate-300 rounded-lg px-3 py-2 text-sm text-center tracking-widest" />
                           <input type="password" inputMode="numeric" maxLength={4} value={newAdminPinSelfConfirm}
                             onChange={e => { setNewAdminPinSelfConfirm(e.target.value.replace(/\D/g, "").slice(0, 4)); setAddAdminError(""); }}
+                              onKeyDown={e => { if (e.key === "Enter") handleAddAdmin(); }}
                             placeholder="Confirm PIN" className="border border-slate-300 rounded-lg px-3 py-2 text-sm text-center tracking-widest" />
                         </div>
                         <button onClick={handleAddAdmin} className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">Add Admin</button>
@@ -7854,6 +8005,7 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
                     placeholder="New PIN" className="border border-slate-300 rounded-lg px-3 py-2 text-sm text-center tracking-widest" />
                   <input type="password" inputMode="numeric" maxLength={4} value={newPinConfirm}
                     onChange={e => { setNewPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 4)); setPinChangeError(""); setPinChangeSuccess(false); }}
+                      onKeyDown={e => { if (e.key === "Enter") handleChangePin(); }}
                     placeholder="Confirm new PIN" className="border border-slate-300 rounded-lg px-3 py-2 text-sm text-center tracking-widest" />
                 </div>
                 <button onClick={handleChangePin} className="text-sm font-semibold text-indigo-600 hover:text-indigo-700">Update PIN</button>
@@ -7861,17 +8013,17 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
                 {pinChangeSuccess && <p className="text-xs text-emerald-600 mt-1">PIN updated.</p>}
               </div>
 
-              {iAmLeadAdmin && (
+              {iAmSessionHost && (
                 <div className="border-t border-slate-100 pt-3">
-                  <p className="text-sm font-semibold text-slate-800 mb-1 flex items-center gap-1.5"><Lock className="w-3.5 h-3.5 text-amber-600" /> Lead Admin (current: {adminSettings.leadAdminName})</p>
-                  <p className="text-xs text-slate-500 mb-2">Only the current Lead Admin can hand this role to another admin already on file.</p>
+                  <p className="text-sm font-semibold text-slate-800 mb-1 flex items-center gap-1.5"><Lock className="w-3.5 h-3.5 text-amber-600" /> Session Host (current: {adminSettings.sessionHostName})</p>
+                  <p className="text-xs text-slate-500 mb-2">Only the current Session Host can hand this role to another admin already on file.</p>
                   <div className="flex items-center gap-2 mb-1">
-                    <input value={leadAdminNameInput} onChange={e => { setLeadAdminNameInput(e.target.value); setLeadAdminError(""); setLeadAdminSuccess(false); }}
-                      placeholder="Admin name to make Lead Admin" className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-                    <button onClick={handleSetLeadAdmin} className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">Set Lead Admin</button>
+                    <input value={sessionHostNameInput} onChange={e => { setSessionHostNameInput(e.target.value); setSessionHostError(""); setSessionHostSuccess(false); }}
+                      placeholder="Admin name to make Session Host" className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                    <button onClick={handleSetSessionHost} className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">Set Session Host</button>
                   </div>
-                  {leadAdminError && <p className="text-xs text-red-600 mt-1">{leadAdminError}</p>}
-                  {leadAdminSuccess && <p className="text-xs text-emerald-600 mt-1">Lead Admin updated.</p>}
+                  {sessionHostError && <p className="text-xs text-red-600 mt-1">{sessionHostError}</p>}
+                  {sessionHostSuccess && <p className="text-xs text-emerald-600 mt-1">Session Host updated.</p>}
                 </div>
               )}
 
@@ -7900,6 +8052,7 @@ function HistoryTab({ coaches, educators, observations, coachId, setCoachId, cet
                       placeholder="New PIN for everyone" className="border border-slate-300 rounded-lg px-3 py-2 text-sm text-center tracking-widest" />
                     <input type="password" inputMode="numeric" maxLength={4} value={resetAllPinConfirm}
                       onChange={e => { setResetAllPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 4)); setResetAllError(""); setResetAllSuccess(false); }}
+                        onKeyDown={e => { if (e.key === "Enter") handleFullPinReset(); }}
                       placeholder="Confirm new PIN" className="border border-slate-300 rounded-lg px-3 py-2 text-sm text-center tracking-widest" />
                   </div>
                   <button onClick={handleFullPinReset} className="text-sm font-semibold text-red-600 hover:text-red-700">Reset All Admin PINs</button>
