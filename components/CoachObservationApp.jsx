@@ -999,6 +999,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [historyCetFilter, setHistoryCetFilter] = useState("");
   const [editingObservationId, setEditingObservationId] = useState(null);
   const [historyAdminAutoOpen, setHistoryAdminAutoOpen] = useState(false);
+  const [expandedLogisticsSections, setExpandedLogisticsSections] = useState(() => new Set());
 
   useEffect(() => { loadAll(); }, []);
 
@@ -1264,43 +1265,49 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
                 <FileText className="w-4 h-4" /> How to Use CODA
               </a>
             </div>
-            <div>
-              <RemoveAllBar
-                label="Remove All CETs" count={educators.length}
-                onClear={(match) => {
-                  if (isMasterAdmin(match)) {
-                    saveEducators([]);
-                  } else {
-                    const scope = match.memberFederations || [];
-                    saveEducators(educators.filter(e => !(e.memberFederations || []).some(mf => scope.includes(mf))));
-                  }
-                }}
-                warningText={`This deletes all ${educators.length} CET${educators.length === 1 ? "" : "s"} — or, if you're a Federation Admin, only the CETs tagged to your own Member Federation(s). Past observations will remain in History but will no longer show a linked CET profile. This cannot be undone and is restricted to App Admins.`}
-                adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
+            <CollapsibleSection title="CETs" count={educators.length} sectionKey="cets" expandedSections={expandedLogisticsSections} setExpandedSections={setExpandedLogisticsSections}>
+              <div>
+                <RemoveAllBar
+                  label="Remove All CETs" count={educators.length}
+                  onClear={(match) => {
+                    if (isMasterAdmin(match)) {
+                      saveEducators([]);
+                    } else {
+                      const scope = match.memberFederations || [];
+                      saveEducators(educators.filter(e => !(e.memberFederations || []).some(mf => scope.includes(mf))));
+                    }
+                  }}
+                  warningText={`This deletes all ${educators.length} CET${educators.length === 1 ? "" : "s"} — or, if you're a Federation Admin, only the CETs tagged to your own Member Federation(s). Past observations will remain in History but will no longer show a linked CET profile. This cannot be undone and is restricted to App Admins.`}
+                  adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
+                />
+                <CetTab educators={educators} saveEducators={saveEducators} observations={visibleObservations}
+                  adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
+                  goHistoryForCet={(name) => { setHistoryCetFilter(name); setTab("history"); }} />
+              </div>
+            </CollapsibleSection>
+            <CollapsibleSection title="Course & Workshop Library" count={courses.length} sectionKey="courses" expandedSections={expandedLogisticsSections} setExpandedSections={setExpandedLogisticsSections}>
+              <CoursesTab
+                courses={courses} saveCourses={saveCourses} adminSettings={adminSettings}
+                adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
               />
-              <CetTab educators={educators} saveEducators={saveEducators} observations={visibleObservations}
-                adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
-                goHistoryForCet={(name) => { setHistoryCetFilter(name); setTab("history"); }} />
-            </div>
-            <CoursesTab
-              courses={courses} saveCourses={saveCourses} adminSettings={adminSettings}
-              adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
-            />
-            <div>
-              <RemoveAllBar
-                label="Remove All Coaches" count={coaches.length} onClear={() => saveCoaches([])} masterOnly
-                warningText={`This will permanently delete all ${coaches.length} coach${coaches.length === 1 ? "" : "es"}. Past observations will remain in History but will no longer show a linked coach profile. This cannot be undone and is restricted to Master Admins — coach profiles aren't tagged to a Member Federation, so this action can't be safely scoped to a Federation Admin.`}
-                adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
-              />
-              <CoachesTab
-                coaches={coaches} observations={visibleObservations}
-                saveCoaches={saveCoaches}
-                allObservations={observations} saveObservations={saveObservations}
-                completedTasks={completedTasks} saveCompletedTasks={saveCompletedTasks}
-                adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
-                goHistory={(cid) => { setHistoryCoachId(cid); setTab("history"); }}
-              />
-            </div>
+            </CollapsibleSection>
+            <CollapsibleSection title="Coaches" count={coaches.length} sectionKey="coaches" expandedSections={expandedLogisticsSections} setExpandedSections={setExpandedLogisticsSections}>
+              <div>
+                <RemoveAllBar
+                  label="Remove All Coaches" count={coaches.length} onClear={() => saveCoaches([])} masterOnly
+                  warningText={`This will permanently delete all ${coaches.length} coach${coaches.length === 1 ? "" : "es"}. Past observations will remain in History but will no longer show a linked coach profile. This cannot be undone and is restricted to Master Admins — coach profiles aren't tagged to a Member Federation, so this action can't be safely scoped to a Federation Admin.`}
+                  adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
+                />
+                <CoachesTab
+                  coaches={coaches} observations={visibleObservations}
+                  saveCoaches={saveCoaches}
+                  allObservations={observations} saveObservations={saveObservations}
+                  completedTasks={completedTasks} saveCompletedTasks={saveCompletedTasks}
+                  adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
+                  goHistory={(cid) => { setHistoryCoachId(cid); setTab("history"); }}
+                />
+              </div>
+            </CollapsibleSection>
           </div>
         )}
         {tab === "report" && reportId && (
@@ -1528,14 +1535,37 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
 function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goHistory }) {
   const [expandedCourse, setExpandedCourse] = useState(null);
   const [expandedOpenCourse, setExpandedOpenCourse] = useState(null);
+  const [expandedOpenMfs, setExpandedOpenMfs] = useState(() => new Set());
   const [groupDaysInputs, setGroupDaysInputs] = useState({});
   const [individualDaysInputs, setIndividualDaysInputs] = useState({});
   const groups = groupCoursesByNumber(completedTasks);
   const openGroups = groups.filter(g => !closedCourseNumbers.includes(g.courseNumber)).sort(courseNumericSort);
   const completedGroups = groups.filter(g => closedCourseNumbers.includes(g.courseNumber)).sort(courseNumericSort);
 
+  // Bucket the flat open-course groups under whichever Member Federation
+  // most of that course's records are tagged to, mirroring how Completed
+  // Tasks nests courses under an MF header.
+  function groupOpenCoursesByMf(list) {
+    const byMf = {};
+    list.forEach(g => {
+      const counts = {};
+      g.records.forEach(t => { const k = t.memberFederation || ""; counts[k] = (counts[k] || 0) + 1; });
+      const mfKey = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+      if (!byMf[mfKey]) byMf[mfKey] = [];
+      byMf[mfKey].push(g);
+    });
+    return Object.entries(byMf).sort((a, b) => {
+      const la = MEMBER_FEDERATIONS.find(m => m.key === a[0])?.label || a[0] || "zzz";
+      const lb = MEMBER_FEDERATIONS.find(m => m.key === b[0])?.label || b[0] || "zzz";
+      return la.localeCompare(lb);
+    });
+  }
+  const openGroupsByMf = groupOpenCoursesByMf(openGroups);
+
   function maxDaysFor(courseTitle) {
-    return isCDiploma(courseTitle) ? 4 : 9;
+    if (isCDiploma(courseTitle)) return 4;
+    if (isADiploma(courseTitle)) return 12;
+    return 9;
   }
 
   function daysFromPercent(pct, maxDays) {
@@ -1594,8 +1624,25 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
           <div className="p-6 text-center text-slate-400 text-sm">No open courses yet — these appear once a Completed Tasks record has a Course Number set.</div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {openGroups.map(g => {
-              const maxDays = maxDaysFor(g.courseTitle);
+            {openGroupsByMf.map(([mfKey, groupsForMf]) => {
+              const mfLabel = MEMBER_FEDERATIONS.find(m => m.key === mfKey)?.label || mfKey || "No Member Federation";
+              const mfExpanded = expandedOpenMfs.has(mfKey);
+              return (
+                <div key={mfKey || "none"}>
+                  <button onClick={() => setExpandedOpenMfs(prev => {
+                      const next = new Set(prev);
+                      if (next.has(mfKey)) next.delete(mfKey); else next.add(mfKey);
+                      return next;
+                    })} type="button"
+                    className="w-full flex items-center gap-2 text-left px-5 py-2.5 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${mfExpanded ? "rotate-90" : ""}`} />
+                    <p className="text-sm font-semibold text-slate-700 flex-1">{mfLabel}</p>
+                    <span className="text-xs text-slate-400">{groupsForMf.length} course{groupsForMf.length === 1 ? "" : "s"}</span>
+                  </button>
+                  {mfExpanded && (
+                    <div className="divide-y divide-slate-100">
+                      {groupsForMf.map(g => {
+            const maxDays = maxDaysFor(g.courseTitle);
               const isExpanded = expandedOpenCourse === g.courseNumber;
               return (
                 <div key={g.courseNumber}>
@@ -1650,6 +1697,11 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                           );
                         })}
                       </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
                     </div>
                   )}
                 </div>
@@ -1742,6 +1794,28 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// A banner that starts collapsed and expands on click — used in Logistics
+// to keep CETs, Courses, and Coaches out of the way until wanted. Content
+// is only actually mounted/rendered once expanded, not just visually hidden.
+function CollapsibleSection({ title, count, sectionKey, expandedSections, setExpandedSections, children }) {
+  const isExpanded = expandedSections.has(sectionKey);
+  return (
+    <div>
+      <button onClick={() => setExpandedSections(prev => {
+          const next = new Set(prev);
+          if (next.has(sectionKey)) next.delete(sectionKey); else next.add(sectionKey);
+          return next;
+        })} type="button"
+        className="w-full flex items-center gap-2 text-left bg-slate-100 hover:bg-slate-200 transition-colors rounded-lg px-4 py-3 mb-3">
+        <ChevronRight className={`w-4 h-4 text-slate-500 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
+        <p className="text-base font-bold text-slate-800 flex-1">{title}</p>
+        <span className="text-xs font-medium text-slate-500">{count}</span>
+      </button>
+      {isExpanded && children}
     </div>
   );
 }
@@ -3045,6 +3119,73 @@ function CoursesTab({ courses, saveCourses, adminSettings, adminLockouts, record
   const [level, setLevel] = useState("");
   const [description, setDescription] = useState("");
   const [selAreas, setSelAreas] = useState([]);
+  const [showDuplicates, setShowDuplicates] = useState(false);
+  const [dupAuthName, setDupAuthName] = useState("");
+  const [dupAuthPin, setDupAuthPin] = useState("");
+  const [dupAuthed, setDupAuthed] = useState(false);
+  const [dupAuthError, setDupAuthError] = useState(false);
+  const [dupResultMsg, setDupResultMsg] = useState("");
+
+  const duplicateCourseGroups = (() => {
+    const byTitle = {};
+    courses.forEach(c => {
+      const key = (c.title || "").trim().toLowerCase();
+      if (!key) return;
+      if (!byTitle[key]) byTitle[key] = [];
+      byTitle[key].push(c);
+    });
+    return Object.values(byTitle).filter(g => g.length > 1).sort((a, b) => a[0].title.localeCompare(b[0].title));
+  })();
+
+  function courseCompletenessScore(c) {
+    let score = 0;
+    if ((c.provider || "").trim()) score++;
+    if ((c.level || "").trim()) score++;
+    if ((c.description || "").trim()) score++;
+    if ((c.areas || []).length) score += c.areas.length;
+    return score;
+  }
+
+  function handleDupAuth() {
+    if (isLockedOut(adminLockouts, dupAuthName)) {
+      setDupAuthError(true);
+      return;
+    }
+    const match = findAdminMatch(adminSettings.admins, dupAuthName, dupAuthPin);
+    if (!match) {
+      recordAdminAttempt(dupAuthName, false);
+      setDupAuthError(true);
+      return;
+    }
+    if (!isMasterAdmin(match)) {
+      recordAdminAttempt(dupAuthName, true);
+      setDupAuthError(false);
+      setDupResultMsg("Only a Master Admin can remove duplicate courses.");
+      return;
+    }
+    recordAdminAttempt(dupAuthName, true);
+    setDupAuthed(true);
+    setDupAuthError(false);
+  }
+
+  function removeDuplicateGroup(group) {
+    const sorted = [...group].sort((a, b) => courseCompletenessScore(b) - courseCompletenessScore(a));
+    const keepId = sorted[0].id;
+    const removeIds = new Set(sorted.slice(1).map(c => c.id));
+    saveCourses(courses.filter(c => !removeIds.has(c.id)));
+    setDupResultMsg(`Kept 1 "${sorted[0].title}", removed ${removeIds.size} duplicate${removeIds.size === 1 ? "" : "s"}.`);
+  }
+
+  function removeAllDuplicates() {
+    let toRemove = new Set();
+    duplicateCourseGroups.forEach(group => {
+      const sorted = [...group].sort((a, b) => courseCompletenessScore(b) - courseCompletenessScore(a));
+      sorted.slice(1).forEach(c => toRemove.add(c.id));
+    });
+    saveCourses(courses.filter(c => !toRemove.has(c.id)));
+    setDupResultMsg(`Removed ${toRemove.size} duplicate course${toRemove.size === 1 ? "" : "s"} across ${duplicateCourseGroups.length} title${duplicateCourseGroups.length === 1 ? "" : "s"}.`);
+  }
+
   const [showExportAuth, setShowExportAuth] = useState(false);
   const [exportAdminName, setExportAdminName] = useState("");
   const [exportPin, setExportPin] = useState("");
@@ -3204,8 +3345,57 @@ function CoursesTab({ courses, saveCourses, adminSettings, adminLockouts, record
           <button onClick={openAddForm} className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-100 whitespace-nowrap">
             <Plus className="w-4 h-4" /> Add Course
           </button>
+          {duplicateCourseGroups.length > 0 && (
+            <button onClick={() => setShowDuplicates(s => !s)} className="flex items-center gap-1.5 text-sm font-semibold text-amber-700 border border-amber-300 px-3 py-2 rounded-lg hover:bg-amber-50 whitespace-nowrap">
+              <AlertCircle className="w-4 h-4" /> {duplicateCourseGroups.length} Duplicate{duplicateCourseGroups.length === 1 ? "" : "s"} Found
+            </button>
+          )}
         </div>
       </div>
+
+      {showDuplicates && duplicateCourseGroups.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+          <p className="text-sm font-semibold text-amber-900">Duplicate Courses</p>
+          <p className="text-xs text-amber-700">Same title found on more than one library entry — usually from bulk-uploading the same file twice. Keeping one removes the rest (whichever has the most details filled in survives). Removed entries stay recoverable from the Bin for 30 days.</p>
+          {!dupAuthed ? (
+            <div className="space-y-2 pt-1">
+              <p className="text-xs text-amber-700">Enter an admin name and PIN to clean these up.</p>
+              <div className="grid sm:grid-cols-2 gap-2">
+                <input value={dupAuthName} onChange={e => { setDupAuthName(e.target.value); setDupAuthError(false); }} placeholder="Admin name"
+                  className={`border rounded-lg px-3 py-2 text-sm ${dupAuthError ? "border-red-400" : "border-amber-300"}`} />
+                <input type="password" inputMode="numeric" maxLength={4} value={dupAuthPin}
+                  onChange={e => { setDupAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setDupAuthError(false); }}
+                  onKeyDown={e => { if (e.key === "Enter") handleDupAuth(); }} placeholder="Admin PIN"
+                  className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${dupAuthError ? "border-red-400" : "border-amber-300"}`} />
+              </div>
+              <button onClick={handleDupAuth} className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700">Unlock</button>
+              {dupAuthError && (
+                <p className="text-xs text-red-600">
+                  {isLockedOut(adminLockouts, dupAuthName)
+                    ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, dupAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, dupAuthName) === 1 ? "" : "s"}.`
+                    : "Incorrect admin name or PIN."}
+                </p>
+              )}
+              {dupResultMsg && <p className="text-xs text-red-600">{dupResultMsg}</p>}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {dupResultMsg && <p className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{dupResultMsg}</p>}
+              <button onClick={removeAllDuplicates} className="bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-amber-700">
+                Remove All Duplicates (keep one of each)
+              </button>
+              <div className="space-y-1.5 pt-1">
+                {duplicateCourseGroups.map(group => (
+                  <div key={group[0].title} className="flex items-center justify-between gap-2 bg-white rounded-lg border border-amber-200 px-3 py-2">
+                    <p className="text-sm text-slate-700">{group[0].title} <span className="text-xs text-slate-400">({group.length} copies)</span></p>
+                    <button onClick={() => removeDuplicateGroup(group)} className="text-xs font-semibold text-amber-700 hover:text-amber-800 whitespace-nowrap">Keep 1</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {showBulkUpload && (
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
@@ -3425,7 +3615,7 @@ function isAttendedCell(raw, diplomaType) {
 }
 
 function isDateColumnHeader(header, diplomaType) {
-  const maxNum = diplomaType === "C" ? 4 : 9;
+  const maxNum = diplomaType === "C" ? 4 : diplomaType === "A" ? 12 : 9;
   const bracketMatch = (header || "").match(/\((\d{1,2})\)/);
   if (!bracketMatch) return false;
   const num = parseInt(bracketMatch[1], 10);
@@ -4178,7 +4368,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       setCourseworkPreview(null);
       return;
     }
-    const maxSessions = courseworkDiplomaType === "C" ? 4 : 9;
+    const maxSessions = courseworkDiplomaType === "C" ? 4 : courseworkDiplomaType === "A" ? 12 : 9;
     let skippedBlankName = 0;
     const preview = courseworkRawRows.map(r => {
       const coachName = courseworkNameHeader === "__firstlast__"
@@ -4814,7 +5004,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           <p className="text-xs text-slate-500">
             Upload the coursework CSV, then confirm which column holds the coach's name before generating the preview. Attendance % is
             calculated automatically: a cell counts as attended if it's "Y" or a three-digit block number — starting with 2 for A/B Diploma
-            (out of a fixed 9 sessions) or starting with 1 for C Diploma (out of a fixed 4 sessions); blank or "N" counts as not attended.
+            (out of a fixed 12 sessions for A Diploma, 9 for B Diploma) or starting with 1 for C Diploma (out of a fixed 4 sessions); blank or "N" counts as not attended.
             Coaches are matched by name against your roster, and anyone not already on file is added automatically.
           </p>
           <div className="grid sm:grid-cols-2 gap-3">
@@ -5873,14 +6063,15 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
 
   useEffect(() => {
     if ((!isBDiploma(formalCourseName) && !isADiploma(formalCourseName)) || diplomaBlock || !matchedCompletedTask) return;
-    const days = Math.round(((matchedCompletedTask.attendancePercent || 0) / 100) * 9);
     let block = "";
     if (isADiploma(formalCourseName)) {
-      if (days >= 1 && days <= 2) block = "Block 1";
-      else if (days >= 3 && days <= 4) block = "Block 2";
-      else if (days >= 5 && days <= 6) block = "Block 3";
-      else if (days >= 7 && days <= 9) block = "Block 4";
+      const days = Math.round(((matchedCompletedTask.attendancePercent || 0) / 100) * 12);
+      if (days >= 1 && days <= 3) block = "Block 1";
+      else if (days >= 4 && days <= 6) block = "Block 2";
+      else if (days >= 7 && days <= 9) block = "Block 3";
+      else if (days >= 10 && days <= 12) block = "Block 4";
     } else {
+      const days = Math.round(((matchedCompletedTask.attendancePercent || 0) / 100) * 9);
       if (days >= 1 && days <= 2) block = "Block 1";
       else if (days >= 3 && days <= 5) block = "Block 2";
       else if (days >= 6 && days <= 9) block = "Block 3";
