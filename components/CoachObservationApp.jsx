@@ -7913,12 +7913,14 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     }
     if (effectiveRole === "lead") {
       if (newAdminMfSelection.length === 0) {
-        setAddAdminError("Select at least one Member Federation for a Lead Admin.");
+        setAddAdminError("Select a Member Federation for this Lead Admin.");
         return;
       }
-      const existingLeadCount = adminSettings.admins.filter(a => a.role === "lead").length;
-      if (existingLeadCount >= 4) {
-        setAddAdminError("There are already 4 Lead Admins — the maximum across all Member Federations. Remove one before adding another.");
+      const claimedMfs = new Set(adminSettings.admins.filter(a => a.role === "lead").flatMap(a => a.memberFederations || []));
+      const alreadyClaimed = newAdminMfSelection.filter(mf => claimedMfs.has(mf));
+      if (alreadyClaimed.length > 0) {
+        const labels = alreadyClaimed.map(k => (MEMBER_FEDERATIONS.find(m => m.key === k) || {}).label || k);
+        setAddAdminError(`${labels.join(", ")} already ${alreadyClaimed.length === 1 ? "has" : "have"} a Lead Admin — each federation gets exactly one.`);
         return;
       }
     }
@@ -8275,7 +8277,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         </button>
                         <button onClick={() => { setNewAdminRole("lead"); setAddAdminError(""); }} type="button"
                           className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "lead" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
-                          Lead Admin ({adminSettings.admins.filter(a => a.role === "lead").length}/4)
+                          Lead Admin ({adminSettings.admins.filter(a => a.role === "lead").length}/{MEMBER_FEDERATIONS.length})
                         </button>
                         <button onClick={() => { setNewAdminRole("course"); setAddAdminError(""); }} type="button"
                           className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "course" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
@@ -8286,21 +8288,29 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                     {iAmLead && (
                       <p className="text-xs text-slate-500">As a Lead Admin, you can add Course Admins for your own Member Federation.</p>
                     )}
-                    {formEffectiveRole === "lead" && iAmMaster && (
-                      <div>
-                        <p className="text-xs font-medium text-slate-500 mb-1">Member Federation(s)</p>
-                        <div className="flex gap-1.5 flex-wrap">
-                          {MEMBER_FEDERATIONS.map(mf => (
-                            <button key={mf.key} type="button" onClick={() => setNewAdminMfSelection(prev => prev.includes(mf.key) ? prev.filter(k => k !== mf.key) : [...prev, mf.key])}
-                              className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                                newAdminMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
-                              }`}>
-                              {mf.label}
-                            </button>
-                          ))}
+                    {formEffectiveRole === "lead" && iAmMaster && (() => {
+                      const claimedMfs = new Set(adminSettings.admins.filter(a => a.role === "lead").flatMap(a => a.memberFederations || []));
+                      return (
+                        <div>
+                          <p className="text-xs font-medium text-slate-500 mb-1">Member Federation — one Lead Admin per federation</p>
+                          <div className="flex gap-1.5 flex-wrap">
+                            {MEMBER_FEDERATIONS.map(mf => {
+                              const taken = claimedMfs.has(mf.key);
+                              return (
+                                <button key={mf.key} type="button" disabled={taken}
+                                  onClick={() => setNewAdminMfSelection([mf.key])}
+                                  className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                                    taken ? "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
+                                    : newAdminMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                                  }`}>
+                                  {mf.label}{taken ? " (taken)" : ""}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                     {formEffectiveRole === "course" && (
                       <div className="space-y-2">
                         <div>
