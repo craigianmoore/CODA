@@ -865,7 +865,22 @@ const CODA_STORAGE_KEYS = ["coaches", "courses", "educators", "observations", "c
 async function loadCollectionSb(table) {
   const { data, error } = await supabase.from(table).select("id, data");
   if (error) { console.error(`Load ${table} failed:`, error); return []; }
-  return (data || []).map(row => ({ ...row.data, id: row.id }));
+  // Soft-deleted (binned) records stay in Supabase but are invisible to
+  // the rest of the app — this filter is the one place that enforces
+  // that, so every other screen just sees the same "gone" behaviour it
+  // always did.
+  return (data || []).map(row => ({ ...row.data, id: row.id })).filter(item => !item.deletedAt);
+}
+
+// Bin-only loader — the mirror image of loadCollectionSb, returning ONLY
+// the soft-deleted records, newest-deleted first.
+async function loadBinnedItemsSb(table) {
+  const { data, error } = await supabase.from(table).select("id, data");
+  if (error) { console.error(`Load binned ${table} failed:`, error); return []; }
+  return (data || [])
+    .map(row => ({ ...row.data, id: row.id }))
+    .filter(item => item.deletedAt)
+    .sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
 }
 
 async function writeRecordSb(table, item) {
@@ -878,11 +893,43 @@ async function removeRecordSb(table, id) {
   if (error) { console.error(`Delete from ${table} failed:`, error); throw error; }
 }
 
+// Restore from the Bin — clears deletedAt and writes the record back to
+// its normal, visible state.
+async function restoreRecordSb(table, item) {
+  const { deletedAt, ...rest } = item;
+  await writeRecordSb(table, rest);
+}
+
+const BIN_RETENTION_DAYS = 30;
+const BIN_RETENTION_MS = BIN_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+// The "simple purge" — runs whenever the Bin screen is opened rather than
+// on a fixed schedule. Anything soft-deleted more than 30 days ago gets
+// permanently, actually removed from Supabase at that point. Returns the
+// still-recoverable items (already purged of anything expired).
+async function loadBinnedItemsWithPurgeSb(table) {
+  const binned = await loadBinnedItemsSb(table);
+  const now = Date.now();
+  const expired = binned.filter(item => now - new Date(item.deletedAt).getTime() > BIN_RETENTION_MS);
+  if (expired.length) {
+    await Promise.all(expired.map(item => removeRecordSb(table, item.id).catch(() => {})));
+  }
+  return binned.filter(item => now - new Date(item.deletedAt).getTime() <= BIN_RETENTION_MS);
+}
+
 async function syncCollectionSb(table, oldArray, newArray) {
   const newIds = new Set(newArray.map(i => i.id));
   await Promise.all(newArray.map(i => writeRecordSb(table, i)));
-  await Promise.all((oldArray || []).filter(i => !newIds.has(i.id)).map(i => removeRecordSb(table, i.id)));
+  // Soft-delete: anything removed from the array is marked deletedAt
+  // rather than actually removed from Supabase, so it's recoverable from
+  // the Bin for 30 days. This one change is what makes every existing
+  // delete pathway in the app — individual deletes, bulk Remove All,
+  // Clear History, and the merge-duplicate tools — safely undoable,
+  // without needing to touch each of those call sites individually.
+  const toRemove = (oldArray || []).filter(i => !newIds.has(i.id));
+  await Promise.all(toRemove.map(i => writeRecordSb(table, { ...i, deletedAt: new Date().toISOString() })));
 }
+
 
 // Used by the Import Data tool specifically — adds/updates records from the
 // imported file but never deletes anything already in the table. Restoring
@@ -983,6 +1030,27 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
       setError("Could not load data.");
     }
     setLoading(false);
+  }
+
+  // Same data refresh as loadAll, without the full-page loading state —
+  // loadAll's spinner replaces the entire app (including whatever admin
+  // panel is currently open), which is exactly wrong for "I just clicked
+  // Restore in the Bin and want to stay right where I am."
+  async function reloadCollectionsQuietly() {
+    try {
+      const [c, co, ed, ob, ct] = await Promise.all([
+        loadCollectionSb("coaches"),
+        loadCollectionSb("courses"),
+        loadCollectionSb("cets"),
+        loadCollectionSb("observations"),
+        loadCollectionSb("completed_tasks"),
+      ]);
+      setCoaches(c || []);
+      setCourses(co || []);
+      setEducators(ed || []);
+      setObservations(ob || []);
+      setCompletedTasks(ct || []);
+    } catch (e) { /* the Bin's own local state already reflects the restore either way */ }
   }
 
   const saveCoaches = async (v) => { setCoaches(v); await syncCollectionSb("coaches", coaches, v); };
@@ -1249,6 +1317,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
               o.status === "draft" || (mfScope && !mfScope.includes(o.memberFederation))
             ))}
             onDeleteObservation={handleDeleteObservation}
+            onDataRestored={reloadCollectionsQuietly}
             adminSettings={adminSettings}
             saveAdminSettings={saveAdminSettings}
             adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
@@ -7294,7 +7363,7 @@ function DataImportTool({ onImported }) {
   );
 }
 
-function HistoryTab({ coaches, educators, observations, completedTasks, coachId, setCoachId, cetFilter, setCetFilter, onView, onClearHistory, onDeleteObservation, adminSettings, saveAdminSettings, adminLockouts, recordAdminAttempt, autoOpenAdmin, onAutoOpenHandled }) {
+function HistoryTab({ coaches, educators, observations, completedTasks, coachId, setCoachId, cetFilter, setCetFilter, onView, onClearHistory, onDeleteObservation, onDataRestored, adminSettings, saveAdminSettings, adminLockouts, recordAdminAttempt, autoOpenAdmin, onAutoOpenHandled }) {
   const [courseNumberFilter, setCourseNumberFilter] = useState("");
   const [courseTypeFilter, setCourseTypeFilter] = useState("");
   const [dateFromFilter, setDateFromFilter] = useState("");
@@ -7338,6 +7407,66 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   const [editAdminPinSuccessName, setEditAdminPinSuccessName] = useState("");
   const [confirmRemoveAdminName, setConfirmRemoveAdminName] = useState(null);
   const [removeAdminError, setRemoveAdminError] = useState("");
+  const [binOpen, setBinOpen] = useState(false);
+  const [binLoading, setBinLoading] = useState(false);
+  const [binItems, setBinItems] = useState(null);
+  const [restoringKey, setRestoringKey] = useState(null);
+
+  const BIN_TABLES = [
+    { table: "coaches", label: "Coaches", masterOnly: true, nameOf: (i) => i.name },
+    { table: "cets", label: "CETs", masterOnly: false, nameOf: (i) => i.name },
+    { table: "observations", label: "Observations", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
+    { table: "completed_tasks", label: "Completed Tasks", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"}${i.courseNumber ? ` — #${i.courseNumber}` : ""}` },
+  ];
+
+  function daysRemaining(deletedAt) {
+    const elapsed = Date.now() - new Date(deletedAt).getTime();
+    return Math.max(0, Math.ceil((BIN_RETENTION_MS - elapsed) / (24 * 60 * 60 * 1000)));
+  }
+
+  function binItemInScope(tableKey, item) {
+    if (iAmMaster) return true;
+    // Lead Admin only — Coaches aren't federation-tagged at all, so that
+    // section is Master-only. CETs use memberFederations; observations
+    // and completed tasks use a single memberFederation.
+    const mine = signedInAdminMatch.memberFederations || [];
+    if (tableKey === "cets") return (item.memberFederations || []).some(mf => mine.includes(mf));
+    if (tableKey === "observations" || tableKey === "completed_tasks") return mine.includes(item.memberFederation);
+    return false;
+  }
+
+  async function loadBin() {
+    setBinLoading(true);
+    try {
+      const results = {};
+      for (const { table } of BIN_TABLES) {
+        results[table] = await loadBinnedItemsWithPurgeSb(table);
+      }
+      setBinItems(results);
+    } catch (e) {
+      setBinItems({});
+    }
+    setBinLoading(false);
+  }
+
+  function handleOpenBin() {
+    setBinOpen(true);
+    if (!binItems) loadBin();
+  }
+
+  async function handleRestore(table, item) {
+    const key = `${table}:${item.id}`;
+    setRestoringKey(key);
+    try {
+      await restoreRecordSb(table, item);
+      setBinItems(prev => ({ ...prev, [table]: (prev[table] || []).filter(i => i.id !== item.id) }));
+      if (onDataRestored) await onDataRestored();
+    } catch (e) {
+      alert("Couldn't restore this item — try again.");
+    }
+    setRestoringKey(null);
+  }
+
   const [newAdminName, setNewAdminName] = useState("");
   const [newAdminPin, setNewAdminPin] = useState("");
   const [addAdminError, setAddAdminError] = useState("");
@@ -7540,6 +7669,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setNewAdminRole("master"); setNewAdminMfSelection([]);
     setNewAdminCourseMf(""); setNewAdminCourseNumbers([]);
     setConfirmRemoveAdminName(null); setRemoveAdminError("");
+    setBinOpen(false); setBinItems(null); setBinLoading(false); setRestoringKey(null);
     setSessionHostNameInput(""); setSessionHostError(""); setSessionHostSuccess(false);
   }
 
@@ -8003,6 +8133,56 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   );
                 })()}
               </div>
+              )}
+
+              {(iAmMaster || iAmLead) && (
+                <div className="border-t border-slate-100 pt-3">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <p className="text-sm font-semibold text-slate-800">Bin</p>
+                    {!binOpen && (
+                      <button onClick={handleOpenBin} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Open Bin</button>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 mb-2">Deleted coaches, CETs, observations, and completed tasks records — from individual deletes, bulk removals, Clear History, and merged duplicates — sit here for {BIN_RETENTION_DAYS} days before being permanently removed, and can be restored any time before then.</p>
+                  {binOpen && (
+                    binLoading ? (
+                      <p className="text-xs text-slate-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading Bin...</p>
+                    ) : !binItems ? null : (
+                      <div className="space-y-3">
+                        {BIN_TABLES.filter(bt => !bt.masterOnly || iAmMaster).map(bt => {
+                          const items = (binItems[bt.table] || []).filter(item => binItemInScope(bt.table, item));
+                          if (items.length === 0) return null;
+                          return (
+                            <div key={bt.table}>
+                              <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-1">{bt.label} ({items.length})</p>
+                              <div className="space-y-1.5">
+                                {items.map(item => {
+                                  const key = `${bt.table}:${item.id}`;
+                                  const remaining = daysRemaining(item.deletedAt);
+                                  return (
+                                    <div key={key} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
+                                      <div className="min-w-0">
+                                        <p className="text-sm text-slate-700 truncate">{bt.nameOf(item)}</p>
+                                        <p className="text-xs text-slate-400">Deleted {new Date(item.deletedAt).toLocaleDateString("en-GB")} · {remaining} day{remaining === 1 ? "" : "s"} left</p>
+                                      </div>
+                                      <button onClick={() => handleRestore(bt.table, item)} disabled={restoringKey === key}
+                                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap disabled:text-slate-300">
+                                        {restoringKey === key ? "Restoring..." : "Restore"}
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {BIN_TABLES.filter(bt => !bt.masterOnly || iAmMaster).every(bt => (binItems[bt.table] || []).filter(item => binItemInScope(bt.table, item)).length === 0) && (
+                          <p className="text-xs text-slate-400">Nothing in the Bin{!iAmMaster ? " for your Member Federation(s)" : ""} right now.</p>
+                        )}
+                      </div>
+                    )
+                  )}
+                </div>
               )}
 
               <div className="border-t border-slate-100 pt-3">
