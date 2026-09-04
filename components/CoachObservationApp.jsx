@@ -988,6 +988,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [observations, setObservations] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
   const [closedCourseNumbers, setClosedCourseNumbers] = useState([]);
+  const [closedCourseBlocks, setClosedCourseBlocks] = useState({});
   const [adminLockouts, setAdminLockouts] = useState({});
   const [adminSettings, setAdminSettings] = useState(DEFAULT_ADMIN_SETTINGS);
   const [loading, setLoading] = useState(true);
@@ -1004,13 +1005,14 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     setLoading(true);
     setError(null);
     try {
-      const [c, co, ed, ob, ct, cc, al, adm] = await Promise.all([
+      const [c, co, ed, ob, ct, cc, cb, al, adm] = await Promise.all([
         loadCollectionSb("coaches"),
         loadCollectionSb("courses"),
         loadCollectionSb("cets"),
         loadCollectionSb("observations"),
         loadCollectionSb("completed_tasks"),
         kvGet("closedCourseNumbers"),
+        kvGet("closedCourseBlocks"),
         kvGet("adminLockouts"),
         kvGet("adminSettings"),
       ]);
@@ -1020,6 +1022,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
       setObservations(ob || []);
       setCompletedTasks(ct || []);
       setClosedCourseNumbers(cc || []);
+      setClosedCourseBlocks(cb || {});
       setAdminLockouts(al || {});
       try {
         setAdminSettings(migrateAdminSettings(adm));
@@ -1059,6 +1062,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const saveObservations = async (v) => { setObservations(v); await syncCollectionSb("observations", observations, v); };
   const saveCompletedTasks = async (v) => { setCompletedTasks(v); await syncCollectionSb("completed_tasks", completedTasks, v); };
   const saveClosedCourseNumbers = async (v) => { setClosedCourseNumbers(v); await kvSet("closedCourseNumbers", v); };
+  const saveClosedCourseBlocks = async (v) => { setClosedCourseBlocks(v); await kvSet("closedCourseBlocks", v); };
   const saveAdminLockouts = async (v) => { setAdminLockouts(v); await kvSet("adminLockouts", v); };
   const saveAdminSettings = async (v) => { setAdminSettings(v); await kvSet("adminSettings", v); };
 
@@ -1242,6 +1246,8 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             onBulkDelete={handleBulkDeleteCompletedTasks}
             observations={observations}
             onViewReport={(id) => { setReportId(id); setTab("report"); }}
+            closedCourseNumbers={closedCourseNumbers} saveClosedCourseNumbers={saveClosedCourseNumbers}
+            closedCourseBlocks={closedCourseBlocks} saveClosedCourseBlocks={saveClosedCourseBlocks}
             adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
           />
         )}
@@ -3574,7 +3580,7 @@ function buildCandidateHtml(task, coach, observations) {
   </body></html>`;
 }
 
-function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, adminSettings, adminLockouts, recordAdminAttempt }) {
+function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, closedCourseNumbers, saveClosedCourseNumbers, closedCourseBlocks, saveClosedCourseBlocks, adminSettings, adminLockouts, recordAdminAttempt }) {
   // Duplicate detection & merge for Completed Tasks — a different problem
   // from duplicate coach/CET profiles: this catches the same person, same
   // course, showing up as TWO separate attendance/checklist records (from
@@ -3932,12 +3938,16 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   // recorded yet, or the last block if every one has already been set.
   // Only this block (plus a Master-reopened past block) is editable;
   // everything before it is shown as locked history as the course
-  // progresses through its blocks.
+  // progresses through its blocks. A block that's been explicitly
+  // Provisionally Closed for the whole course counts as settled here too,
+  // even for a candidate who never got an individual status recorded for
+  // it — closing a block is a course-wide decision to move everyone on.
   function activeBlockForTask(task) {
     const opts = blockOptionsForTask(task);
     if (opts.length === 0) return null;
     const statuses = task.blockStatuses || {};
-    return opts.find(b => !statuses[b]) || opts[opts.length - 1];
+    const closedForCourse = new Set(closedCourseBlocks[(task.courseNumber || "").trim()] || []);
+    return opts.find(b => !statuses[b] && !closedForCourse.has(b)) || opts[opts.length - 1];
   }
 
   function handleProgressAuth() {
@@ -3969,6 +3979,14 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
         setProgressAuthError(true);
       }
     }
+    if (groupCloseAuthFor) {
+      if (adminHasCourseAccess(match, groupCloseAuthFor.courseNumber, groupCloseAuthFor.mfKey)) {
+        performCloseBlock(groupCloseAuthFor.courseNumber, groupCloseAuthFor.block, groupCloseAuthFor.isFinal);
+        setGroupCloseAuthFor(null);
+      } else {
+        setProgressAuthError(true);
+      }
+    }
   }
 
   function setBlockStatus(task, block, status) {
@@ -3991,6 +4009,37 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     }
     setReopenAuthForTaskBlock({ taskId: task.id, block });
     setProgressAuthForTaskId(null);
+    setProgressAuthName(""); setProgressAuthPin(""); setProgressAuthError(false);
+  }
+
+  // Provisional Block Close / Close Block & Course — a course-wide action
+  // (not per-candidate) that moves the whole cohort's active block
+  // forward. The final block's close also marks the course itself closed
+  // (same closedCourseNumbers list the Dashboard already uses) and opens
+  // the Course Report.
+  const [groupCloseAuthFor, setGroupCloseAuthFor] = useState(null);
+  const [courseReportNumber, setCourseReportNumber] = useState(null);
+
+  function performCloseBlock(courseNumber, block, isFinal) {
+    const current = closedCourseBlocks[courseNumber] || [];
+    if (!current.includes(block)) {
+      saveClosedCourseBlocks({ ...closedCourseBlocks, [courseNumber]: [...current, block] });
+    }
+    if (isFinal) {
+      if (!closedCourseNumbers.includes(courseNumber)) {
+        saveClosedCourseNumbers([...closedCourseNumbers, courseNumber]);
+      }
+      setCourseReportNumber(courseNumber);
+    }
+  }
+
+  function requestCloseBlock(courseNumber, mfKey, block, isFinal) {
+    if (progressAuthed && adminHasCourseAccess(progressAuthMatch, courseNumber, mfKey)) {
+      performCloseBlock(courseNumber, block, isFinal);
+      return;
+    }
+    setGroupCloseAuthFor({ courseNumber, mfKey, block, isFinal });
+    setProgressAuthForTaskId(null); setReopenAuthForTaskBlock(null);
     setProgressAuthName(""); setProgressAuthPin(""); setProgressAuthError(false);
   }
 
@@ -4266,6 +4315,122 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     return groups;
   }
 
+  // Generic coursework-item toggle for the Course Report, where multiple
+  // different candidates' items get toggled directly rather than through
+  // the single-record edit form's local state.
+  function toggleCourseworkItemForTask(task, label) {
+    if (!progressAuthed || !adminHasCourseAccess(progressAuthMatch, task.courseNumber, task.memberFederation)) {
+      setProgressAuthForTaskId(task.id);
+      setProgressAuthName(""); setProgressAuthPin(""); setProgressAuthError(false);
+      return;
+    }
+    const cardCoach = coaches.find(c => c.id === task.coachId);
+    const coachTopics = (cardCoach?.topics || []).slice(0, 4);
+    let updated = { ...task };
+    if (isCDiploma(task.courseTitle) && label === "Practical Session") {
+      updated.practicalSessionDone = !task.practicalSessionDone;
+    } else if (isBDiploma(task.courseTitle)) {
+      if (coachTopics.includes(label)) {
+        updated.sessionPlansDone = { ...(task.sessionPlansDone || {}), [label]: !(task.sessionPlansDone || {})[label] };
+      } else if (label === "Goalscoring Presentation") updated.goalscoringPresentationDone = !task.goalscoringPresentationDone;
+      else if (label === "Game Plan") updated.gamePlanDone = !task.gamePlanDone;
+      else if (label === "Analysis Session Plan") updated.analysisSessionPlanDone = !task.analysisSessionPlanDone;
+      else if (label === "Annual (Yearly) Plan") updated.annualPlanDone = !task.annualPlanDone;
+      else if (label === "6WC (6 Week Cycle)") {
+        const next = !task.sixWeekCycleDone;
+        updated.sixWeekCycleDone = next;
+        if (!next) updated.fcDetailsDone = false;
+      } else if (label === "with FC (football conditioning) details" && task.sixWeekCycleDone) {
+        updated.fcDetailsDone = !task.fcDetailsDone;
+      }
+    }
+    saveCompletedTasks(completedTasks.map(t => t.id === task.id ? { ...updated, updatedAt: new Date().toISOString() } : t));
+  }
+
+  function renderCourseReport() {
+    const group = groupTasksForDisplay(completedTasks).find(g => g.courseNumber === courseReportNumber);
+    if (!group) return null;
+    return (
+      <div className="fixed inset-0 z-40 bg-black/40 flex items-start justify-center overflow-y-auto py-8 px-4">
+        <div className="bg-white rounded-xl max-w-3xl w-full p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Course Report — #{group.courseNumber}</h3>
+              <p className="text-sm text-slate-500">{group.courseTitle} · {group.records.length} candidate{group.records.length === 1 ? "" : "s"}</p>
+            </div>
+            <button onClick={() => setCourseReportNumber(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          </div>
+          <p className="text-xs text-slate-400">Outstanding checklist items can be ticked off directly here. Progress Tracking is shown per block — open the candidate's own card in Completed Tasks to change it.</p>
+          <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
+            {[...group.records].sort((a, b) => (a.coachName || "").localeCompare(b.coachName || "")).map(t => {
+              const cardCoach = coaches.find(c => c.id === t.coachId);
+              const items = courseworkItems(t, cardCoach?.topics, t.team);
+              const outstanding = items.filter(i => !i.done);
+              const blockOpts = blockOptionsForTask(t);
+              const statuses = t.blockStatuses || {};
+              return (
+                <div key={t.id} className="border border-slate-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-sm font-semibold text-slate-800">{t.coachName}</p>
+                    <span className="text-xs text-slate-400">Attendance {t.attendancePercent}%</span>
+                  </div>
+                  {outstanding.length === 0 ? (
+                    <p className="text-xs text-emerald-600 font-medium mb-2">All coursework completed.</p>
+                  ) : (
+                    <div className="space-y-1 mb-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Outstanding ({outstanding.length})</p>
+                      {outstanding.map((item, i) => (
+                        <label key={i} className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+                          <input type="checkbox" checked={false} onChange={() => toggleCourseworkItemForTask(t, item.label)} className="rounded border-slate-300" />
+                          {item.label}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {blockOpts.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-1">Progress Tracking</p>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {blockOpts.map(b => {
+                          const s = statuses[b];
+                          return (
+                            <span key={b} className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                              !s ? "bg-slate-50 text-slate-300 border-slate-100"
+                              : s === "Tracking Ahead" ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                              : s === "Needs Assistance" ? "bg-red-100 text-red-700 border-red-300"
+                              : "bg-amber-100 text-amber-700 border-amber-300"
+                            }`}>
+                              {b.replace("Block ", "B")}: {s || "not set"}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {progressAuthForTaskId && group.records.some(t => t.id === progressAuthForTaskId) && (
+            <div className="border-t border-slate-200 pt-3 space-y-1.5">
+              <p className="text-xs text-slate-600">Enter an admin name and PIN with access to this course to tick off items here.</p>
+              <div className="flex gap-1.5">
+                <input value={progressAuthName} onChange={e => { setProgressAuthName(e.target.value); setProgressAuthError(false); }} placeholder="Admin name"
+                  className={`flex-1 border rounded-lg px-2.5 py-1.5 text-xs ${progressAuthError ? "border-red-400" : "border-slate-300"}`} />
+                <input type="password" inputMode="numeric" maxLength={4} value={progressAuthPin}
+                  onChange={e => { setProgressAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setProgressAuthError(false); }}
+                  onKeyDown={e => { if (e.key === "Enter") handleProgressAuth(); }}
+                  placeholder="PIN" className={`w-20 border rounded-lg px-2.5 py-1.5 text-xs text-center tracking-widest ${progressAuthError ? "border-red-400" : "border-slate-300"}`} />
+                <button onClick={handleProgressAuth} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">Unlock</button>
+              </div>
+              {progressAuthError && <p className="text-[10px] text-red-600">Incorrect admin name or PIN, or no access to this course.</p>}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   function renderTaskForm() {
     return (
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
@@ -4366,11 +4531,6 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 className="w-full text-sm outline-none" />
               <span className="text-sm text-slate-400">%</span>
             </div>
-            {Number(form.onlineModulesPercent || 0) < 100 && (
-              <input value={form.courseworkNotes?.["Online Modules"] || ""} onChange={e => setCourseworkNote("Online Modules", e.target.value)}
-                placeholder="Short note (optional)..." maxLength={140}
-                className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1" />
-            )}
           </div>
         </div>
         <div>
@@ -4379,17 +4539,10 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
         </div>
 
-        <div className="border-t border-slate-100 pt-3">
-          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-            <input type="checkbox" checked={!!form.formativeAssessmentDone} onChange={() => setField("formativeAssessmentDone", !form.formativeAssessmentDone)} className="rounded border-slate-300" />
-            Formative Assessment (in course) Completed
-          </label>
-          {!form.formativeAssessmentDone && (
-            <input value={form.courseworkNotes?.["Formative Assessment"] || ""} onChange={e => setCourseworkNote("Formative Assessment", e.target.value)}
-              placeholder="Short note (optional)..." maxLength={140}
-              className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1" />
-          )}
-        </div>
+        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer border-t border-slate-100 pt-3">
+          <input type="checkbox" checked={!!form.formativeAssessmentDone} onChange={() => setField("formativeAssessmentDone", !form.formativeAssessmentDone)} className="rounded border-slate-300" />
+          Formative Assessment (in course) Completed
+        </label>
 
         <div>
           <label className="text-xs font-medium text-slate-500 mb-1.5 block">Video Link</label>
@@ -4546,6 +4699,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
 
   return (
     <div className="space-y-4">
+      {courseReportNumber && renderCourseReport()}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h2 className="text-xl font-bold text-slate-900">Completed Tasks</h2>
@@ -4905,6 +5059,35 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                               <Trash2 className="w-3.5 h-3.5" /> Delete Selected ({groupSelectedCount})
                             </button>
                           )}
+                          {(() => {
+                            if (!g.courseNumber) return null;
+                            const groupBlockOpts = isADiploma(g.courseTitle) ? DIPLOMA_BLOCK_OPTIONS_A : isBDiploma(g.courseTitle) ? DIPLOMA_BLOCK_OPTIONS_B : [];
+                            if (groupBlockOpts.length === 0) return null;
+                            const groupClosedBlocks = closedCourseBlocks[g.courseNumber] || [];
+                            const nextBlockToClose = groupBlockOpts.find(b => !groupClosedBlocks.includes(b));
+                            if (!nextBlockToClose) {
+                              return (
+                                <button onClick={(e) => { e.stopPropagation(); setCourseReportNumber(g.courseNumber); }}
+                                  className="flex items-center gap-1 text-xs font-semibold text-violet-700 border border-violet-200 px-2.5 py-1.5 rounded-lg hover:bg-violet-50 whitespace-nowrap">
+                                  <FileText className="w-3.5 h-3.5" /> Course Report
+                                </button>
+                              );
+                            }
+                            const isFinal = nextBlockToClose === groupBlockOpts[groupBlockOpts.length - 1];
+                            const groupMf = (() => {
+                              const counts = {};
+                              g.records.forEach(t => { const k = t.memberFederation || ""; counts[k] = (counts[k] || 0) + 1; });
+                              return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+                            })();
+                            return (
+                              <button onClick={(e) => { e.stopPropagation(); requestCloseBlock(g.courseNumber, groupMf, nextBlockToClose, isFinal); }}
+                                className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg whitespace-nowrap border ${
+                                  isFinal ? "text-red-700 border-red-200 hover:bg-red-50" : "text-violet-700 border-violet-200 hover:bg-violet-50"
+                                }`}>
+                                <Lock className="w-3.5 h-3.5" /> {isFinal ? `Close ${nextBlockToClose} & Course` : `Provisionally Close ${nextBlockToClose}`}
+                              </button>
+                            );
+                          })()}
                           <label onClick={e => e.stopPropagation()} className="flex items-center gap-1.5 text-xs font-medium text-slate-500 cursor-pointer whitespace-nowrap">
                             <input type="checkbox" checked={groupAllSelected} onChange={() => toggleSelectAllInGroup(g.records)} className="rounded border-slate-300" />
                             Select all
@@ -4924,6 +5107,32 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                               Apply
                             </button>
                             <p className="text-xs text-indigo-500 w-full">This moves these records into that course's group and re-enables auto-fill in New Observation.</p>
+                          </div>
+                        </div>
+                      )}
+                      {groupCloseAuthFor && groupCloseAuthFor.courseNumber === g.courseNumber && (
+                        <div className="px-4 pb-3 -mt-1">
+                          <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 space-y-1.5">
+                            <p className="text-xs text-red-800 font-medium">
+                              Enter an admin name and PIN with access to this course to {groupCloseAuthFor.isFinal ? `close ${groupCloseAuthFor.block} and the course` : `provisionally close ${groupCloseAuthFor.block}`}.
+                            </p>
+                            <div className="flex gap-1.5">
+                              <input value={progressAuthName} onChange={e => { setProgressAuthName(e.target.value); setProgressAuthError(false); }} placeholder="Admin name"
+                                className={`flex-1 border rounded-lg px-2.5 py-1.5 text-xs ${progressAuthError ? "border-red-400" : "border-red-300"}`} />
+                              <input type="password" inputMode="numeric" maxLength={4} value={progressAuthPin}
+                                onChange={e => { setProgressAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setProgressAuthError(false); }}
+                                onKeyDown={e => { if (e.key === "Enter") handleProgressAuth(); }}
+                                placeholder="PIN" className={`w-20 border rounded-lg px-2.5 py-1.5 text-xs text-center tracking-widest ${progressAuthError ? "border-red-400" : "border-red-300"}`} />
+                              <button onClick={handleProgressAuth} className="text-xs font-semibold text-red-700 hover:text-red-800 whitespace-nowrap">Unlock</button>
+                              <button onClick={() => setGroupCloseAuthFor(null)} className="text-xs text-slate-500 hover:text-slate-700 whitespace-nowrap">Cancel</button>
+                            </div>
+                            {progressAuthError && (
+                              <p className="text-[10px] text-red-600">
+                                {isLockedOut(adminLockouts, progressAuthName)
+                                  ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, progressAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, progressAuthName) === 1 ? "" : "s"}.`
+                                  : "Incorrect admin name or PIN, or no access to this course."}
+                              </p>
+                            )}
                           </div>
                         </div>
                       )}
@@ -5078,7 +5287,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                       )}
                                                     </span>
                                                   </div>
-                                                  {!item.done && t.courseworkNotes?.[item.label] && (
+                                                  {!item.done && t.courseworkNotes?.[item.label] && item.label !== "Online Modules" && item.label !== "Formative Assessment" && (
                                                     <p className="text-[11px] text-slate-400 italic pl-4.5 ml-0.5">{t.courseworkNotes[item.label]}</p>
                                                   )}
                                                   </div>
