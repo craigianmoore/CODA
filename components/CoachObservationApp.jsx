@@ -8115,6 +8115,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   const [maxScoreFilter, setMaxScoreFilter] = useState("");
   const [clearConfirmStep, setClearConfirmStep] = useState(false);
   const [confirmDeleteObsId, setConfirmDeleteObsId] = useState(null);
+  const [expandedHistoryCourses, setExpandedHistoryCourses] = useState(() => new Set());
   const [exportAllCoaches, setExportAllCoaches] = useState(true);
   const [exportCoachIds, setExportCoachIds] = useState([]);
 
@@ -9272,20 +9273,50 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
 
             return (
               <>
-                {courseGroups.map(g => (
-                  <div key={g.courseNumber}>
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">#{g.courseNumber} — {g.courseTitle || "Course"} ({g.records.length})</p>
-                    <div className="space-y-2">
-                      {[...g.records].sort(alphaSort).map(o => renderObsRow(o))}
+                {courseGroups.map(g => {
+                  const isExpanded = expandedHistoryCourses.has(g.courseNumber);
+                  return (
+                    <div key={g.courseNumber}>
+                      <button onClick={() => setExpandedHistoryCourses(prev => {
+                          const next = new Set(prev);
+                          if (next.has(g.courseNumber)) next.delete(g.courseNumber); else next.add(g.courseNumber);
+                          return next;
+                        })} type="button"
+                        className="w-full flex items-center gap-2 text-left bg-slate-100 hover:bg-slate-200 transition-colors rounded-lg px-3 py-2 mb-2">
+                        <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
+                        <p className="text-xs font-bold uppercase tracking-wide text-slate-500 flex-1">#{g.courseNumber} — {g.courseTitle || "Course"}</p>
+                        <span className="text-xs text-slate-400">{g.records.length}</span>
+                      </button>
+                      {isExpanded && (
+                        <div className="space-y-2 mb-2">
+                          {[...g.records].sort(alphaSort).map(o => renderObsRow(o))}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {noCourseNumber.length > 0 && (
                   <div>
-                    {courseGroups.length > 0 && <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">No Course Number ({noCourseNumber.length})</p>}
-                    <div className="space-y-2">
-                      {[...noCourseNumber].sort(alphaSort).map(o => renderObsRow(o))}
-                    </div>
+                    {courseGroups.length > 0 && (() => {
+                      const isExpanded = expandedHistoryCourses.has("__none__");
+                      return (
+                        <button onClick={() => setExpandedHistoryCourses(prev => {
+                            const next = new Set(prev);
+                            if (next.has("__none__")) next.delete("__none__"); else next.add("__none__");
+                            return next;
+                          })} type="button"
+                          className="w-full flex items-center gap-2 text-left bg-slate-100 hover:bg-slate-200 transition-colors rounded-lg px-3 py-2 mb-2">
+                          <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
+                          <p className="text-xs font-bold uppercase tracking-wide text-slate-500 flex-1">No Course Number</p>
+                          <span className="text-xs text-slate-400">{noCourseNumber.length}</span>
+                        </button>
+                      );
+                    })()}
+                    {(courseGroups.length === 0 || expandedHistoryCourses.has("__none__")) && (
+                      <div className="space-y-2">
+                        {[...noCourseNumber].sort(alphaSort).map(o => renderObsRow(o))}
+                      </div>
+                    )}
                   </div>
                 )}
               </>
