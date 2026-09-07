@@ -1540,6 +1540,8 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
   const [expandedOpenMfs, setExpandedOpenMfs] = useState(() => new Set());
   const [groupDaysInputs, setGroupDaysInputs] = useState({});
   const [individualDaysInputs, setIndividualDaysInputs] = useState({});
+  const [groupOnlineInputs, setGroupOnlineInputs] = useState({});
+  const [individualOnlineInputs, setIndividualOnlineInputs] = useState({});
   const groups = groupCoursesByNumber(completedTasks);
   const openGroups = groups.filter(g => !closedCourseNumbers.includes(g.courseNumber)).sort(courseNumericSort);
   const completedGroups = groups.filter(g => closedCourseNumbers.includes(g.courseNumber)).sort(courseNumericSort);
@@ -1593,6 +1595,23 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
     if (isNaN(days)) return;
     const pct = Math.round((days / maxDays) * 100);
     saveCompletedTasks(completedTasks.map(t => t.id === task.id ? { ...t, attendancePercent: pct, updatedAt: new Date().toISOString() } : t));
+  }
+
+  function applyGroupOnlineModules(group) {
+    const raw = groupOnlineInputs[group.courseNumber];
+    if (raw === undefined || raw === "") return;
+    const pct = Math.max(0, Math.min(100, Math.round(Number(raw))));
+    if (isNaN(pct)) return;
+    const idsInGroup = new Set(group.records.map(r => r.id));
+    saveCompletedTasks(completedTasks.map(t => idsInGroup.has(t.id) ? { ...t, onlineModulesPercent: pct, updatedAt: new Date().toISOString() } : t));
+  }
+
+  function applyIndividualOnlineModules(task) {
+    const raw = individualOnlineInputs[task.id];
+    if (raw === undefined || raw === "") return;
+    const pct = Math.max(0, Math.min(100, Math.round(Number(raw))));
+    if (isNaN(pct)) return;
+    saveCompletedTasks(completedTasks.map(t => t.id === task.id ? { ...t, onlineModulesPercent: pct, updatedAt: new Date().toISOString() } : t));
   }
 
   function closeCourse(courseNumber) {
@@ -1677,6 +1696,19 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                           </button>
                         </div>
                       </div>
+                      <div className="rounded-lg border border-violet-200 bg-violet-50 p-3">
+                        <p className="text-xs font-semibold text-violet-800 mb-1.5">Update Online Modules % for all coaches in this course</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <input type="number" min="0" max="100" placeholder="Online Modules % (0–100)"
+                            value={groupOnlineInputs[g.courseNumber] ?? ""}
+                            onChange={e => setGroupOnlineInputs(prev => ({ ...prev, [g.courseNumber]: e.target.value }))}
+                            className="border border-slate-300 rounded-lg px-3 py-2 text-sm w-48 bg-white" />
+                          <button onClick={() => applyGroupOnlineModules(g)}
+                            className="bg-violet-600 text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-violet-700">
+                            Apply to All
+                          </button>
+                        </div>
+                      </div>
                       <div className="space-y-1.5">
                         <p className="text-xs font-semibold text-slate-500">Or update individually</p>
                         {[...g.records].sort((a, b) => a.coachName.localeCompare(b.coachName)).map(t => {
@@ -1698,6 +1730,25 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                             </div>
                           );
                         })}
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-semibold text-slate-500">Or update Online Modules % individually</p>
+                        {[...g.records].sort((a, b) => a.coachName.localeCompare(b.coachName)).map(t => (
+                          <div key={t.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
+                            <div>
+                              <p className="text-sm font-medium text-slate-800">{t.coachName}</p>
+                              <p className="text-xs text-slate-400">Currently {t.onlineModulesPercent || 0}%</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <input type="number" min="0" max="100"
+                                value={individualOnlineInputs[t.id] ?? (t.onlineModulesPercent || 0)}
+                                onChange={e => setIndividualOnlineInputs(prev => ({ ...prev, [t.id]: e.target.value }))}
+                                className="w-16 border border-slate-300 rounded-lg px-2 py-1.5 text-sm text-center" />
+                              <button onClick={() => applyIndividualOnlineModules(t)}
+                                className="text-xs font-semibold text-violet-600 hover:text-violet-700 whitespace-nowrap">Update</button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -4999,7 +5050,15 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   function renderTaskForm() {
     return (
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-        <p className="text-sm font-semibold text-slate-800">{editingId ? "Edit Record" : "New Record"}</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-slate-800">{editingId ? "Edit Record" : "New Record"}</p>
+          <div className="flex gap-2">
+            <button onClick={saveTask} disabled={!canSave()} className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-semibold disabled:bg-slate-300">
+              {editingId ? "Save Changes" : "Save Record"}
+            </button>
+            <button onClick={resetForm} className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500">Cancel</button>
+          </div>
+        </div>
 
         <div>
           <label className="text-[10px] font-bold uppercase tracking-wide text-indigo-600 mb-1.5 block">Coach</label>
