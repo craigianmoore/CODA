@@ -1107,10 +1107,12 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
         const task = completedTasks[matchIdx];
         const updatedTask = { ...task };
         if ((isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) && obs.sessionTopic) {
-          updatedTask.sessionPlansDone = { ...(task.sessionPlansDone || {}), [obs.sessionTopic]: true };
+          const isNyc = obs.assessmentOutcome === "Not Yet Competent";
+          updatedTask.sessionPlansDone = { ...(task.sessionPlansDone || {}), [obs.sessionTopic]: !isNyc };
           updatedTask.sessionPlansOutcomes = { ...(task.sessionPlansOutcomes || {}), [obs.sessionTopic]: obs.assessmentOutcome || "" };
         } else if (isCDiploma(task.courseTitle)) {
-          updatedTask.practicalSessionDone = true;
+          const isNyc = obs.assessmentOutcome === "Not Yet Competent";
+          updatedTask.practicalSessionDone = !isNyc;
           updatedTask.practicalSessionOutcome = obs.assessmentOutcome || "";
         }
         updatedTask.updatedAt = new Date().toISOString();
@@ -1158,7 +1160,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
           const nextDone = { ...(task.sessionPlansDone || {}) };
           const nextOutcomes = { ...(task.sessionPlansOutcomes || {}) };
           if (remaining.length > 0) {
-            nextDone[obsToDelete.sessionTopic] = true;
+            nextDone[obsToDelete.sessionTopic] = remaining[0].assessmentOutcome !== "Not Yet Competent";
             nextOutcomes[obsToDelete.sessionTopic] = remaining[0].assessmentOutcome || "";
           } else {
             delete nextDone[obsToDelete.sessionTopic];
@@ -1169,7 +1171,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
         } else if (isCDiploma(task.courseTitle)) {
           const remaining = nextObservations.filter(sameSlot).sort((a, b) => new Date(b.date) - new Date(a.date));
           if (remaining.length > 0) {
-            updatedTask.practicalSessionDone = true;
+            updatedTask.practicalSessionDone = remaining[0].assessmentOutcome !== "Not Yet Competent";
             updatedTask.practicalSessionOutcome = remaining[0].assessmentOutcome || "";
           } else {
             updatedTask.practicalSessionDone = false;
@@ -4784,6 +4786,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     }
     const cardCoach = coaches.find(c => c.id === task.coachId);
     const coachTopics = (cardCoach?.topics || []).slice(0, 4);
+    if (isCDiploma(task.courseTitle) && label === "Practical Session" && task.practicalSessionOutcome === "Not Yet Competent") return;
+    if (coachTopics.includes(label) && (task.sessionPlansOutcomes || {})[label] === "Not Yet Competent") return;
     let updated = { ...task };
     if (isCDiploma(task.courseTitle) && label === "Practical Session") {
       updated.practicalSessionDone = !task.practicalSessionDone;
@@ -4848,12 +4852,16 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                   ) : (
                     <div className="space-y-1 mb-2">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Outstanding ({outstanding.length})</p>
-                      {outstanding.map((item, i) => (
-                        <label key={i} className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
-                          <input type="checkbox" checked={false} onChange={() => toggleCourseworkItemForTask(t, item.label)} className="rounded border-slate-300" />
-                          {item.label}
-                        </label>
-                      ))}
+                      {outstanding.map((item, i) => {
+                        const isNyc = item.outcome === "Not Yet Competent";
+                        return (
+                          <label key={i} className={`flex items-center gap-2 text-xs ${isNyc ? "text-red-500" : "text-slate-600 cursor-pointer"}`}>
+                            <input type="checkbox" checked={false} disabled={isNyc} onChange={() => toggleCourseworkItemForTask(t, item.label)}
+                              className="rounded border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed" />
+                            {item.label}{isNyc ? " — Not Yet Competent, needs re-observation" : ""}
+                          </label>
+                        );
+                      })}
                     </div>
                   )}
                   {blockOpts.length > 0 && (
@@ -5046,9 +5054,14 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 {form.practicalSessionOutcome && (
                   <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${outcomeBadgeClass(form.practicalSessionOutcome)}`}>{form.practicalSessionOutcome}</span>
                 )}
-                <input type="checkbox" checked={form.practicalSessionDone} onChange={() => setField("practicalSessionDone", !form.practicalSessionDone)} className="rounded border-slate-300" />
+                <input type="checkbox" checked={form.practicalSessionDone} disabled={form.practicalSessionOutcome === "Not Yet Competent"}
+                  onChange={() => setField("practicalSessionDone", !form.practicalSessionDone)}
+                  className="rounded border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed" />
               </span>
             </label>
+            {form.practicalSessionOutcome === "Not Yet Competent" && (
+              <p className="text-[10px] text-red-500 -mt-1">Not Yet Competent — needs a re-observation before this can be marked done.</p>
+            )}
             {!form.practicalSessionDone && (
               <input value={form.courseworkNotes?.["Practical Session"] || ""} onChange={e => setCourseworkNote("Practical Session", e.target.value)}
                 placeholder="Short note (optional)..." maxLength={140}
@@ -5063,7 +5076,9 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 <p className="text-xs text-slate-400">No session topics on file for this coach — add them via Coaches &amp; CETs (Add Coach or Bulk Upload → Topics column), or import a coursework CSV with topic columns mapped.</p>
               ) : (
                 <div className="space-y-1.5">
-                  {selectedCoach.topics.slice(0, 4).map(topic => (
+                  {selectedCoach.topics.slice(0, 4).map(topic => {
+                    const isNyc = form.sessionPlansOutcomes?.[topic] === "Not Yet Competent";
+                    return (
                     <div key={topic}>
                       <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
                         <span className="flex items-center gap-1.5 flex-wrap">
@@ -5076,16 +5091,21 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                           {form.sessionPlansOutcomes?.[topic] && (
                             <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${outcomeBadgeClass(form.sessionPlansOutcomes[topic])}`}>{form.sessionPlansOutcomes[topic]}</span>
                           )}
-                          <input type="checkbox" checked={!!form.sessionPlansDone?.[topic]} onChange={() => toggleSessionPlanTopic(topic)} className="rounded border-slate-300" />
+                          <input type="checkbox" checked={!!form.sessionPlansDone?.[topic]} disabled={isNyc} onChange={() => toggleSessionPlanTopic(topic)}
+                            className="rounded border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed" />
                         </span>
                       </label>
+                      {isNyc && (
+                        <p className="text-[10px] text-red-500 mt-0.5">Not Yet Competent — needs a re-observation before this can be marked done.</p>
+                      )}
                       {!form.sessionPlansDone?.[topic] && (
                         <input value={form.courseworkNotes?.[topic] || ""} onChange={e => setCourseworkNote(topic, e.target.value)}
                           placeholder="Short note (optional)..." maxLength={140}
                           className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1" />
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
