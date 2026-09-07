@@ -1311,8 +1311,9 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
         )}
         {tab === "cetAssessment" && (
           <CetAssessmentTab
-            educators={educators} courses={courses}
+            educators={educators} saveEducators={saveEducators} courses={courses}
             cetAssessments={cetAssessments} saveCetAssessments={saveCetAssessments}
+            adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
           />
         )}
         {tab === "logistics" && (
@@ -4160,12 +4161,59 @@ function buildCandidateHtml(task, coach, observations) {
   </body></html>`;
 }
 
-function CetAssessmentTab({ educators, courses, cetAssessments, saveCetAssessments }) {
+function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, saveCetAssessments, adminSettings, adminLockouts, recordAdminAttempt }) {
   const [form, setForm] = useState(emptyCetAssessmentForm());
   const [editingId, setEditingId] = useState(null);
   const [historySearch, setHistorySearch] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [savedMsg, setSavedMsg] = useState("");
+
+  // Assessors and exports here are Member-Federation-scoped: a Lead Admin
+  // manages assessors and downloads data for their own MF only; Master
+  // can do both for any MF. Reuses CODA's existing admin tiers rather
+  // than a separate PIN system for this tab.
+  const [showManageAssessors, setShowManageAssessors] = useState(false);
+  const [assessorMfPicker, setAssessorMfPicker] = useState("");
+  const [adminAuthed, setAdminAuthed] = useState(false);
+  const [adminAuthMatch, setAdminAuthMatch] = useState(null);
+  const [adminAuthName, setAdminAuthName] = useState("");
+  const [adminAuthPin, setAdminAuthPin] = useState("");
+  const [adminAuthError, setAdminAuthError] = useState(false);
+  const [adminAuthFor, setAdminAuthFor] = useState(null); // "assessors" | "export"
+
+  const iAmMaster = adminAuthed && isMasterAdmin(adminAuthMatch);
+  const iAmLead = adminAuthed && adminTier(adminAuthMatch) === "lead";
+  const myMf = iAmLead ? (adminAuthMatch.memberFederations || [])[0] : null;
+
+  function handleAdminAuth() {
+    if (isLockedOut(adminLockouts, adminAuthName)) {
+      setAdminAuthError(true);
+      return;
+    }
+    const match = findAdminMatch(adminSettings.admins, adminAuthName, adminAuthPin);
+    if (!match || isCourseAdmin(match)) {
+      recordAdminAttempt(adminAuthName, !!match);
+      setAdminAuthError(true);
+      return;
+    }
+    recordAdminAttempt(adminAuthName, true);
+    setAdminAuthed(true);
+    setAdminAuthMatch(match);
+    setAdminAuthError(false);
+    if (adminTier(match) === "lead") setAssessorMfPicker((match.memberFederations || [])[0] || "");
+    setAdminAuthFor(null);
+  }
+
+  function toggleAssessor(cetId) {
+    saveEducators(educators.map(c => c.id === cetId ? { ...c, isAssessor: !c.isAssessor } : c));
+  }
+
+  function requestAdminAction(purpose) {
+    if (adminAuthed) return true;
+    setAdminAuthFor(purpose);
+    setAdminAuthName(""); setAdminAuthPin(""); setAdminAuthError(false);
+    return false;
+  }
 
   function setField(key, val) { setForm(prev => ({ ...prev, [key]: val })); }
   function setGripField(key, field, val) {
@@ -4258,10 +4306,76 @@ function CetAssessmentTab({ educators, courses, cetAssessments, saveCetAssessmen
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-bold text-slate-900">CET Assessment</h2>
-        <p className="text-sm text-slate-500">Football Victoria's assessment of a CET's coaching-conversation and session-design practice.</p>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">CET Assessment</h2>
+          <p className="text-sm text-slate-500">A CET's coaching-conversation and session-design practice, assessed against GRIP, SO CHANGE IT, and Coaching Frameworks.</p>
+        </div>
+        <button onClick={() => { if (!requestAdminAction("assessors")) return; setShowManageAssessors(s => !s); }}
+          className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-100 whitespace-nowrap">
+          <Settings className="w-4 h-4" /> Manage Assessors
+        </button>
       </div>
+
+      {adminAuthFor === "assessors" && (
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+          <p className="text-xs text-indigo-700">Managing assessors needs a Lead or Master Admin name and PIN. A Lead Admin manages assessors for their own Member Federation only.</p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            <input value={adminAuthName} onChange={e => { setAdminAuthName(e.target.value); setAdminAuthError(false); }} placeholder="Admin name"
+              className={`border rounded-lg px-3 py-2 text-sm ${adminAuthError ? "border-red-400" : "border-indigo-300"}`} />
+            <input type="password" inputMode="numeric" maxLength={4} value={adminAuthPin}
+              onChange={e => { setAdminAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setAdminAuthError(false); }}
+              onKeyDown={e => { if (e.key === "Enter") { handleAdminAuth(); setShowManageAssessors(true); } }} placeholder="PIN"
+              className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${adminAuthError ? "border-red-400" : "border-indigo-300"}`} />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => { handleAdminAuth(); setShowManageAssessors(true); }} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Unlock</button>
+            <button onClick={() => setAdminAuthFor(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+          </div>
+          {adminAuthError && (
+            <p className="text-xs text-red-600">
+              {isLockedOut(adminLockouts, adminAuthName)
+                ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, adminAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, adminAuthName) === 1 ? "" : "s"}.`
+                : "Incorrect admin name or PIN, or a Course Admin (needs Lead or Master)."}
+            </p>
+          )}
+        </div>
+      )}
+
+      {showManageAssessors && adminAuthed && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+          <p className="text-sm font-semibold text-slate-800">Manage Assessors</p>
+          {iAmMaster ? (
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Member Federation</label>
+              <select value={assessorMfPicker} onChange={e => setAssessorMfPicker(e.target.value)} className="w-full sm:w-64 border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                <option value="">Select a Member Federation...</option>
+                {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
+              </select>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">Scoped to your own Member Federation: {(MEMBER_FEDERATIONS.find(m => m.key === myMf) || {}).label || myMf}.</p>
+          )}
+          {(iAmMaster ? assessorMfPicker : myMf) ? (() => {
+            const mfKey = iAmMaster ? assessorMfPicker : myMf;
+            const cetsInMf = [...educators].filter(c => (c.memberFederations || []).includes(mfKey)).sort((a, b) => a.name.localeCompare(b.name));
+            if (cetsInMf.length === 0) return <p className="text-xs text-slate-400">No CETs tagged to this federation yet — assign a Member Federation to CETs in Logistics first.</p>;
+            return (
+              <div className="space-y-1.5">
+                {cetsInMf.map(c => (
+                  <label key={c.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2 cursor-pointer">
+                    <span className="text-sm text-slate-700">{c.name}</span>
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                      {c.isAssessor ? "Assessor" : "Not an assessor"}
+                      <input type="checkbox" checked={!!c.isAssessor} onChange={() => toggleAssessor(c.id)} className="rounded border-slate-300" />
+                    </span>
+                  </label>
+                ))}
+              </div>
+            );
+          })() : null}
+        </div>
+      )}
 
       {savedMsg && <p className="text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{savedMsg}</p>}
       {editingId && (
@@ -4271,20 +4385,16 @@ function CetAssessmentTab({ educators, courses, cetAssessments, saveCetAssessmen
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-        <p className="text-sm font-semibold text-slate-800">Observation Details</p>
-        <div className="grid sm:grid-cols-2 gap-3">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <p className="text-xs font-bold uppercase tracking-wide text-white bg-indigo-600 px-4 py-2.5">Observation Details</p>
+        <div className="p-4 space-y-3">
+        <div className="grid sm:grid-cols-4 gap-3">
           <div>
             <label className="text-xs font-medium text-slate-500 mb-1.5 block">CET being observed</label>
             <select value={form.cetId} onChange={e => selectCet(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
               <option value="">Select CET...</option>
               {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Assessor</label>
-            <input value={form.assessorName} onChange={e => setField("assessorName", e.target.value)} placeholder="Assessor name"
-              className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
           </div>
           <div>
             <label className="text-xs font-medium text-slate-500 mb-1.5 block">Date</label>
@@ -4294,6 +4404,15 @@ function CetAssessmentTab({ educators, courses, cetAssessments, saveCetAssessmen
             <label className="text-xs font-medium text-slate-500 mb-1.5 block">Time</label>
             <input type="time" value={form.time} onChange={e => setField("time", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
           </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Assessor</label>
+            <select value={form.assessorName} onChange={e => setField("assessorName", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+              <option value="">Select assessor...</option>
+              {[...educators].filter(c => c.isAssessor).sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course observed</label>
             <select value={form.courseId} onChange={e => selectCourse(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
@@ -4313,6 +4432,7 @@ function CetAssessmentTab({ educators, courses, cetAssessments, saveCetAssessmen
               {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
             </select>
           </div>
+        </div>
         </div>
       </div>
 
@@ -4486,18 +4606,50 @@ function CetAssessmentTab({ educators, courses, cetAssessments, saveCetAssessmen
           <div className="flex items-center gap-2 flex-wrap">
             <input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Search CET or course..."
               className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs w-56" />
-            <button onClick={() => exportCsv(cetAssessments, "FV_CET_Observations_all.csv")} disabled={cetAssessments.length === 0}
+            <button onClick={() => {
+                if (!requestAdminAction("export")) return;
+                const scoped = iAmMaster ? cetAssessments : cetAssessments.filter(a => a.memberFederation === myMf);
+                exportCsv(scoped, "CET_Assessments_all.csv");
+              }} disabled={cetAssessments.length === 0}
               className="flex items-center gap-1 text-xs font-semibold text-slate-600 border border-slate-300 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 whitespace-nowrap">
-              <FileText className="w-3.5 h-3.5" /> Export All (CSV)
+              <FileText className="w-3.5 h-3.5" /> Export {adminAuthed && !iAmMaster ? "My MF" : "All"} (CSV)
             </button>
             {historySearch.trim() && (
-              <button onClick={() => exportCsv(historyFiltered, "FV_CET_Observations_list.csv")} disabled={historyFiltered.length === 0}
+              <button onClick={() => {
+                  if (!requestAdminAction("export")) return;
+                  const scoped = iAmMaster ? historyFiltered : historyFiltered.filter(a => a.memberFederation === myMf);
+                  exportCsv(scoped, "CET_Assessments_list.csv");
+                }} disabled={historyFiltered.length === 0}
                 className="flex items-center gap-1 text-xs font-semibold text-slate-600 border border-slate-300 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 whitespace-nowrap">
                 <FileText className="w-3.5 h-3.5" /> Export Filtered (CSV)
               </button>
             )}
           </div>
         </div>
+        {adminAuthFor === "export" && (
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+            <p className="text-xs text-indigo-700">Exporting needs a Lead or Master Admin name and PIN. A Lead Admin's export is limited to their own Member Federation.</p>
+            <div className="grid sm:grid-cols-2 gap-2">
+              <input value={adminAuthName} onChange={e => { setAdminAuthName(e.target.value); setAdminAuthError(false); }} placeholder="Admin name"
+                className={`border rounded-lg px-3 py-2 text-sm ${adminAuthError ? "border-red-400" : "border-indigo-300"}`} />
+              <input type="password" inputMode="numeric" maxLength={4} value={adminAuthPin}
+                onChange={e => { setAdminAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setAdminAuthError(false); }}
+                onKeyDown={e => { if (e.key === "Enter") handleAdminAuth(); }} placeholder="PIN"
+                className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${adminAuthError ? "border-red-400" : "border-indigo-300"}`} />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleAdminAuth} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Unlock</button>
+              <button onClick={() => setAdminAuthFor(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+            </div>
+            {adminAuthError && (
+              <p className="text-xs text-red-600">
+                {isLockedOut(adminLockouts, adminAuthName)
+                  ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, adminAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, adminAuthName) === 1 ? "" : "s"}.`
+                  : "Incorrect admin name or PIN, or a Course Admin (needs Lead or Master)."}
+              </p>
+            )}
+          </div>
+        )}
         {historyFiltered.length === 0 ? (
           <p className="text-xs text-slate-400">No assessments yet.</p>
         ) : (
