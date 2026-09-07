@@ -188,6 +188,54 @@ const COACHING_ACTIVITY_OBJECTIVES = {
 const DIPLOMA_BLOCK_OPTIONS_B = ["Block 1", "Block 2", "Block 3"];
 const DIPLOMA_BLOCK_OPTIONS_A = ["Block 1", "Block 2", "Block 3", "Block 4"];
 
+// CET Assessment — FV's own tool for assessing a CET's coaching-conversation
+// and session-design practice, distinct from the coach observation rubric.
+const GRIP_ITEMS = [
+  { key: "goals", label: "Goals", hint: "Clarity on what the session/conversation is working towards" },
+  { key: "reflect", label: "Reflect/Review", hint: "Prompting the candidate to reflect on their own practice" },
+  { key: "input", label: "Input", hint: "Options, research or outside perspective brought in" },
+  { key: "plan", label: "Plan", hint: "Clear, agreed next steps" },
+];
+const CP_ITEMS = [
+  { key: "process", label: "Coaching Process", hint: "Presenting: Engage, Explain, Exit · Coaching: Enter, Enhance/Educate, Ensure" },
+  { key: "fiveRs", label: "Session Design (5 R's)", hint: "Content: Relevance, Realism, Repetition, Rewards, Reflection · Organisation" },
+];
+const CET_SOCHANGEIT_ITEMS = [
+  { letter: "O", label: "Organised", desc: "Quick starts and planned transitions." },
+  { letter: "C", label: "Coaching style", desc: "In-activity feedback, role models, pre-planned prompts." },
+  { letter: "H", label: "How you score/win", desc: "Scoring opportunities/incentives adjusted." },
+  { letter: "A", label: "Area", desc: "Size/shape of playing area varied." },
+  { letter: "N", label: "Numbers", desc: "Team numbers changed to shift the challenge." },
+  { letter: "G", label: "Game rules", desc: "Rules tweaked to refocus the practice." },
+  { letter: "E", label: "Equipment", desc: "Equipment varied (goals, balls, markers)." },
+  { letter: "I", label: "Inclusion", desc: "Players engaged in shaping the practice." },
+  { letter: "T", label: "Time", desc: "Time constraints used to change intensity/focus." },
+];
+function courseLevelFor(title) {
+  const t = (title || "").toLowerCase();
+  if (isCDiploma(title)) return "C";
+  if (isBDiploma(title)) return "B";
+  if (isADiploma(title)) return "A";
+  if (/goalkeep/.test(t) || /\bfogk\b/.test(t)) return "FoGK";
+  if (/futsal/.test(t) || /\bfofu\b/.test(t)) return "FoFu";
+  if (/foundation of football/.test(t) || /\bfof\b/.test(t)) return "FoF";
+  return "Other";
+}
+function emptyCetAssessmentForm() {
+  return {
+    cetId: "", cetName: "", assessorName: "", courseId: "", courseTitle: "", courseNumber: "",
+    memberFederation: DEFAULT_MEMBER_FEDERATION, date: "", time: "", venue: "",
+    grip: { goals: { rating: "", note: "" }, reflect: { rating: "", note: "" }, input: { rating: "", note: "" }, plan: { rating: "", note: "" } },
+    sochangeit: { rating: "", notes: "" },
+    coachingProcess: { process: { rating: "", evidence: "" }, fiveRs: { rating: "", evidence: "" } },
+    feedback: { strengths: "", development: "", general: "" },
+    outcome: "",
+    actionPlan: [],
+    signAssessor: "", signDate: "", signCET: "", ackDiscussed: false,
+  };
+}
+
+
 function isBDiploma(name) {
   return /\bb diploma\b/i.test(name || "");
 }
@@ -988,6 +1036,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [educators, setEducators] = useState([]);
   const [observations, setObservations] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
+  const [cetAssessments, setCetAssessments] = useState([]);
   const [closedCourseNumbers, setClosedCourseNumbers] = useState([]);
   const [closedCourseBlocks, setClosedCourseBlocks] = useState({});
   const [adminLockouts, setAdminLockouts] = useState({});
@@ -1007,12 +1056,13 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     setLoading(true);
     setError(null);
     try {
-      const [c, co, ed, ob, ct, cc, cb, al, adm] = await Promise.all([
+      const [c, co, ed, ob, ct, ca, cc, cb, al, adm] = await Promise.all([
         loadCollectionSb("coaches"),
         loadCollectionSb("courses"),
         loadCollectionSb("cets"),
         loadCollectionSb("observations"),
         loadCollectionSb("completed_tasks"),
+        loadCollectionSb("cet_assessments"),
         kvGet("closedCourseNumbers"),
         kvGet("closedCourseBlocks"),
         kvGet("adminLockouts"),
@@ -1023,6 +1073,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
       setEducators(ed || []);
       setObservations(ob || []);
       setCompletedTasks(ct || []);
+      setCetAssessments(ca || []);
       setClosedCourseNumbers(cc || []);
       setClosedCourseBlocks(cb || {});
       setAdminLockouts(al || {});
@@ -1043,23 +1094,26 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   // Restore in the Bin and want to stay right where I am."
   async function reloadCollectionsQuietly() {
     try {
-      const [c, co, ed, ob, ct] = await Promise.all([
+      const [c, co, ed, ob, ct, ca] = await Promise.all([
         loadCollectionSb("coaches"),
         loadCollectionSb("courses"),
         loadCollectionSb("cets"),
         loadCollectionSb("observations"),
         loadCollectionSb("completed_tasks"),
+        loadCollectionSb("cet_assessments"),
       ]);
       setCoaches(c || []);
       setCourses(co || []);
       setEducators(ed || []);
       setObservations(ob || []);
       setCompletedTasks(ct || []);
+      setCetAssessments(ca || []);
     } catch (e) { /* the Bin's own local state already reflects the restore either way */ }
   }
 
   const saveCoaches = async (v) => { setCoaches(v); await syncCollectionSb("coaches", coaches, v); };
   const saveCourses = async (v) => { setCourses(v); await syncCollectionSb("courses", courses, v); };
+  const saveCetAssessments = async (v) => { setCetAssessments(v); await syncCollectionSb("cet_assessments", cetAssessments, v); };
   const saveEducators = async (v) => { setEducators(v); await syncCollectionSb("cets", educators, v); };
   const saveObservations = async (v) => { setObservations(v); await syncCollectionSb("observations", observations, v); };
   const saveCompletedTasks = async (v) => { setCompletedTasks(v); await syncCollectionSb("completed_tasks", completedTasks, v); };
@@ -1255,6 +1309,12 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
           />
         )}
+        {tab === "cetAssessment" && (
+          <CetAssessmentTab
+            educators={educators} courses={courses}
+            cetAssessments={cetAssessments} saveCetAssessments={saveCetAssessments}
+          />
+        )}
         {tab === "logistics" && (
           <div className="space-y-8">
             <div className="flex justify-end gap-2">
@@ -1350,6 +1410,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, onAdminClick }) {
     { id: "dashboard", label: "Dashboard", icon: TrendingUp },
     { id: "newObs", label: "New Observation", icon: ClipboardList },
     { id: "tasks", label: "Completed Tasks", icon: ListChecks },
+    { id: "cetAssessment", label: "CET Assessment", icon: Award },
     { id: "logistics", label: "Logistics", icon: Settings },
     { id: "history", label: "History", icon: FileText },
   ];
@@ -4097,6 +4158,377 @@ function buildCandidateHtml(task, coach, observations) {
     <h2 style="margin:20px 0 0 0;">Observation Reports (${matchingReports.length})</h2>
     ${reportSections || '<p style="font-size:13px;color:#64748b;">No submitted observation reports linked to this course yet.</p>'}
   </body></html>`;
+}
+
+function CetAssessmentTab({ educators, courses, cetAssessments, saveCetAssessments }) {
+  const [form, setForm] = useState(emptyCetAssessmentForm());
+  const [editingId, setEditingId] = useState(null);
+  const [historySearch, setHistorySearch] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [savedMsg, setSavedMsg] = useState("");
+
+  function setField(key, val) { setForm(prev => ({ ...prev, [key]: val })); }
+  function setGripField(key, field, val) {
+    setForm(prev => ({ ...prev, grip: { ...prev.grip, [key]: { ...prev.grip[key], [field]: val } } }));
+  }
+  function setCpField(key, field, val) {
+    setForm(prev => ({ ...prev, coachingProcess: { ...prev.coachingProcess, [key]: { ...prev.coachingProcess[key], [field]: val } } }));
+  }
+  function selectCet(id) {
+    const c = educators.find(e => e.id === id);
+    setForm(prev => ({ ...prev, cetId: id, cetName: c ? c.name : "" }));
+  }
+  function selectCourse(courseId) {
+    const c = courses.find(co => co.id === courseId);
+    setForm(prev => ({ ...prev, courseId, courseTitle: c ? c.title : "" }));
+  }
+  const courseLevel = courseLevelFor(form.courseTitle);
+  const isDiplomaLevel = ["C", "B", "A"].includes(courseLevel);
+
+  function addActionRow() {
+    setForm(prev => ({ ...prev, actionPlan: [...prev.actionPlan, { focus: "", action: "", support: "" }] }));
+  }
+  function updateActionRow(i, field, val) {
+    setForm(prev => ({ ...prev, actionPlan: prev.actionPlan.map((r, idx) => idx === i ? { ...r, [field]: val } : r) }));
+  }
+  function removeActionRow(i) {
+    setForm(prev => ({ ...prev, actionPlan: prev.actionPlan.filter((_, idx) => idx !== i) }));
+  }
+
+  function canSubmit() {
+    return !!(form.cetId && form.date && form.assessorName.trim() && form.courseId
+      && GRIP_ITEMS.every(item => form.grip[item.key].rating)
+      && form.sochangeit.rating
+      && (!isDiplomaLevel || CP_ITEMS.every(item => form.coachingProcess[item.key].rating))
+      && form.feedback.strengths.trim() && form.feedback.development.trim()
+      && form.outcome);
+  }
+
+  function resetForm() {
+    setForm(emptyCetAssessmentForm());
+    setEditingId(null);
+  }
+
+  function saveRecord(status) {
+    const record = { ...form, id: editingId || uid(), status, updatedAt: new Date().toISOString() };
+    if (editingId) {
+      saveCetAssessments(cetAssessments.map(a => a.id === editingId ? record : a));
+    } else {
+      saveCetAssessments([...cetAssessments, record]);
+    }
+    setSavedMsg(status === "draft" ? "Saved as draft." : "Submitted.");
+    resetForm();
+    setTimeout(() => setSavedMsg(""), 4000);
+  }
+
+  function startEdit(rec) {
+    setForm({ ...emptyCetAssessmentForm(), ...rec });
+    setEditingId(rec.id);
+    setSavedMsg("");
+  }
+
+  function deleteRecord(id) {
+    saveCetAssessments(cetAssessments.filter(a => a.id !== id));
+    setConfirmDeleteId(null);
+    if (editingId === id) resetForm();
+  }
+
+  const historyFiltered = [...cetAssessments]
+    .filter(a => !historySearch.trim() || (a.cetName || "").toLowerCase().includes(historySearch.trim().toLowerCase()) || (a.courseTitle || "").toLowerCase().includes(historySearch.trim().toLowerCase()))
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+  function exportCsv(records, filename) {
+    const rows = records.map(a => ({
+      Status: a.status === "draft" ? "Draft" : "Submitted",
+      Date: a.date || "", Time: a.time || "",
+      CET: a.cetName || "", Assessor: a.assessorName || "",
+      Course: a.courseTitle || "", Level: courseLevelFor(a.courseTitle), Venue: a.venue || "",
+      Outcome: a.outcome || "",
+      Strengths: a.feedback?.strengths || "", "Areas for development": a.feedback?.development || "", "General comments": a.feedback?.general || "",
+      "GRIP - Goals": a.grip?.goals?.rating || "", "GRIP - Reflect/Review": a.grip?.reflect?.rating || "",
+      "GRIP - Input": a.grip?.input?.rating || "", "GRIP - Plan": a.grip?.plan?.rating || "",
+      "SO CHANGE IT (referenced to candidates)": a.sochangeit?.rating || "",
+      "Coaching Process": a.coachingProcess?.process?.rating || "", "Session Design": a.coachingProcess?.fiveRs?.rating || "",
+      "Sign-off assessor": a.signAssessor || "", "Sign-off date": a.signDate || "", "Ack discussed": a.ackDiscussed ? "Yes" : "No",
+    }));
+    downloadGenericCsv(rows, filename);
+  }
+
+  const rateOptions3 = ["Referenced and applied effectively", "Partially evidenced", "Not evidenced"];
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-bold text-slate-900">CET Assessment</h2>
+        <p className="text-sm text-slate-500">Football Victoria's assessment of a CET's coaching-conversation and session-design practice.</p>
+      </div>
+
+      {savedMsg && <p className="text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{savedMsg}</p>}
+      {editingId && (
+        <div className="flex items-center justify-between gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+          <p className="text-xs text-indigo-700">Editing an existing {form.status === "draft" ? "draft" : "submitted"} assessment.</p>
+          <button onClick={resetForm} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">Cancel, start new</button>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+        <p className="text-sm font-semibold text-slate-800">Observation Details</p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">CET being observed</label>
+            <select value={form.cetId} onChange={e => selectCet(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+              <option value="">Select CET...</option>
+              {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Assessor</label>
+            <input value={form.assessorName} onChange={e => setField("assessorName", e.target.value)} placeholder="Assessor name"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Date</label>
+            <input type="date" value={form.date} onChange={e => setField("date", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Time</label>
+            <input type="time" value={form.time} onChange={e => setField("time", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course observed</label>
+            <select value={form.courseId} onChange={e => selectCourse(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+              <option value="">Select course...</option>
+              {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+            </select>
+            {form.courseTitle && <span className="inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{courseLevel === "Other" ? "Non-diploma" : courseLevel === "C" || courseLevel === "B" || courseLevel === "A" ? `${courseLevel} Diploma` : courseLevel}</span>}
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Venue / location (optional)</label>
+            <input value={form.venue} onChange={e => setField("venue", e.target.value)} placeholder="e.g. La Trobe University, Bundoora"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Member Federation</label>
+            <select value={form.memberFederation} onChange={e => setField("memberFederation", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+              {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-800">GRIP — Coaching Conversation</p>
+          <p className="text-xs text-slate-400">Goals · Reflect/Review · Input · Plan</p>
+        </div>
+        <div className="space-y-3">
+          {GRIP_ITEMS.map(item => (
+            <div key={item.key} className="border-b border-slate-100 pb-3 last:border-b-0 last:pb-0">
+              <p className="text-sm font-semibold text-slate-700">{item.label}</p>
+              <p className="text-xs text-slate-400 mb-1.5">{item.hint}</p>
+              <div className="flex gap-2 flex-wrap mb-1.5">
+                {["Strong", "Developing", "Needs attention"].map(opt => (
+                  <button key={opt} type="button" onClick={() => setGripField(item.key, "rating", opt)}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${
+                      form.grip[item.key].rating === opt
+                        ? opt === "Strong" ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                        : opt === "Needs attention" ? "bg-red-100 text-red-700 border-red-300"
+                        : "bg-amber-100 text-amber-700 border-amber-300"
+                        : "bg-white text-slate-400 border-slate-200"
+                    }`}>{opt}</button>
+                ))}
+              </div>
+              <input value={form.grip[item.key].note} onChange={e => setGripField(item.key, "note", e.target.value)} placeholder="Evidence..."
+                className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-xs" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+        <p className="text-sm font-semibold text-slate-800">SO CHANGE IT</p>
+        <div className="grid sm:grid-cols-5 gap-2">
+          {CET_SOCHANGEIT_ITEMS.map(item => (
+            <div key={item.letter} className="border border-slate-200 rounded-lg p-2">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-indigo-600 text-white text-xs font-bold mr-1">{item.letter}</span>
+              <span className="text-xs font-semibold">{item.label}</span>
+              <p className="text-[10px] text-slate-400 mt-1">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+        <div>
+          <p className="text-xs font-medium text-slate-500 mb-1.5">Referenced to candidates</p>
+          <div className="flex gap-2 flex-wrap mb-1.5">
+            {rateOptions3.map(opt => (
+              <button key={opt} type="button" onClick={() => setForm(prev => ({ ...prev, sochangeit: { ...prev.sochangeit, rating: opt } }))}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${form.sochangeit.rating === opt ? "bg-indigo-100 text-indigo-700 border-indigo-300" : "bg-white text-slate-400 border-slate-200"}`}>{opt}</button>
+            ))}
+          </div>
+          <input value={form.sochangeit.notes} onChange={e => setForm(prev => ({ ...prev, sochangeit: { ...prev.sochangeit, notes: e.target.value } }))} placeholder="Notes..."
+            className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-xs" />
+        </div>
+      </div>
+
+      {isDiplomaLevel ? (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+          <p className="text-sm font-semibold text-slate-800">Coaching Frameworks</p>
+          <div className="space-y-3">
+            {CP_ITEMS.map(item => (
+              <div key={item.key} className="border-b border-slate-100 pb-3 last:border-b-0 last:pb-0">
+                <p className="text-sm font-semibold text-slate-700">{item.label}</p>
+                <p className="text-xs text-slate-400 mb-1.5">{item.hint}</p>
+                <div className="flex gap-2 flex-wrap mb-1.5">
+                  {rateOptions3.map(opt => (
+                    <button key={opt} type="button" onClick={() => setCpField(item.key, "rating", opt)}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${form.coachingProcess[item.key].rating === opt ? "bg-indigo-100 text-indigo-700 border-indigo-300" : "bg-white text-slate-400 border-slate-200"}`}>{opt}</button>
+                  ))}
+                </div>
+                <input value={form.coachingProcess[item.key].evidence} onChange={e => setCpField(item.key, "evidence", e.target.value)} placeholder="Evidence..."
+                  className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-xs" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : form.courseId ? (
+        <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+          <p className="text-xs text-slate-500">This course isn't tagged as Diploma-level (C, B, A), so Coaching Frameworks ratings aren't required here.</p>
+        </div>
+      ) : null}
+
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+        <p className="text-sm font-semibold text-slate-800">Feedback</p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Strengths</label>
+            <textarea value={form.feedback.strengths} onChange={e => setForm(prev => ({ ...prev, feedback: { ...prev.feedback, strengths: e.target.value } }))}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" rows={2} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Areas for development</label>
+            <textarea value={form.feedback.development} onChange={e => setForm(prev => ({ ...prev, feedback: { ...prev.feedback, development: e.target.value } }))}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" rows={2} />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1.5 block">General comments (optional)</label>
+          <textarea value={form.feedback.general} onChange={e => setForm(prev => ({ ...prev, feedback: { ...prev.feedback, general: e.target.value } }))}
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" rows={2} />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+        <p className="text-sm font-semibold text-slate-800">Overall Outcome</p>
+        <div className="flex gap-2 flex-wrap">
+          {["Highly Competent", "Competent", "Requires Development"].map(opt => (
+            <button key={opt} type="button" onClick={() => setField("outcome", opt)}
+              className={`flex-1 min-w-[140px] text-center text-sm font-bold px-3 py-2.5 rounded-lg border-2 ${form.outcome === opt ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-500"}`}>{opt}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+        <p className="text-sm font-semibold text-slate-800">Action Plan</p>
+        {form.actionPlan.length > 0 && (
+          <div className="space-y-2">
+            {form.actionPlan.map((row, i) => (
+              <div key={i} className="grid sm:grid-cols-3 gap-2 items-start border border-slate-200 rounded-lg p-2">
+                <textarea value={row.focus} onChange={e => updateActionRow(i, "focus", e.target.value)} placeholder="Focus area" rows={1} className="border border-slate-200 rounded-md px-2 py-1.5 text-xs" />
+                <textarea value={row.action} onChange={e => updateActionRow(i, "action", e.target.value)} placeholder="Action / steps" rows={1} className="border border-slate-200 rounded-md px-2 py-1.5 text-xs" />
+                <div className="flex gap-1.5 items-start">
+                  <textarea value={row.support} onChange={e => updateActionRow(i, "support", e.target.value)} placeholder="Support / resources" rows={1} className="flex-1 border border-slate-200 rounded-md px-2 py-1.5 text-xs" />
+                  <button type="button" onClick={() => removeActionRow(i)} className="text-slate-300 hover:text-red-600 shrink-0"><X className="w-4 h-4" /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <button type="button" onClick={addActionRow} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">+ Add row</button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+        <p className="text-sm font-semibold text-slate-800">Sign-off</p>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Assessor name</label>
+            <input value={form.signAssessor} onChange={e => setField("signAssessor", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Date signed</label>
+            <input type="date" value={form.signDate} onChange={e => setField("signDate", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">CET acknowledgement (optional)</label>
+            <input value={form.signCET} onChange={e => setField("signCET", e.target.value)} placeholder="CET name" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+          <input type="checkbox" checked={form.ackDiscussed} onChange={() => setField("ackDiscussed", !form.ackDiscussed)} className="rounded border-slate-300" />
+          Feedback and action plan discussed with the CET
+        </label>
+      </div>
+
+      <div className="text-center py-2">
+        <div className="flex items-center justify-center gap-3 flex-wrap">
+          <button type="button" onClick={() => saveRecord("draft")} className="bg-white border border-slate-300 text-slate-700 px-6 py-3 rounded-lg text-sm font-semibold hover:bg-slate-50">
+            Save &amp; Return
+          </button>
+          <button type="button" onClick={() => saveRecord("submitted")} disabled={!canSubmit()}
+            className="bg-indigo-600 text-white px-6 py-3 rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:bg-slate-300">
+            Save &amp; Submit
+          </button>
+        </div>
+        <p className="text-xs text-slate-400 mt-2">Save &amp; Return keeps this as a draft — nothing needs to be complete yet. Save &amp; Submit finalises it and starts a fresh form.</p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm font-semibold text-slate-800">History ({cetAssessments.length})</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Search CET or course..."
+              className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs w-56" />
+            <button onClick={() => exportCsv(cetAssessments, "FV_CET_Observations_all.csv")} disabled={cetAssessments.length === 0}
+              className="flex items-center gap-1 text-xs font-semibold text-slate-600 border border-slate-300 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 whitespace-nowrap">
+              <FileText className="w-3.5 h-3.5" /> Export All (CSV)
+            </button>
+            {historySearch.trim() && (
+              <button onClick={() => exportCsv(historyFiltered, "FV_CET_Observations_list.csv")} disabled={historyFiltered.length === 0}
+                className="flex items-center gap-1 text-xs font-semibold text-slate-600 border border-slate-300 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 whitespace-nowrap">
+                <FileText className="w-3.5 h-3.5" /> Export Filtered (CSV)
+              </button>
+            )}
+          </div>
+        </div>
+        {historyFiltered.length === 0 ? (
+          <p className="text-xs text-slate-400">No assessments yet.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {historyFiltered.map(a => (
+              <div key={a.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">
+                    {a.cetName || "(no CET)"}
+                    {a.status === "draft" && <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full ml-1.5">DRAFT</span>}
+                  </p>
+                  <p className="text-xs text-slate-400">{a.courseTitle}{a.date ? ` · ${new Date(a.date).toLocaleDateString("en-GB")}` : ""}{a.outcome ? ` · ${a.outcome}` : ""}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => startEdit(a)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Open</button>
+                  <button onClick={() => setConfirmDeleteId(a.id)} className="text-slate-300 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {confirmDeleteId && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 flex items-center gap-2">
+            <p className="text-xs text-red-700 flex-1">Delete this assessment? It's recoverable from the Bin for 30 days.</p>
+            <button onClick={() => deleteRecord(confirmDeleteId)} className="text-xs font-semibold text-red-700 hover:text-red-800 whitespace-nowrap">Delete</button>
+            <button onClick={() => setConfirmDeleteId(null)} className="text-xs text-slate-500 hover:text-slate-700 whitespace-nowrap">Cancel</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, closedCourseNumbers, saveClosedCourseNumbers, closedCourseBlocks, saveClosedCourseBlocks, adminSettings, adminLockouts, recordAdminAttempt }) {
@@ -8553,6 +8985,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     { table: "cets", label: "CETs", masterOnly: false, nameOf: (i) => i.name },
     { table: "observations", label: "Observations", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
     { table: "completed_tasks", label: "Completed Tasks", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"}${i.courseNumber ? ` — #${i.courseNumber}` : ""}` },
+    { table: "cet_assessments", label: "CET Assessments", masterOnly: false, nameOf: (i) => `${i.cetName || "Unknown CET"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
   ];
 
   function daysRemaining(deletedAt) {
@@ -8568,7 +9001,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     // memberFederation.
     const mine = signedInAdminMatch.memberFederations || [];
     if (tableKey === "cets" || tableKey === "coaches") return (item.memberFederations || []).some(mf => mine.includes(mf));
-    if (tableKey === "observations" || tableKey === "completed_tasks") return mine.includes(item.memberFederation);
+    if (tableKey === "observations" || tableKey === "completed_tasks" || tableKey === "cet_assessments") return mine.includes(item.memberFederation);
     return false;
   }
 

@@ -63,6 +63,19 @@ create table if not exists trial_users (
   created_at timestamptz not null default now()
 );
 
+-- CET Assessment: FV's own assessment of a CET's coaching-conversation and
+-- session-design practice (GRIP, SO CHANGE IT, Coaching Frameworks). Same
+-- per-record pattern as observations/completed_tasks — CETs, assessors,
+-- and courses reuse CODA's existing cets/courses tables rather than
+-- duplicating them here.
+create table if not exists cet_assessments (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
+);
+alter table cet_assessments enable row level security;
+create policy "public read/write cet_assessments" on cet_assessments for all using (true) with check (true);
+
 -- Row Level Security: open for now since access is gated by the app's PIN
 -- screen rather than Supabase auth. Tighten this later if you add real auth.
 alter table coaches enable row level security;
