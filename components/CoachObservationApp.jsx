@@ -4276,6 +4276,54 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     setEditingId(null);
   }
 
+  // Data repair — before the courseworkProgress/auto-link bug was fixed,
+  // a Not Yet Competent observation could still leave the matching
+  // checklist item marked done. The checkbox is now locked from being
+  // re-ticked, but that doesn't correct records already saved wrong
+  // before the fix. This finds and corrects those specifically.
+  function findNycInconsistencies() {
+    const affected = [];
+    completedTasks.forEach(t => {
+      if (isCDiploma(t.courseTitle) && t.practicalSessionOutcome === "Not Yet Competent" && t.practicalSessionDone) {
+        affected.push({ taskId: t.id, coachName: t.coachName, label: "Practical Session" });
+      }
+      if ((isBDiploma(t.courseTitle) || isADiploma(t.courseTitle)) && t.sessionPlansOutcomes) {
+        Object.entries(t.sessionPlansOutcomes).forEach(([topic, outcome]) => {
+          if (outcome === "Not Yet Competent" && t.sessionPlansDone && t.sessionPlansDone[topic]) {
+            affected.push({ taskId: t.id, coachName: t.coachName, label: topic });
+          }
+        });
+      }
+    });
+    return affected;
+  }
+
+  function repairNycInconsistencies() {
+    saveCompletedTasks(completedTasks.map(t => {
+      let changed = false;
+      let next = t;
+      if (isCDiploma(t.courseTitle) && t.practicalSessionOutcome === "Not Yet Competent" && t.practicalSessionDone) {
+        next = { ...next, practicalSessionDone: false };
+        changed = true;
+      }
+      if ((isBDiploma(t.courseTitle) || isADiploma(t.courseTitle)) && t.sessionPlansOutcomes) {
+        const fixedDone = { ...(t.sessionPlansDone || {}) };
+        let touchedAny = false;
+        Object.entries(t.sessionPlansOutcomes).forEach(([topic, outcome]) => {
+          if (outcome === "Not Yet Competent" && fixedDone[topic]) {
+            fixedDone[topic] = false;
+            touchedAny = true;
+          }
+        });
+        if (touchedAny) {
+          next = { ...next, sessionPlansDone: fixedDone };
+          changed = true;
+        }
+      }
+      return changed ? { ...next, updatedAt: new Date().toISOString() } : t;
+    }));
+  }
+
   function downloadCompletedTasksCsv() {
     const rows = completedTasks.map(t => {
       const coach = coaches.find(c => c.id === t.coachId);
@@ -4617,6 +4665,29 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   }
 
   const [savingOutstandingPdfId, setSavingOutstandingPdfId] = useState(null);
+  const [showNycRepair, setShowNycRepair] = useState(false);
+  const [nycRepairAuthName, setNycRepairAuthName] = useState("");
+  const [nycRepairAuthPin, setNycRepairAuthPin] = useState("");
+  const [nycRepairAuthError, setNycRepairAuthError] = useState(false);
+  const [nycRepairAuthed, setNycRepairAuthed] = useState(false);
+  const [nycRepairDone, setNycRepairDone] = useState(0);
+
+  function handleNycRepairAuth() {
+    if (isLockedOut(adminLockouts, nycRepairAuthName)) {
+      setNycRepairAuthError(true);
+      return;
+    }
+    const match = findAdminMatch(adminSettings.admins, nycRepairAuthName, nycRepairAuthPin);
+    if (!match || !isMasterAdmin(match)) {
+      recordAdminAttempt(nycRepairAuthName, !!match);
+      setNycRepairAuthError(true);
+      return;
+    }
+    recordAdminAttempt(nycRepairAuthName, true);
+    setNycRepairAuthed(true);
+    setNycRepairAuthError(false);
+  }
+
 
   async function handleSaveOutstandingPdf(t, cardCoach) {
     setSavingOutstandingPdfId(t.id);
@@ -5367,8 +5438,62 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               <AlertCircle className="w-4 h-4" /> {duplicateTaskGroups.length} Duplicate Record{duplicateTaskGroups.length === 1 ? "" : "s"}
             </button>
           )}
+          {findNycInconsistencies().length > 0 && (
+            <button onClick={() => setShowNycRepair(s => !s)} className="flex items-center gap-1.5 text-sm font-semibold text-red-700 border border-red-300 px-3 py-2 rounded-lg hover:bg-red-50">
+              <AlertCircle className="w-4 h-4" /> {findNycInconsistencies().length} Not Yet Competent Marked Done
+            </button>
+          )}
         </div>
       </div>
+
+      {showNycRepair && (() => {
+        const affected = findNycInconsistencies();
+        if (affected.length === 0) return null;
+        const byCoach = {};
+        affected.forEach(a => { if (!byCoach[a.taskId]) byCoach[a.taskId] = { coachName: a.coachName, labels: [] }; byCoach[a.taskId].labels.push(a.label); });
+        return (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+            <p className="text-sm font-semibold text-red-900">Not Yet Competent Items Marked Done</p>
+            <p className="text-xs text-red-700">
+              An older bug (now fixed) could leave a checklist item ticked as done even when its observation outcome was Not Yet Competent. These items are now locked from being ticked further, but
+              their existing "done" state was never corrected. This repairs it — each item below will be unticked, matching its actual outcome, and won't count toward that candidate's completion total anymore.
+            </p>
+            <div className="space-y-1">
+              {Object.values(byCoach).map((c, i) => (
+                <p key={i} className="text-xs text-red-800"><span className="font-semibold">{c.coachName}</span>: {c.labels.join(", ")}</p>
+              ))}
+            </div>
+            {!nycRepairAuthed ? (
+              <div className="space-y-2 pt-1">
+                <p className="text-xs text-red-700">Enter a Master Admin name and PIN to repair these.</p>
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <input value={nycRepairAuthName} onChange={e => { setNycRepairAuthName(e.target.value); setNycRepairAuthError(false); }} placeholder="Admin name"
+                    className={`border rounded-lg px-3 py-2 text-sm ${nycRepairAuthError ? "border-red-400" : "border-red-300"}`} />
+                  <input type="password" inputMode="numeric" maxLength={4} value={nycRepairAuthPin}
+                    onChange={e => { setNycRepairAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setNycRepairAuthError(false); }}
+                    onKeyDown={e => { if (e.key === "Enter") handleNycRepairAuth(); }} placeholder="Admin PIN"
+                    className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${nycRepairAuthError ? "border-red-400" : "border-red-300"}`} />
+                </div>
+                <button onClick={handleNycRepairAuth} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700">Unlock</button>
+                {nycRepairAuthError && (
+                  <p className="text-xs text-red-600">
+                    {isLockedOut(adminLockouts, nycRepairAuthName)
+                      ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, nycRepairAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, nycRepairAuthName) === 1 ? "" : "s"}.`
+                      : "Incorrect admin name or PIN, or not a Master Admin."}
+                  </p>
+                )}
+              </div>
+            ) : nycRepairDone > 0 ? (
+              <p className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">Repaired {nycRepairDone} item{nycRepairDone === 1 ? "" : "s"}.</p>
+            ) : (
+              <button onClick={() => { const n = affected.length; repairNycInconsistencies(); setNycRepairDone(n); }}
+                className="bg-red-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-700">
+                Repair {affected.length} Item{affected.length === 1 ? "" : "s"} Now
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {showDupTasks && duplicateTaskGroups.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
