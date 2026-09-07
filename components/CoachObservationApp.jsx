@@ -4984,7 +4984,15 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 <div key={t.id} className="border border-slate-200 rounded-lg p-3">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <p className="text-sm font-semibold text-slate-800">{t.coachName}</p>
-                    <span className="text-xs text-slate-400">Attendance {t.attendancePercent}%</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-slate-400">Attendance {t.attendancePercent}%</span>
+                      {outstanding.length > 0 && (
+                        <button onClick={() => handleSaveOutstandingPdf(t, cardCoach)} disabled={savingOutstandingPdfId === t.id}
+                          className="flex items-center gap-1 text-xs font-semibold text-orange-700 border border-orange-300 px-2 py-1 rounded-lg hover:bg-orange-50 disabled:opacity-50 whitespace-nowrap">
+                          <FileText className="w-3 h-3" /> {savingOutstandingPdfId === t.id ? "Saving..." : "Download PDF"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {outstanding.length === 0 ? (
                     <p className="text-xs text-emerald-600 font-medium mb-2">All coursework completed.</p>
