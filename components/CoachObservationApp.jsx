@@ -3789,6 +3789,8 @@ function emptyCompletedTaskForm() {
     practicalSessionDone: false,
     practicalSessionOutcome: "",
     courseworkNotes: {},
+    recommendNextLevel: false,
+    recommendNextLevelNotes: "",
   };
 }
 
@@ -3977,6 +3979,28 @@ function buildCourseReportHtml(group, coaches, incompleteOnly) {
     <p style="color:#64748b;margin:0 0 4px 0;">${esc(group.courseTitle)}</p>
     <p style="color:#64748b;margin:0 0 20px 0;font-size:13px;">${incompleteOnly ? `Candidates with outstanding coursework (${rows.length} of ${group.records.length})` : `All candidates (${rows.length})`} · Generated ${new Date().toLocaleDateString("en-GB")}</p>
     ${candidateSections || '<p style="font-size:13px;color:#64748b;">No candidates to show.</p>'}
+  </body></html>`;
+}
+
+// A short, focused document for a single candidate listing just what's
+// still outstanding — meant to be attached to an email telling them what
+// they still need to finish, rather than the full combined report.
+function buildOutstandingCandidateHtml(task, coach) {
+  const esc = (s) => (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const { done, total } = courseworkProgress(task, coach?.topics);
+  const items = total > 0 ? courseworkItems(task, coach?.topics, task.team) : [];
+  const outstanding = items.filter(i => !i.done);
+  const outstandingRows = outstanding.map(i =>
+    `<tr><td style="padding:6px 8px;border:1px solid #ddd;">☐ ${esc(i.label)}${i.outcome === "Not Yet Competent" ? " (Not Yet Competent — needs a re-observation)" : ""}</td></tr>`
+  ).join("");
+  return `<html><head><title>${esc(task.coachName)} - Outstanding Items</title></head><body style="margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1e293b;padding:28px;">
+    <h1 style="margin:0 0 4px 0;">${esc(task.coachName)}</h1>
+    <p style="color:#64748b;margin:0 0 4px 0;">${esc(task.courseTitle)}${task.courseNumber ? ` (#${esc(task.courseNumber)})` : ""}</p>
+    <p style="font-size:13px;margin:0 0 20px 0;">Attendance: <strong>${task.attendancePercent}%</strong> · Online Modules: <strong>${task.onlineModulesPercent || 0}%</strong> · Coursework: <strong>${total > 0 ? `${done}/${total}` : "—"}</strong></p>
+    <h2 style="margin:0 0 8px 0;">Still to Complete</h2>
+    ${outstandingRows
+      ? `<table style="width:100%;border-collapse:collapse;font-size:13px;">${outstandingRows}</table>`
+      : '<p style="font-size:13px;color:#059669;font-weight:600;">Everything is complete.</p>'}
   </body></html>`;
 }
 
@@ -4278,7 +4302,13 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   function saveTask() {
     if (!canSave()) return;
     const coach = coaches.find(c => c.id === form.coachId);
+    // Start from the original record (when editing) so fields managed
+    // outside this form — Progress Tracking's blockStatuses, the next-
+    // level recommendation — aren't silently wiped just because someone
+    // edited an unrelated field like attendance here.
+    const original = editingId ? (completedTasks.find(t => t.id === editingId) || {}) : {};
     const record = {
+      ...original,
       id: editingId || uid(),
       coachId: form.coachId,
       coachName: coach ? coach.name : "",
@@ -4386,6 +4416,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   // per task — Master Admin only. Reset once they leave that block.
   const [reopenedBlockByTask, setReopenedBlockByTask] = useState({});
   const [reopenAuthForTaskBlock, setReopenAuthForTaskBlock] = useState(null);
+  const [recommendNotesDraft, setRecommendNotesDraft] = useState({});
 
   function blockOptionsForTask(task) {
     if (isADiploma(task.courseTitle)) return DIPLOMA_BLOCK_OPTIONS_A;
@@ -4459,6 +4490,26 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       : t));
   }
 
+  // B Diploma candidates can be recommended for A Diploma; C Diploma
+  // candidates for B Diploma. No recommendation exists at A Diploma
+  // itself (no higher tier was specified for it).
+  function recommendationLabelFor(courseTitle) {
+    if (isBDiploma(courseTitle)) return "Recommend for A Dip";
+    if (isCDiploma(courseTitle)) return "Recommend for B Dip";
+    return null;
+  }
+
+  function setRecommendation(task, recommend, notes) {
+    if (!progressAuthed || !adminHasCourseAccess(progressAuthMatch, task.courseNumber, task.memberFederation)) {
+      setProgressAuthForTaskId(task.id);
+      setProgressAuthName(""); setProgressAuthPin(""); setProgressAuthError(false);
+      return;
+    }
+    saveCompletedTasks(completedTasks.map(t => t.id === task.id
+      ? { ...t, recommendNextLevel: recommend, recommendNextLevelNotes: notes, updatedAt: new Date().toISOString() }
+      : t));
+  }
+
   // Reopening an already-locked past block is Master Admin only, stricter
   // than the course-scoped access that governs the active block.
   function requestReopenBlock(task, block) {
@@ -4512,6 +4563,19 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       alert("Couldn't generate the PDF file — try Download HTML instead.");
     }
     setSavingCandidatePdfId(null);
+  }
+
+  const [savingOutstandingPdfId, setSavingOutstandingPdfId] = useState(null);
+
+  async function handleSaveOutstandingPdf(t, cardCoach) {
+    setSavingOutstandingPdfId(t.id);
+    try {
+      const filename = `${(t.coachName || "candidate").replace(/[^a-z0-9]+/gi, "-")}-outstanding.pdf`;
+      await saveHtmlAsPdf(buildOutstandingCandidateHtml(t, cardCoach), filename);
+    } catch (e) {
+      alert("Couldn't generate the PDF file — try again.");
+    }
+    setSavingOutstandingPdfId(null);
   }
 
 
@@ -4833,6 +4897,30 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               <FileText className="w-3.5 h-3.5" /> {savingCourseReportPdf === "incomplete" ? "Saving..." : "Save Outstanding Only (PDF)"}
             </button>
           </div>
+          {recommendationLabelFor(group.courseTitle) && (() => {
+            const recommended = group.records.filter(t => t.recommendNextLevel);
+            if (recommended.length === 0) return null;
+            return (
+              <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-sky-700 mb-1.5">{recommendationLabelFor(group.courseTitle)} ({recommended.length})</p>
+                <ul className="space-y-1">
+                  {[...recommended].sort((a, b) => (a.coachName || "").localeCompare(b.coachName || "")).map(t => {
+                    const latestObs = observations
+                      .filter(o => o.status !== "draft" && o.coachId === t.coachId && (o.courseNumber || "").trim() === (t.courseNumber || "").trim())
+                      .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+                    return (
+                      <li key={t.id} className="text-sm text-slate-700">
+                        {latestObs
+                          ? <button onClick={() => onViewReport(latestObs.id)} className="underline decoration-dotted hover:text-sky-700">{t.coachName}</button>
+                          : t.coachName}
+                        {t.recommendNextLevelNotes && <span className="text-xs text-slate-400"> — {t.recommendNextLevelNotes}</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })()}
           <p className="text-xs text-slate-400">Outstanding checklist items can be ticked off directly here. Progress Tracking is shown per block — open the candidate's own card in Completed Tasks to change it.</p>
           <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
             {[...group.records].sort((a, b) => (a.coachName || "").localeCompare(b.coachName || "")).map(t => {
@@ -5921,6 +6009,28 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                             </div>
                                           );
                                         })()}
+                                        {recommendationLabelFor(t.courseTitle) && (() => {
+                                          const canSetRec = progressAuthed && adminHasCourseAccess(progressAuthMatch, t.courseNumber, t.memberFederation);
+                                          const draftNotes = recommendNotesDraft[t.id] !== undefined ? recommendNotesDraft[t.id] : (t.recommendNextLevelNotes || "");
+                                          return (
+                                            <div className="rounded-lg border border-sky-200 bg-sky-50 p-2.5 space-y-1.5">
+                                              <label className="flex items-center gap-2 text-xs font-semibold text-sky-800 cursor-pointer">
+                                                <input type="checkbox" checked={!!t.recommendNextLevel}
+                                                  onChange={() => setRecommendation(t, !t.recommendNextLevel, t.recommendNextLevelNotes || "")}
+                                                  className="rounded border-sky-300" />
+                                                {recommendationLabelFor(t.courseTitle)}
+                                              </label>
+                                              <input value={draftNotes}
+                                                onChange={e => setRecommendNotesDraft(prev => ({ ...prev, [t.id]: e.target.value }))}
+                                                onBlur={() => { if (recommendNotesDraft[t.id] !== undefined) setRecommendation(t, t.recommendNextLevel, recommendNotesDraft[t.id]); }}
+                                                placeholder="Optional note (visible on the Course Report)..." maxLength={200}
+                                                className="w-full border border-sky-200 rounded-md px-2 py-1 text-xs text-slate-600" />
+                                              {progressAuthForTaskId === t.id && !canSetRec && (
+                                                <p className="text-[10px] text-sky-700">Unlock in Progress Tracking above to change this.</p>
+                                              )}
+                                            </div>
+                                          );
+                                        })()}
                                         <div className="flex items-center gap-2 flex-wrap">
                                           <button onClick={() => handleSaveCandidatePdf(t, cardCoach)} disabled={savingCandidatePdfId === t.id}
                                             className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 border border-emerald-300 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 disabled:opacity-50">
@@ -5930,6 +6040,12 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                             className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 border border-slate-300 px-2.5 py-1.5 rounded-lg hover:bg-slate-100">
                                             <FileText className="w-3.5 h-3.5" /> Download HTML
                                           </button>
+                                          {total > 0 && done < total && (
+                                            <button onClick={() => handleSaveOutstandingPdf(t, cardCoach)} disabled={savingOutstandingPdfId === t.id}
+                                              className="flex items-center gap-1.5 text-xs font-semibold text-orange-700 border border-orange-300 px-2.5 py-1.5 rounded-lg hover:bg-orange-50 disabled:opacity-50">
+                                              <FileText className="w-3.5 h-3.5" /> {savingOutstandingPdfId === t.id ? "Saving..." : "Download Outstanding (PDF)"}
+                                            </button>
+                                          )}
                                         </div>
                                       </div>
                                     )}
