@@ -3937,6 +3937,47 @@ async function saveHtmlAsPdf(htmlContent, filename) {
   document.body.removeChild(iframe);
 }
 
+// Course Report export — either the full cohort or filtered to just
+// candidates with outstanding coursework, matching the same document
+// style as the individual candidate PDF.
+function buildCourseReportHtml(group, coaches, incompleteOnly) {
+  const esc = (s) => (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const rows = [...group.records].sort((a, b) => (a.coachName || "").localeCompare(b.coachName || "")).map(t => {
+    const cardCoach = coaches.find(c => c.id === t.coachId);
+    const { done, total } = courseworkProgress(t, cardCoach?.topics);
+    const items = total > 0 ? courseworkItems(t, cardCoach?.topics, t.team) : [];
+    const outstanding = items.filter(i => !i.done);
+    return { t, done, total, outstanding };
+  }).filter(r => !incompleteOnly || r.outstanding.length > 0);
+
+  const blockOptionsFor = (t) => isADiploma(t.courseTitle) ? DIPLOMA_BLOCK_OPTIONS_A : isBDiploma(t.courseTitle) ? DIPLOMA_BLOCK_OPTIONS_B : [];
+
+  const candidateSections = rows.map(({ t, done, total, outstanding }) => {
+    const outstandingRows = outstanding.length > 0
+      ? `<table style="width:100%;border-collapse:collapse;font-size:12px;margin:6px 0 10px;">${outstanding.map(i => `<tr><td style="padding:4px 8px;border:1px solid #ddd;">☐ ${esc(i.label)}</td></tr>`).join("")}</table>`
+      : `<p style="font-size:12px;color:#059669;font-weight:600;margin:4px 0 10px;">All coursework completed.</p>`;
+    const blockOpts = blockOptionsFor(t);
+    const statuses = t.blockStatuses || {};
+    const trackingRow = blockOpts.length > 0
+      ? `<p style="font-size:12px;margin:0 0 10px;color:#475569;">Progress Tracking: ${blockOpts.map(b => `${esc(b)}: ${esc(statuses[b] || "not set")}`).join(" · ")}</p>`
+      : "";
+    return `
+      <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:10px;">
+        <p style="font-weight:600;margin:0 0 2px;">${esc(t.coachName)}</p>
+        <p style="font-size:12px;color:#64748b;margin:0 0 8px;">Attendance ${t.attendancePercent}% · Coursework ${total > 0 ? `${done}/${total}` : "—"}</p>
+        ${outstandingRows}
+        ${trackingRow}
+      </div>`;
+  }).join("");
+
+  return `<html><head><title>Course Report - #${esc(group.courseNumber)}</title></head><body style="margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1e293b;padding:28px;">
+    <h1 style="margin:0 0 4px 0;">Course Report — #${esc(group.courseNumber)}</h1>
+    <p style="color:#64748b;margin:0 0 4px 0;">${esc(group.courseTitle)}</p>
+    <p style="color:#64748b;margin:0 0 20px 0;font-size:13px;">${incompleteOnly ? `Candidates with outstanding coursework (${rows.length} of ${group.records.length})` : `All candidates (${rows.length})`} · Generated ${new Date().toLocaleDateString("en-GB")}</p>
+    ${candidateSections || '<p style="font-size:13px;color:#64748b;">No candidates to show.</p>'}
+  </body></html>`;
+}
+
 function buildCandidateHtml(task, coach, observations) {
   const esc = (s) => (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const { done, total } = courseworkProgress(task, coach?.topics);
@@ -4313,6 +4354,18 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [bulkCourseNumberInputs, setBulkCourseNumberInputs] = useState({});
   const [bulkMfInputs, setBulkMfInputs] = useState({});
   const [savingCandidatePdfId, setSavingCandidatePdfId] = useState(null);
+  const [savingCourseReportPdf, setSavingCourseReportPdf] = useState(null);
+
+  async function handleSaveCourseReportPdf(group, incompleteOnly) {
+    setSavingCourseReportPdf(incompleteOnly ? "incomplete" : "full");
+    try {
+      const html = buildCourseReportHtml(group, coaches, incompleteOnly);
+      const filename = `course-report-${(group.courseNumber || "course").replace(/[^a-z0-9]+/gi, "-")}${incompleteOnly ? "-outstanding" : ""}.pdf`;
+      await saveHtmlAsPdf(html, filename);
+    } catch (e) { /* saveHtmlAsPdf already surfaces its own failure */ }
+    setSavingCourseReportPdf(null);
+  }
+
 
   // Candidate progress tracking (Tracking Ahead / As Expected / Needs
   // Assistance), set per diploma block. Visible to any CET; only settable
@@ -4765,6 +4818,16 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               <p className="text-sm text-slate-500">{group.courseTitle} · {group.records.length} candidate{group.records.length === 1 ? "" : "s"}</p>
             </div>
             <button onClick={() => setCourseReportNumber(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={() => handleSaveCourseReportPdf(group, false)} disabled={savingCourseReportPdf !== null}
+              className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 border border-emerald-300 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50 disabled:opacity-50">
+              <FileText className="w-3.5 h-3.5" /> {savingCourseReportPdf === "full" ? "Saving..." : "Save Full Report (PDF)"}
+            </button>
+            <button onClick={() => handleSaveCourseReportPdf(group, true)} disabled={savingCourseReportPdf !== null}
+              className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 border border-amber-300 px-2.5 py-1.5 rounded-lg hover:bg-amber-50 disabled:opacity-50">
+              <FileText className="w-3.5 h-3.5" /> {savingCourseReportPdf === "incomplete" ? "Saving..." : "Save Outstanding Only (PDF)"}
+            </button>
           </div>
           <p className="text-xs text-slate-400">Outstanding checklist items can be ticked off directly here. Progress Tracking is shown per block — open the candidate's own card in Completed Tasks to change it.</p>
           <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
