@@ -5729,7 +5729,9 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
 
                                     {total > 0 && (
                                       <button type="button" onClick={() => setExpandedTaskId(isDetailsExpanded ? null : t.id)}
-                                        className="mt-3 flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+                                        className={`mt-3 flex items-center gap-1 text-xs font-semibold ${
+                                          done === total ? "text-indigo-600 hover:text-indigo-700" : "text-orange-600 hover:text-orange-700"
+                                        }`}>
                                         <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isDetailsExpanded ? "rotate-90" : ""}`} />
                                         {isDetailsExpanded ? "Hide full checklist" : `Expand full checklist (${done}/${total})`}
                                       </button>
