@@ -6009,7 +6009,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                             </div>
                                           );
                                         })()}
-                                        {recommendationLabelFor(t.courseTitle) && (() => {
+                                        {recommendationLabelFor(t.courseTitle) && t.attendancePercent >= 100 && (t.onlineModulesPercent || 0) >= 100 && total > 0 && done === total && (() => {
                                           const canSetRec = progressAuthed && adminHasCourseAccess(progressAuthMatch, t.courseNumber, t.memberFederation);
                                           const draftNotes = recommendNotesDraft[t.id] !== undefined ? recommendNotesDraft[t.id] : (t.recommendNextLevelNotes || "");
                                           return (
