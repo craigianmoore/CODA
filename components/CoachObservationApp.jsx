@@ -1596,7 +1596,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, onAdminClick }) {
             </div>
           )}
         </div>
-        <nav className="flex items-center gap-1 overflow-x-auto pb-2 -mb-px">
+        <nav className="flex items-center gap-1 overflow-x-auto pb-2 pr-2 -mb-px">
           {items.map(it => {
             const Icon = it.icon;
             const active = tab === it.id || (tab === "report" && it.id === "history");
