@@ -7856,10 +7856,10 @@ function VoiceTextarea({ value, onChange, className, rows, placeholder, ...rest 
       {supported && (
         <button type="button" onClick={toggleListening} onMouseDown={(e) => e.preventDefault()}
           title={listening ? "Stop dictation" : "Dictate with your voice"}
-          className={`absolute bottom-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-colors shrink-0 ${
+          className={`absolute bottom-2 right-2 w-10 h-10 rounded-full flex items-center justify-center transition-colors shrink-0 ${
             listening ? "bg-red-500 text-white animate-pulse" : "bg-white text-slate-400 border border-slate-200 hover:text-slate-600 hover:border-slate-300"
           }`}>
-          <Mic className="w-3.5 h-3.5" />
+          <Mic className="w-5 h-5" />
         </button>
       )}
     </div>
@@ -7931,6 +7931,22 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   const [assessorSignature, setAssessorSignature] = useState(() => existingObservation?.assessorSignature || "");
   const [autoSignature, setAutoSignature] = useState("");
   const [cetNotes, setCetNotes] = useState(() => existingObservation?.cetNotes || "");
+
+  // Floating stopwatch shown only during Assessment Scoring (step 2) — helps
+  // CETs time how long they spend observing before scoring. Resets when
+  // leaving the observation, not persisted with the record.
+  const [swSeconds, setSwSeconds] = useState(0);
+  const [swRunning, setSwRunning] = useState(false);
+  useEffect(() => {
+    if (!swRunning) return;
+    const id = setInterval(() => setSwSeconds(s => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [swRunning]);
+  function swFormat(total) {
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
   const [potentialPathways, setPotentialPathways] = useState(() => existingObservation?.potentialPathways || []);
 
   const selectedCoach = coaches.find(c => c.id === coachId);
@@ -9243,6 +9259,22 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
         </div>
       </div>
 
+      {step === 2 && (
+        <div className="fixed top-32 right-4 z-40 bg-white border-2 border-slate-300 rounded-xl shadow-lg px-3 py-2.5 flex flex-col items-center gap-1.5 w-24">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Timer</p>
+          <p className="text-xl font-bold text-slate-900 tabular-nums">{swFormat(swSeconds)}</p>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setSwRunning(r => !r)}
+              className={`text-[11px] font-semibold px-2 py-1 rounded-md ${swRunning ? "bg-red-100 text-red-700 hover:bg-red-200" : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"}`}>
+              {swRunning ? "Stop" : "Start"}
+            </button>
+            <button onClick={() => { setSwRunning(false); setSwSeconds(0); }} title="Reset"
+              className="text-[11px] font-semibold px-2 py-1 rounded-md bg-slate-100 text-slate-500 hover:bg-slate-200">
+              Reset
+            </button>
+          </div>
+        </div>
+      )}
       {step === 2 && (
         <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-300 shadow-[0_-4px_16px_rgba(0,0,0,0.08)]">
           <div className="max-w-5xl mx-auto px-4 py-3">
