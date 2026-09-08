@@ -328,6 +328,32 @@ function emptyRapaProposalForm() {
   };
 }
 
+// RAPA field formats: dates as DD/MM/YY, times as 12-hour with am/pm,
+// phone/contact numbers as alphanumeric. Native <input type="date"> can't
+// show a 2-digit year, so these are masked text inputs instead.
+function rapaMaskDate(raw) {
+  const digits = (raw || "").replace(/\D/g, "").slice(0, 6);
+  if (digits.length > 4) return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 6)}`;
+  if (digits.length > 2) return `${digits.slice(0, 2)}/${digits.slice(2, 4)}`;
+  return digits;
+}
+function rapaIsValidDate(v) {
+  if (!v) return true; // empty is handled by required-field checks elsewhere, not format checks
+  if (!/^\d{2}\/\d{2}\/\d{2}$/.test(v)) return false;
+  const [d, m] = v.split("/").map(Number);
+  return d >= 1 && d <= 31 && m >= 1 && m <= 12;
+}
+function rapaMaskTime(raw) {
+  return (raw || "").replace(/[^0-9:apmAPM ]/g, "").slice(0, 8);
+}
+function rapaIsValidTime(v) {
+  if (!v) return true;
+  return /^(1[0-2]|[1-9]):[0-5][0-9]\s?(am|pm|AM|PM)$/.test(v.trim());
+}
+function rapaMaskAlphanumeric(raw) {
+  return (raw || "").replace(/[^a-zA-Z0-9]/g, "");
+}
+
 
 function isBDiploma(name) {
   return /\bb diploma\b/i.test(name || "");
@@ -4405,7 +4431,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
     setSubTab("newra");
   }
   function raCanSave() {
-    return !!(raForm.session.trim() && raForm.date && raForm.leadCetId && raForm.assessorName.trim());
+    return !!(raForm.session.trim() && raForm.date && rapaIsValidDate(raForm.date) && raForm.leadCetId && raForm.assessorName.trim());
   }
 
   const raFiltered = [...rapaAssessments]
@@ -4451,8 +4477,12 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
       ["repName", "Reported by — name"], ["repRole", "Reported by — role"], ["repDate", "Reported by — date"],
     ];
     const missing = required.filter(([k]) => !(irForm[k] || "").toString().trim()).map(([, label]) => label);
-    setIrErrors(missing);
-    return missing.length === 0;
+    const badFormat = [
+      ["reportDate", "Date of report"], ["incDate", "Date of incident"], ["repDate", "Reported by — date"],
+    ].filter(([k]) => irForm[k] && !rapaIsValidDate(irForm[k])).map(([, label]) => `${label} (must be DD/MM/YY)`);
+    if (irForm.incTime && !rapaIsValidTime(irForm.incTime)) badFormat.push("Time of incident (must be 12-hour, e.g. 6:45pm)");
+    setIrErrors([...missing, ...badFormat]);
+    return missing.length === 0 && badFormat.length === 0;
   }
   function saveIncident() {
     if (!validateIncident()) return;
@@ -4565,7 +4595,8 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Date</label>
-                <input type="date" value={raForm.date} onChange={e => raSetField("date", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
+                <input type="text" inputMode="numeric" placeholder="DD/MM/YY" value={raForm.date} onChange={e => raSetField("date", rapaMaskDate(e.target.value))}
+                  className={`w-full border rounded-lg px-3 py-2.5 text-sm ${raForm.date && !rapaIsValidDate(raForm.date) ? "border-red-400" : "border-slate-300"}`} />
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Lead CET / TD</label>
@@ -4701,7 +4732,8 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Date assessed</label>
-                <input type="date" value={raForm.assessorDate} onChange={e => raSetField("assessorDate", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                <input type="text" inputMode="numeric" placeholder="DD/MM/YY" value={raForm.assessorDate} onChange={e => raSetField("assessorDate", rapaMaskDate(e.target.value))}
+                  className={`w-full border rounded-lg px-3 py-2 text-sm ${raForm.assessorDate && !rapaIsValidDate(raForm.assessorDate) ? "border-red-400" : "border-slate-300"}`} />
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Executive Manager sign-off (if required)</label>
@@ -4715,7 +4747,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                 Still needed before saving: {[
                   !raForm.session.trim() && "Session / Activity",
-                  !raForm.date && "Date",
+                  !raForm.date ? "Date" : !rapaIsValidDate(raForm.date) && "Date (must be DD/MM/YY)",
                   !raForm.leadCetId && "Lead CET / TD",
                   !raForm.assessorName.trim() && "Assessment carried out by (name)",
                 ].filter(Boolean).join(", ")}.
@@ -4770,7 +4802,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
             <div className="grid sm:grid-cols-3 gap-3">
               <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Course / programme name *</label><input value={irForm.course} onChange={e => irSetField("course", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
               <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Course reference / booking no.</label><input value={irForm.ref} onChange={e => irSetField("ref", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
-              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Date of report *</label><input type="date" value={irForm.reportDate} onChange={e => irSetField("reportDate", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Date of report *</label><input type="text" inputMode="numeric" placeholder="DD/MM/YY" value={irForm.reportDate} onChange={e => irSetField("reportDate", rapaMaskDate(e.target.value))} className={`w-full border rounded-lg px-3 py-2 text-sm ${irForm.reportDate && !rapaIsValidDate(irForm.reportDate) ? "border-red-400" : "border-slate-300"}`} /></div>
               <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Venue / location *</label><input value={irForm.venue} onChange={e => irSetField("venue", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Lead CET / Coach</label>
@@ -4799,7 +4831,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
                   {["Participant", "Coach", "Volunteer", "Spectator", "Other"].map(o => <option key={o}>{o}</option>)}
                 </select>
               </div>
-              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Contact number *</label><input value={irForm.p1Contact} onChange={e => irSetField("p1Contact", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Contact number *</label><input value={irForm.p1Contact} onChange={e => irSetField("p1Contact", rapaMaskAlphanumeric(e.target.value))} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
               <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Address</label><input value={irForm.p1Address} onChange={e => irSetField("p1Address", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
               <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Emergency contact name &amp; number</label><input value={irForm.p1Emergency} onChange={e => irSetField("p1Emergency", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
               <div className="sm:col-span-3"><label className="text-xs font-medium text-slate-500 mb-1.5 block">Parent/guardian informed? (if under 18) — name &amp; method of contact</label><input value={irForm.p1Parent} onChange={e => irSetField("p1Parent", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
@@ -4817,7 +4849,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
                   <option value="">—</option>{["Participant", "Coach", "Volunteer", "Spectator", "Other"].map(o => <option key={o}>{o}</option>)}
                 </select>
               </div>
-              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Contact number</label><input value={irForm.p2Contact} onChange={e => irSetField("p2Contact", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Contact number</label><input value={irForm.p2Contact} onChange={e => irSetField("p2Contact", rapaMaskAlphanumeric(e.target.value))} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
               <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Address</label><input value={irForm.p2Address} onChange={e => irSetField("p2Address", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
               <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Emergency contact name &amp; number</label><input value={irForm.p2Emergency} onChange={e => irSetField("p2Emergency", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
               <div className="sm:col-span-3"><label className="text-xs font-medium text-slate-500 mb-1.5 block">Parent/guardian informed? (if under 18) — name &amp; method of contact</label><input value={irForm.p2Parent} onChange={e => irSetField("p2Parent", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
@@ -4827,8 +4859,8 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
           <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
             <p className="text-sm font-semibold text-slate-800">4. Incident Details</p>
             <div className="grid sm:grid-cols-3 gap-3">
-              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Date of incident *</label><input type="date" value={irForm.incDate} onChange={e => irSetField("incDate", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
-              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Time of incident *</label><input value={irForm.incTime} onChange={e => irSetField("incTime", e.target.value)} placeholder="e.g. 6:45pm" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Date of incident *</label><input type="text" inputMode="numeric" placeholder="DD/MM/YY" value={irForm.incDate} onChange={e => irSetField("incDate", rapaMaskDate(e.target.value))} className={`w-full border rounded-lg px-3 py-2 text-sm ${irForm.incDate && !rapaIsValidDate(irForm.incDate) ? "border-red-400" : "border-slate-300"}`} /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Time of incident *</label><input value={irForm.incTime} onChange={e => irSetField("incTime", rapaMaskTime(e.target.value))} placeholder="e.g. 6:45pm" className={`w-full border rounded-lg px-3 py-2 text-sm ${irForm.incTime && !rapaIsValidTime(irForm.incTime) ? "border-red-400" : "border-slate-300"}`} /></div>
               <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Exact location *</label><input value={irForm.incLoc} onChange={e => irSetField("incLoc", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
             </div>
             <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Activity being undertaken at the time *</label><input value={irForm.incActivity} onChange={e => irSetField("incActivity", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
@@ -4896,7 +4928,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
                 </select>
               </div>
               <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Role *</label><input value={irForm.repRole} onChange={e => irSetField("repRole", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
-              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Date *</label><input type="date" value={irForm.repDate} onChange={e => irSetField("repDate", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Date *</label><input type="text" inputMode="numeric" placeholder="DD/MM/YY" value={irForm.repDate} onChange={e => irSetField("repDate", rapaMaskDate(e.target.value))} className={`w-full border rounded-lg px-3 py-2 text-sm ${irForm.repDate && !rapaIsValidDate(irForm.repDate) ? "border-red-400" : "border-slate-300"}`} /></div>
             </div>
             <p className="text-xs text-slate-400">Section 9 (Office / Management Use Only) is completed by the Executive Manager in the Admin area once this report is submitted.</p>
             <div className="flex gap-2">
