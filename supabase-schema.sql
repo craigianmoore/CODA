@@ -76,6 +76,31 @@ create table if not exists cet_assessments (
 alter table cet_assessments enable row level security;
 create policy "public read/write cet_assessments" on cet_assessments for all using (true) with check (true);
 
+-- RAPA — Risk Assessment Process App: three record types, sharing CODA's
+-- existing CET list rather than a separate roster. "Executive Manager"
+-- from the original tool maps to CODA's Master Admin.
+create table if not exists rapa_assessments (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
+);
+create table if not exists rapa_incidents (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
+);
+create table if not exists rapa_proposals (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
+);
+alter table rapa_assessments enable row level security;
+alter table rapa_incidents enable row level security;
+alter table rapa_proposals enable row level security;
+create policy "public read/write rapa_assessments" on rapa_assessments for all using (true) with check (true);
+create policy "public read/write rapa_incidents" on rapa_incidents for all using (true) with check (true);
+create policy "public read/write rapa_proposals" on rapa_proposals for all using (true) with check (true);
+
 -- Row Level Security: open for now since access is gated by the app's PIN
 -- screen rather than Supabase auth. Tighten this later if you add real auth.
 alter table coaches enable row level security;

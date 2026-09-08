@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Users, BookOpen, ClipboardList, FileText, Plus, ChevronLeft, ChevronRight, Check, X, Calendar, Award, TrendingUp, ArrowRight, Loader2, ListChecks, Pencil, Upload, AlertCircle, PenLine, Search, Trash2, Settings, Clock, Smartphone, Tablet, Laptop, Lock, LogOut, Mic } from "lucide-react";
+import { Users, BookOpen, ClipboardList, FileText, Plus, ChevronLeft, ChevronRight, Check, X, Calendar, Award, TrendingUp, ArrowRight, Loader2, ListChecks, Pencil, Upload, AlertCircle, PenLine, Search, Trash2, Settings, Clock, Smartphone, Tablet, Laptop, Lock, LogOut, Mic, ShieldAlert } from "lucide-react";
 import Papa from "papaparse";
 import * as mammoth from "mammoth";
 import { supabase } from "../lib/supabase";
@@ -233,6 +233,98 @@ function emptyCetAssessmentForm() {
     outcome: "",
     actionPlan: [],
     signAssessor: "", signDate: "", signCET: "", ackDiscussed: false,
+  };
+}
+
+// RAPA — Risk Assessment Process App. Session-level risk assessments and
+// incident reports, sharing CODA's existing CET list. Hazard catalogue
+// proposals ("flagged" hazards) go to Master Admin for review, matching
+// the original tool's "Executive Manager" role.
+const RAPA_LIKELIHOODS = ["Almost Certain", "Likely", "Possible", "Unlikely", "Rare"];
+const RAPA_CONSEQUENCES = ["Insignificant", "Minor", "Moderate", "Major", "Severe"];
+const RAPA_RATING_GRID = [
+  ["Moderate", "High", "High", "Extreme", "Extreme"],
+  ["Moderate", "Moderate", "High", "High", "Extreme"],
+  ["Low", "Moderate", "Moderate", "High", "High"],
+  ["Low", "Low", "Moderate", "Moderate", "High"],
+  ["Low", "Low", "Low", "Moderate", "Moderate"],
+];
+const RAPA_RATING_NAMES = ["Low", "Moderate", "High", "Extreme"];
+const RAPA_DEFAULT_CATALOGUE = {
+  pitch: { label: "Pitch, Surface & Equipment",
+    typical: "Uneven or wet turf, exposed sprinkler heads, unsecured or damaged goals, worn matting, poor lighting for evening sessions.",
+    controls: "Pre-session walk-through; goals anchored/certified; floodlight check before dusk sessions; equipment fault log.",
+    stdRating1: "Moderate", stdRating2: "Low" },
+  weather: { label: "Weather & Heat",
+    typical: "Heat stress, dehydration, lightning, extreme wind affecting drills or observation equipment (cones, boards).",
+    controls: "Apply FV/FA hot-weather guidelines; scheduled water breaks; lightning-detection stop/start protocol; session relocation plan.",
+    stdRating1: "High", stdRating2: "Moderate" },
+  firstaid: { label: "First Aid & Medical",
+    typical: "Delayed response to injury; no defibrillator on site; concussion not correctly recognised or managed.",
+    controls: "Confirm nearest AED location before session; at least one first-aid-trained tutor present; concussion recognition and return-to-play protocol referenced from FA guidelines.",
+    stdRating1: "High", stdRating2: "Moderate" },
+  supervision: { label: "Supervision Ratios",
+    typical: "Insufficient adult-to-participant ratio for junior age groups during observation or training sessions.",
+    controls: "Apply FV minimum ratios by age band; do not commence session until ratio is met.",
+    stdRating1: "Moderate", stdRating2: "Low" },
+  travel: { label: "Travel & Away Sessions",
+    typical: "Off-site venues, driving fatigue, unfamiliar facilities, participant pick-up/drop-off arrangements.",
+    controls: "Venue risk pre-check; travel time limits; documented pick-up/drop-off procedure.",
+    stdRating1: "Moderate", stdRating2: "Low" },
+  bullying: { label: "Bullying, Harassment & Confrontation",
+    typical: "Bullying between participants; aggressive or confrontational behaviour from a participant, parent or coach towards a CET/TD.",
+    controls: "Apply FA Member Protection Policy; de-escalation first, disengage and seek support second; incident report within 24 hours; referral to FV Integrity Unit where required.",
+    stdRating1: "High", stdRating2: "Moderate" },
+  singletutor: { label: "Single-Tutor Contingency",
+    typical: "FV courses run with a minimum of two CETs. This hazard applies only to the exceptional case where one tutor is temporarily unaccompanied.",
+    controls: "Pause 1:1 contact until the second tutor or an interim responsible adult is present; keep the group in an open, visible area; notify the TD immediately; document the gap duration.",
+    stdRating1: "Moderate", stdRating2: "Low" },
+  psychosocial: { label: "Psychosocial Load on Tutors",
+    typical: "Stress arising from managing a Not Yet Competent outcome conversation, a complaint, or a confrontation.",
+    controls: "Debrief support from TD; access to FV/FA member support contacts; rotation of difficult conversations where possible.",
+    stdRating1: "Moderate", stdRating2: "Low" },
+  other: { label: "Other / Unforeseen Hazard",
+    typical: "A hazard not covered by the standard categories above.",
+    controls: "Apply the general hierarchy of control: eliminate, substitute, engineer/isolate, administrative, then PPE.",
+    stdRating1: null, stdRating2: null },
+};
+function rapaComputeRating(likelihood, consequence) {
+  const li = RAPA_LIKELIHOODS.indexOf(likelihood);
+  const ci = RAPA_CONSEQUENCES.indexOf(consequence);
+  if (li === -1 || ci === -1) return "";
+  return RAPA_RATING_GRID[li][ci];
+}
+function rapaRatingBadgeClass(rating) {
+  if (rating === "Extreme") return "bg-red-100 text-red-700 border-red-300";
+  if (rating === "High") return "bg-orange-100 text-orange-700 border-orange-300";
+  if (rating === "Moderate") return "bg-amber-100 text-amber-700 border-amber-300";
+  if (rating === "Low") return "bg-emerald-100 text-emerald-700 border-emerald-300";
+  return "bg-slate-100 text-slate-400 border-slate-200";
+}
+function emptyRapaAssessmentForm() {
+  return {
+    session: "", courseLevel: "", venue: "", date: "", leadCetId: "", leadCetName: "",
+    secondCet: "Y", ageGroups: "", participants: "", memberFederation: DEFAULT_MEMBER_FEDERATION,
+    hazards: [], assessorName: "", assessorDate: "", execSignoff: "", status: "submitted",
+  };
+}
+function emptyRapaIncidentForm() {
+  return {
+    course: "", ref: "", reportDate: "", venue: "", leadCoachId: "", leadCoachName: "",
+    p1Name: "", p1Age: "", p1Role: "Participant", p1Contact: "", p1Address: "", p1Emergency: "", p1Parent: "",
+    p2Name: "", p2Age: "", p2Role: "", p2Contact: "", p2Address: "", p2Emergency: "", p2Parent: "",
+    incDate: "", incTime: "", incLoc: "", incActivity: "", incDesc: "",
+    typeInjury: false, typeNearMiss: false, typeEquip: false, typeBehaviour: false, typeEnv: false, typeOther: false, typeOtherSpec: "",
+    injNature: "", injPart: "", injFirstAid: "", injFirstAider: "", injAmbulance: "", injTreatment: "",
+    action: "", equip: "", witnesses: [],
+    repNameId: "", repName: "", repRole: "", repDate: "",
+    status: "submitted", officeNotes: "", equipRestocked: false, memberFederation: DEFAULT_MEMBER_FEDERATION,
+  };
+}
+function emptyRapaProposalForm() {
+  return {
+    name: "", category: "", desc: "", controls: "", suggestedRating1: "", suggestedRating2: "",
+    proposedById: "", proposedByName: "", date: "", status: "pending", relatedAssessmentId: "", relatedHazardNote: "",
   };
 }
 
@@ -1038,6 +1130,10 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [observations, setObservations] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
   const [cetAssessments, setCetAssessments] = useState([]);
+  const [rapaAssessments, setRapaAssessments] = useState([]);
+  const [rapaIncidents, setRapaIncidents] = useState([]);
+  const [rapaProposals, setRapaProposals] = useState([]);
+  const [rapaCatalogue, setRapaCatalogue] = useState(null);
   const [closedCourseNumbers, setClosedCourseNumbers] = useState([]);
   const [closedCourseBlocks, setClosedCourseBlocks] = useState({});
   const [adminLockouts, setAdminLockouts] = useState({});
@@ -1057,13 +1153,17 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     setLoading(true);
     setError(null);
     try {
-      const [c, co, ed, ob, ct, ca, cc, cb, al, adm] = await Promise.all([
+      const [c, co, ed, ob, ct, ca, ra, ri, rp, rcat, cc, cb, al, adm] = await Promise.all([
         loadCollectionSb("coaches"),
         loadCollectionSb("courses"),
         loadCollectionSb("cets"),
         loadCollectionSb("observations"),
         loadCollectionSb("completed_tasks"),
         loadCollectionSb("cet_assessments"),
+        loadCollectionSb("rapa_assessments"),
+        loadCollectionSb("rapa_incidents"),
+        loadCollectionSb("rapa_proposals"),
+        kvGet("rapaHazardCatalogue"),
         kvGet("closedCourseNumbers"),
         kvGet("closedCourseBlocks"),
         kvGet("adminLockouts"),
@@ -1075,6 +1175,10 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
       setObservations(ob || []);
       setCompletedTasks(ct || []);
       setCetAssessments(ca || []);
+      setRapaAssessments(ra || []);
+      setRapaIncidents(ri || []);
+      setRapaProposals(rp || []);
+      setRapaCatalogue(rcat || null);
       setClosedCourseNumbers(cc || []);
       setClosedCourseBlocks(cb || {});
       setAdminLockouts(al || {});
@@ -1115,6 +1219,10 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const saveCoaches = async (v) => { setCoaches(v); await syncCollectionSb("coaches", coaches, v); };
   const saveCourses = async (v) => { setCourses(v); await syncCollectionSb("courses", courses, v); };
   const saveCetAssessments = async (v) => { setCetAssessments(v); await syncCollectionSb("cet_assessments", cetAssessments, v); };
+  const saveRapaAssessments = async (v) => { setRapaAssessments(v); await syncCollectionSb("rapa_assessments", rapaAssessments, v); };
+  const saveRapaIncidents = async (v) => { setRapaIncidents(v); await syncCollectionSb("rapa_incidents", rapaIncidents, v); };
+  const saveRapaProposals = async (v) => { setRapaProposals(v); await syncCollectionSb("rapa_proposals", rapaProposals, v); };
+  const saveRapaCatalogue = async (v) => { setRapaCatalogue(v); await kvSet("rapaHazardCatalogue", v); };
   const saveEducators = async (v) => { setEducators(v); await syncCollectionSb("cets", educators, v); };
   const saveObservations = async (v) => { setObservations(v); await syncCollectionSb("observations", observations, v); };
   const saveCompletedTasks = async (v) => { setCompletedTasks(v); await syncCollectionSb("completed_tasks", completedTasks, v); };
@@ -1317,6 +1425,16 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
           />
         )}
+        {tab === "rapa" && (
+          <RapaTab
+            educators={educators}
+            adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
+            rapaAssessments={rapaAssessments} saveRapaAssessments={saveRapaAssessments}
+            rapaIncidents={rapaIncidents} saveRapaIncidents={saveRapaIncidents}
+            rapaProposals={rapaProposals} saveRapaProposals={saveRapaProposals}
+            rapaCatalogue={rapaCatalogue} saveRapaCatalogue={saveRapaCatalogue}
+          />
+        )}
         {tab === "logistics" && (
           <div className="space-y-8">
             <div className="flex justify-end gap-2">
@@ -1413,6 +1531,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, onAdminClick }) {
     { id: "newObs", label: "New Observation", icon: ClipboardList },
     { id: "tasks", label: "Completed Tasks", icon: ListChecks },
     { id: "cetAssessment", label: "CET Assessment", icon: Award },
+    { id: "rapa", label: "RAPA", icon: ShieldAlert },
     { id: "logistics", label: "Logistics", icon: Settings },
     { id: "history", label: "History", icon: FileText },
   ];
@@ -4162,6 +4281,773 @@ function buildCandidateHtml(task, coach, observations) {
   </body></html>`;
 }
 
+function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
+  rapaAssessments, saveRapaAssessments, rapaIncidents, saveRapaIncidents,
+  rapaProposals, saveRapaProposals, rapaCatalogue, saveRapaCatalogue }) {
+
+  const catalogue = rapaCatalogue || RAPA_DEFAULT_CATALOGUE;
+  const [subTab, setSubTab] = useState("newra");
+
+  // Executive Manager access — mapped to CODA's Master Admin. Shared
+  // across every admin-gated action in this tab once unlocked.
+  const [masterAuthed, setMasterAuthed] = useState(false);
+  const [masterAuthMatch, setMasterAuthMatch] = useState(null);
+  const [masterAuthName, setMasterAuthName] = useState("");
+  const [masterAuthPin, setMasterAuthPin] = useState("");
+  const [masterAuthError, setMasterAuthError] = useState(false);
+
+  function handleMasterAuth() {
+    if (isLockedOut(adminLockouts, masterAuthName)) { setMasterAuthError(true); return; }
+    const match = findAdminMatch(adminSettings.admins, masterAuthName, masterAuthPin);
+    if (!match || !isMasterAdmin(match)) {
+      recordAdminAttempt(masterAuthName, !!match);
+      setMasterAuthError(true);
+      return;
+    }
+    recordAdminAttempt(masterAuthName, true);
+    setMasterAuthed(true);
+    setMasterAuthMatch(match);
+    setMasterAuthError(false);
+  }
+
+  function fillAsMaster() {
+    return masterAuthed ? masterAuthMatch.name : "";
+  }
+
+  // ============ NEW RISK ASSESSMENT ============
+  const [raForm, setRaForm] = useState(emptyRapaAssessmentForm());
+  const [raEditingId, setRaEditingId] = useState(null);
+  const [hzCategory, setHzCategory] = useState("");
+  const [hzIdentified, setHzIdentified] = useState("");
+  const [hzOwner, setHzOwner] = useState("");
+  const [hzFlag, setHzFlag] = useState(false);
+  const [hzAccount, setHzAccount] = useState("");
+  const [hzSuggest1, setHzSuggest1] = useState("");
+  const [hzSuggest2, setHzSuggest2] = useState("");
+  const [raSavedMsg, setRaSavedMsg] = useState("");
+  const [raSearch, setRaSearch] = useState("");
+
+  function raSetField(k, v) { setRaForm(prev => ({ ...prev, [k]: v })); }
+  function selectLeadCet(id) {
+    const c = educators.find(e => e.id === id);
+    setRaForm(prev => ({ ...prev, leadCetId: id, leadCetName: c ? c.name : "" }));
+  }
+  function resetHazardEntry() {
+    setHzCategory(""); setHzIdentified(""); setHzOwner("");
+    setHzFlag(false); setHzAccount(""); setHzSuggest1(""); setHzSuggest2("");
+  }
+  function addHazardStandard() {
+    if (!hzCategory) return;
+    const cat = catalogue[hzCategory];
+    const hazard = {
+      id: uid(), category: hzCategory, categoryLabel: cat.label,
+      typical: cat.typical, controls: cat.controls,
+      rating1: cat.stdRating1, rating2: cat.stdRating2,
+      identified: hzIdentified, owner: hzOwner, flagged: false,
+    };
+    setRaForm(prev => ({ ...prev, hazards: [...prev.hazards, hazard] }));
+    resetHazardEntry();
+  }
+  function addHazardWithFlag() {
+    if (!hzCategory) return;
+    const cat = catalogue[hzCategory];
+    const hazard = {
+      id: uid(), category: hzCategory, categoryLabel: cat.label,
+      typical: cat.typical, controls: cat.controls,
+      rating1: hzSuggest1 || cat.stdRating1, rating2: hzSuggest2 || cat.stdRating2,
+      identified: hzIdentified, owner: hzOwner, flagged: true,
+    };
+    setRaForm(prev => ({ ...prev, hazards: [...prev.hazards, hazard] }));
+    const proposal = {
+      ...emptyRapaProposalForm(), id: uid(),
+      name: `${cat.label} (flagged from #${raForm.session || "session"})`,
+      category: hzCategory, desc: hzAccount, controls: "",
+      suggestedRating1: hzSuggest1, suggestedRating2: hzSuggest2,
+      proposedById: raForm.leadCetId, proposedByName: raForm.leadCetName || raForm.assessorName || "",
+      date: new Date().toISOString().slice(0, 10), status: "pending",
+      relatedHazardNote: hzIdentified,
+    };
+    saveRapaProposals([...rapaProposals, proposal]);
+    resetHazardEntry();
+  }
+  function removeHazard(hazardId) {
+    setRaForm(prev => ({ ...prev, hazards: prev.hazards.filter(h => h.id !== hazardId) }));
+  }
+  function highestRatingOf(hazards) {
+    let bestIdx = -1, best = null;
+    hazards.forEach(h => {
+      [h.rating1, h.rating2].forEach(r => {
+        const idx = RAPA_RATING_NAMES.indexOf(r);
+        if (idx > bestIdx) { bestIdx = idx; best = r; }
+      });
+    });
+    return best;
+  }
+  function resetRaForm() {
+    setRaForm(emptyRapaAssessmentForm());
+    setRaEditingId(null);
+    resetHazardEntry();
+  }
+  function saveAssessment() {
+    const record = { ...raForm, id: raEditingId || uid(), updatedAt: new Date().toISOString() };
+    if (raEditingId) {
+      saveRapaAssessments(rapaAssessments.map(a => a.id === raEditingId ? record : a));
+    } else {
+      saveRapaAssessments([...rapaAssessments, record]);
+    }
+    setRaSavedMsg(`Risk assessment ${raEditingId ? "updated" : "saved"}.`);
+    resetRaForm();
+    setTimeout(() => setRaSavedMsg(""), 4000);
+  }
+  function openAssessment(rec) {
+    setRaForm({ ...emptyRapaAssessmentForm(), ...rec });
+    setRaEditingId(rec.id);
+    setSubTab("newra");
+  }
+  function raCanSave() {
+    return !!(raForm.session.trim() && raForm.date && raForm.leadCetId && raForm.assessorName.trim());
+  }
+
+  const raFiltered = [...rapaAssessments]
+    .filter(a => !raSearch.trim() || (a.session || "").toLowerCase().includes(raSearch.trim().toLowerCase()) || (a.leadCetName || "").toLowerCase().includes(raSearch.trim().toLowerCase()))
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+  // ============ INCIDENT REPORT ============
+  const [irForm, setIrForm] = useState(emptyRapaIncidentForm());
+  const [irEditingId, setIrEditingId] = useState(null);
+  const [irSavedMsg, setIrSavedMsg] = useState("");
+  const [irSearch, setIrSearch] = useState("");
+  const [irErrors, setIrErrors] = useState([]);
+
+  function irSetField(k, v) { setIrForm(prev => ({ ...prev, [k]: v })); }
+  function selectIrLeadCoach(id) {
+    const c = educators.find(e => e.id === id);
+    setIrForm(prev => ({ ...prev, leadCoachId: id, leadCoachName: c ? c.name : "" }));
+  }
+  function selectIrReporter(id) {
+    const c = educators.find(e => e.id === id);
+    setIrForm(prev => ({ ...prev, repNameId: id, repName: c ? c.name : "" }));
+  }
+  function addWitness() {
+    setIrForm(prev => ({ ...prev, witnesses: [...prev.witnesses, { id: uid(), name: "", contact: "", statement: "" }] }));
+  }
+  function updateWitness(id, field, val) {
+    setIrForm(prev => ({ ...prev, witnesses: prev.witnesses.map(w => w.id === id ? { ...w, [field]: val } : w) }));
+  }
+  function removeWitness(id) {
+    setIrForm(prev => ({ ...prev, witnesses: prev.witnesses.filter(w => w.id !== id) }));
+  }
+  function resetIrForm() {
+    setIrForm(emptyRapaIncidentForm());
+    setIrEditingId(null);
+    setIrErrors([]);
+  }
+  function validateIncident() {
+    const required = [
+      ["course", "Course / programme name"], ["reportDate", "Date of report"], ["venue", "Venue / location"],
+      ["p1Name", "Person 1 full name"], ["p1Age", "Person 1 date of birth / age"], ["p1Contact", "Person 1 contact number"],
+      ["incDate", "Date of incident"], ["incTime", "Time of incident"], ["incLoc", "Exact location of incident"],
+      ["incActivity", "Activity being undertaken"], ["incDesc", "Description of what happened"],
+      ["repName", "Reported by — name"], ["repRole", "Reported by — role"], ["repDate", "Reported by — date"],
+    ];
+    const missing = required.filter(([k]) => !(irForm[k] || "").toString().trim()).map(([, label]) => label);
+    setIrErrors(missing);
+    return missing.length === 0;
+  }
+  function saveIncident() {
+    if (!validateIncident()) return;
+    const record = { ...irForm, id: irEditingId || uid(), updatedAt: new Date().toISOString() };
+    if (irEditingId) {
+      saveRapaIncidents(rapaIncidents.map(i => i.id === irEditingId ? record : i));
+    } else {
+      saveRapaIncidents([...rapaIncidents, record]);
+    }
+    setIrSavedMsg(`Incident report ${irEditingId ? "updated" : "submitted"}.`);
+    resetIrForm();
+    setTimeout(() => setIrSavedMsg(""), 4000);
+  }
+  function openIncident(rec) {
+    setIrForm({ ...emptyRapaIncidentForm(), ...rec });
+    setIrEditingId(rec.id);
+    setSubTab("incident");
+  }
+
+  const irFiltered = [...rapaIncidents]
+    .filter(i => !irSearch.trim() || (i.course || "").toLowerCase().includes(irSearch.trim().toLowerCase()) || (i.venue || "").toLowerCase().includes(irSearch.trim().toLowerCase()))
+    .sort((a, b) => new Date(b.incDate || 0) - new Date(a.incDate || 0));
+
+  // ============ ADMIN (Master Admin only) ============
+  const [catEditingKey, setCatEditingKey] = useState(null);
+  const [catDraft, setCatDraft] = useState(null);
+
+  function startEditCatalogue(key) {
+    setCatEditingKey(key);
+    setCatDraft({ ...catalogue[key] });
+  }
+  function saveCatalogueEdit() {
+    saveRapaCatalogue({ ...catalogue, [catEditingKey]: catDraft });
+    setCatEditingKey(null);
+    setCatDraft(null);
+  }
+  function approveProposal(proposalId, applyToCatalogue) {
+    const proposal = rapaProposals.find(p => p.id === proposalId);
+    if (!proposal) return;
+    if (applyToCatalogue && proposal.category && catalogue[proposal.category]) {
+      const updated = { ...catalogue[proposal.category] };
+      if (proposal.suggestedRating1) updated.stdRating1 = proposal.suggestedRating1;
+      if (proposal.suggestedRating2) updated.stdRating2 = proposal.suggestedRating2;
+      if (proposal.controls) updated.controls = proposal.controls;
+      saveRapaCatalogue({ ...catalogue, [proposal.category]: updated });
+    }
+    saveRapaProposals(rapaProposals.map(p => p.id === proposalId ? { ...p, status: "approved" } : p));
+  }
+  function rejectProposal(proposalId) {
+    saveRapaProposals(rapaProposals.map(p => p.id === proposalId ? { ...p, status: "rejected" } : p));
+  }
+  function markEquipRestocked(incidentId) {
+    saveRapaIncidents(rapaIncidents.map(i => i.id === incidentId ? { ...i, equipRestocked: true } : i));
+  }
+
+  const pendingProposals = rapaProposals.filter(p => p.status === "pending");
+  const equipPendingIncidents = rapaIncidents.filter(i => (i.equip || "").trim() && !i.equipRestocked);
+
+  const subTabs = [
+    { key: "newra", label: "New Risk Assessment" },
+    { key: "myras", label: `My Assessments (${rapaAssessments.length})` },
+    { key: "incident", label: "Report Incident" },
+    { key: "incidents", label: `Incidents (${rapaIncidents.length})` },
+    { key: "admin", label: `Admin${pendingProposals.length > 0 ? ` (${pendingProposals.length})` : ""}` },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-bold text-slate-900">RAPA — Risk Assessment Process App</h2>
+        <p className="text-sm text-slate-500">Session risk assessments, incident reporting, and the hazard catalogue used across CODA.</p>
+      </div>
+
+      <div className="flex gap-2 flex-wrap border-b border-slate-200 pb-2">
+        {subTabs.map(t => (
+          <button key={t.key} onClick={() => setSubTab(t.key)}
+            className={`text-sm font-semibold px-3 py-1.5 rounded-lg ${subTab === t.key ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "newra" && (
+        <div className="space-y-4">
+          {raSavedMsg && <p className="text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{raSavedMsg}</p>}
+          {raEditingId && (
+            <div className="flex items-center justify-between gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+              <p className="text-xs text-indigo-700">Editing an existing risk assessment.</p>
+              <button onClick={resetRaForm} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">Cancel, start new</button>
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <p className="text-sm font-semibold text-slate-800">Session Details</p>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Session / Activity</label>
+                <input value={raForm.session} onChange={e => raSetField("session", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course level</label>
+                <select value={raForm.courseLevel} onChange={e => raSetField("courseLevel", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+                  <option value="">Select course level...</option>
+                  {["MiniRoos", "FoF", "FoGK", "FoFu", "Workshop", "Expo", "Gala", "C Diploma", "B Diploma", "A Diploma", "Pro Diploma", "Club (informal)"].map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Venue</label>
+                <input value={raForm.venue} onChange={e => raSetField("venue", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Date</label>
+                <input type="date" value={raForm.date} onChange={e => raSetField("date", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Lead CET / TD</label>
+                <select value={raForm.leadCetId} onChange={e => selectLeadCet(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+                  <option value="">Select CET...</option>
+                  {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Second CET present?</label>
+                <select value={raForm.secondCet} onChange={e => raSetField("secondCet", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+                  <option value="Y">Yes</option><option value="N">No</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Age group(s)</label>
+                <input value={raForm.ageGroups} onChange={e => raSetField("ageGroups", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">No. of participants</label>
+                <input type="number" min="0" value={raForm.participants} onChange={e => raSetField("participants", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Member Federation</label>
+                <select value={raForm.memberFederation} onChange={e => raSetField("memberFederation", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+                  {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <p className="text-sm font-semibold text-slate-800">Add a Hazard</p>
+            <p className="text-xs text-slate-400">Choose a category — the standard information shows below. Use it as-is if it fits, or flag it for the Executive Manager to review.</p>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Hazard category</label>
+              <select value={hzCategory} onChange={e => { setHzCategory(e.target.value); setHzFlag(false); }} className="w-full sm:w-96 border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+                <option value="">Select a hazard category...</option>
+                {Object.entries(catalogue).map(([key, c]) => <option key={key} value={key}>{c.label}</option>)}
+              </select>
+            </div>
+            {hzCategory && (() => {
+              const cat = catalogue[hzCategory];
+              return (
+                <div className="space-y-3 border-t border-slate-100 pt-3">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1.5">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Standard information</p>
+                    <p className="text-xs text-slate-600"><span className="font-semibold">Typical hazards:</span> {cat.typical}</p>
+                    <p className="text-xs text-slate-600"><span className="font-semibold">Controls:</span> {cat.controls}</p>
+                    {cat.stdRating1 && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${rapaRatingBadgeClass(cat.stdRating1)}`}>Initial: {cat.stdRating1}</span>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${rapaRatingBadgeClass(cat.stdRating2)}`}>Residual: {cat.stdRating2}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 mb-1.5 block">Hazard identified — your notes for this session</label>
+                    <textarea value={hzIdentified} onChange={e => setHzIdentified(e.target.value)} rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Describe the specific instance for this venue/session" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 mb-1.5 block">Action owner / timeframe</label>
+                    <input value={hzOwner} onChange={e => setHzOwner(e.target.value)} placeholder="e.g. Lead CET — before first whistle" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  {!hzFlag && (
+                    <button onClick={addHazardStandard} className="bg-slate-900 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-slate-800">
+                      Add to assessment (standard rating)
+                    </button>
+                  )}
+                  <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer border-t border-slate-100 pt-3">
+                    <input type="checkbox" checked={hzFlag} onChange={() => setHzFlag(f => !f)} className="rounded border-slate-300" />
+                    The standard information doesn't adequately cover this situation
+                  </label>
+                  {hzFlag && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                      <p className="text-xs text-amber-700">Describe what's different below. The Executive Manager reviews this and updates the standard rating and controls — your suggested rating is advisory, not final.</p>
+                      <div>
+                        <label className="text-xs font-medium text-slate-500 mb-1.5 block">Your account — what's missing or different, and why</label>
+                        <textarea value={hzAccount} onChange={e => setHzAccount(e.target.value)} rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs font-medium text-slate-500 mb-1.5 block">Suggested initial rating (optional)</label>
+                          <select value={hzSuggest1} onChange={e => setHzSuggest1(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                            <option value="">—</option>
+                            {RAPA_RATING_NAMES.map(r => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-slate-500 mb-1.5 block">Suggested residual rating (optional)</label>
+                          <select value={hzSuggest2} onChange={e => setHzSuggest2(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                            <option value="">—</option>
+                            {RAPA_RATING_NAMES.map(r => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <button onClick={addHazardWithFlag} className="bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-amber-700">
+                        Add to assessment &amp; submit for review
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+
+          {raForm.hazards.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
+              <p className="text-sm font-semibold text-slate-800">Hazards in this Assessment ({raForm.hazards.length})</p>
+              {raForm.hazards.map(h => (
+                <div key={h.id} className="flex items-start justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">{h.categoryLabel}{h.flagged && <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full ml-1.5">FLAGGED</span>}</p>
+                    {h.identified && <p className="text-xs text-slate-500">{h.identified}</p>}
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${rapaRatingBadgeClass(h.rating1)}`}>Initial: {h.rating1 || "—"}</span>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${rapaRatingBadgeClass(h.rating2)}`}>Residual: {h.rating2 || "—"}</span>
+                    </div>
+                  </div>
+                  <button onClick={() => removeHazard(h.id)} className="text-slate-300 hover:text-red-600 shrink-0"><X className="w-4 h-4" /></button>
+                </div>
+              ))}
+              <p className="text-xs text-slate-500 pt-1">Highest rating so far: <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${rapaRatingBadgeClass(highestRatingOf(raForm.hazards))}`}>{highestRatingOf(raForm.hazards) || "—"}</span></p>
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <p className="text-sm font-semibold text-slate-800">Sign-off &amp; Save</p>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Assessment carried out by (name)</label>
+                <input value={raForm.assessorName} onChange={e => raSetField("assessorName", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Date assessed</label>
+                <input type="date" value={raForm.assessorDate} onChange={e => raSetField("assessorDate", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Executive Manager sign-off (if required)</label>
+                <input value={raForm.execSignoff} onChange={e => raSetField("execSignoff", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-1.5" />
+                {masterAuthed && (
+                  <button type="button" onClick={() => raSetField("execSignoff", fillAsMaster())} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Sign as {masterAuthMatch.name}</button>
+                )}
+              </div>
+            </div>
+            <button onClick={saveAssessment} disabled={!raCanSave()} className="bg-slate-900 text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-800 disabled:bg-slate-300">
+              Save Risk Assessment
+            </button>
+          </div>
+        </div>
+      )}
+
+      {subTab === "myras" && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-sm font-semibold text-slate-800">Saved Risk Assessments</p>
+            <input value={raSearch} onChange={e => setRaSearch(e.target.value)} placeholder="Search session or CET..." className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs w-56" />
+          </div>
+          {raFiltered.length === 0 ? (
+            <p className="text-xs text-slate-400">No risk assessments saved yet.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {raFiltered.map(a => (
+                <div key={a.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">{a.session || "(untitled session)"}</p>
+                    <p className="text-xs text-slate-400">{a.leadCetName} · {a.venue}{a.date ? ` · ${new Date(a.date).toLocaleDateString("en-GB")}` : ""} · {(a.hazards || []).length} hazard{(a.hazards || []).length === 1 ? "" : "s"}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {highestRatingOf(a.hazards || []) && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${rapaRatingBadgeClass(highestRatingOf(a.hazards || []))}`}>{highestRatingOf(a.hazards || [])}</span>}
+                    <button onClick={() => openAssessment(a)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Open</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {subTab === "incident" && (
+        <div className="space-y-4">
+          {irSavedMsg && <p className="text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{irSavedMsg}</p>}
+          {irErrors.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <p className="text-xs font-semibold text-red-700 mb-1">Please complete before submitting:</p>
+              <ul className="text-xs text-red-600 list-disc list-inside">{irErrors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <p className="text-sm font-semibold text-slate-800">1. Course &amp; Session</p>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Course / programme name *</label><input value={irForm.course} onChange={e => irSetField("course", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Course reference / booking no.</label><input value={irForm.ref} onChange={e => irSetField("ref", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Date of report *</label><input type="date" value={irForm.reportDate} onChange={e => irSetField("reportDate", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Venue / location *</label><input value={irForm.venue} onChange={e => irSetField("venue", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Lead CET / Coach</label>
+                <select value={irForm.leadCoachId} onChange={e => selectIrLeadCoach(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                  <option value="">Select CET...</option>
+                  {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Member Federation</label>
+                <select value={irForm.memberFederation} onChange={e => irSetField("memberFederation", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                  {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <p className="text-sm font-semibold text-slate-800">2. Person Involved (Primary) *</p>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Full name *</label><input value={irForm.p1Name} onChange={e => irSetField("p1Name", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Date of birth / age *</label><input value={irForm.p1Age} onChange={e => irSetField("p1Age", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Role</label>
+                <select value={irForm.p1Role} onChange={e => irSetField("p1Role", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                  {["Participant", "Coach", "Volunteer", "Spectator", "Other"].map(o => <option key={o}>{o}</option>)}
+                </select>
+              </div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Contact number *</label><input value={irForm.p1Contact} onChange={e => irSetField("p1Contact", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Address</label><input value={irForm.p1Address} onChange={e => irSetField("p1Address", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Emergency contact name &amp; number</label><input value={irForm.p1Emergency} onChange={e => irSetField("p1Emergency", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div className="sm:col-span-3"><label className="text-xs font-medium text-slate-500 mb-1.5 block">Parent/guardian informed? (if under 18) — name &amp; method of contact</label><input value={irForm.p1Parent} onChange={e => irSetField("p1Parent", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <p className="text-sm font-semibold text-slate-800">3. Person Involved (Secondary, optional)</p>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Full name</label><input value={irForm.p2Name} onChange={e => irSetField("p2Name", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Date of birth / age</label><input value={irForm.p2Age} onChange={e => irSetField("p2Age", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Role</label>
+                <select value={irForm.p2Role} onChange={e => irSetField("p2Role", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                  <option value="">—</option>{["Participant", "Coach", "Volunteer", "Spectator", "Other"].map(o => <option key={o}>{o}</option>)}
+                </select>
+              </div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Contact number</label><input value={irForm.p2Contact} onChange={e => irSetField("p2Contact", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Address</label><input value={irForm.p2Address} onChange={e => irSetField("p2Address", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Emergency contact name &amp; number</label><input value={irForm.p2Emergency} onChange={e => irSetField("p2Emergency", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div className="sm:col-span-3"><label className="text-xs font-medium text-slate-500 mb-1.5 block">Parent/guardian informed? (if under 18) — name &amp; method of contact</label><input value={irForm.p2Parent} onChange={e => irSetField("p2Parent", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <p className="text-sm font-semibold text-slate-800">4. Incident Details</p>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Date of incident *</label><input type="date" value={irForm.incDate} onChange={e => irSetField("incDate", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Time of incident *</label><input value={irForm.incTime} onChange={e => irSetField("incTime", e.target.value)} placeholder="e.g. 6:45pm" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Exact location *</label><input value={irForm.incLoc} onChange={e => irSetField("incLoc", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+            </div>
+            <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Activity being undertaken at the time *</label><input value={irForm.incActivity} onChange={e => irSetField("incActivity", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Description of what happened *</label><textarea value={irForm.incDesc} onChange={e => irSetField("incDesc", e.target.value)} rows={3} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+            <div>
+              <p className="text-xs font-medium text-slate-500 mb-1.5">Type of incident</p>
+              <div className="flex gap-2 flex-wrap">
+                {[["typeInjury", "Injury"], ["typeNearMiss", "Near miss / no injury"], ["typeEquip", "Equipment / property damage"], ["typeBehaviour", "Behavioural / conduct issue"], ["typeEnv", "Environmental"], ["typeOther", "Other"]].map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-1.5 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-full px-2.5 py-1 cursor-pointer">
+                    <input type="checkbox" checked={irForm[key]} onChange={() => irSetField(key, !irForm[key])} className="rounded border-slate-300" /> {label}
+                  </label>
+                ))}
+              </div>
+              {irForm.typeOther && <input value={irForm.typeOtherSpec} onChange={e => irSetField("typeOtherSpec", e.target.value)} placeholder="Please specify" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-2" />}
+            </div>
+          </div>
+
+          {irForm.typeInjury && (
+            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+              <p className="text-sm font-semibold text-slate-800">5. Injury Details</p>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Nature of injury</label><input value={irForm.injNature} onChange={e => irSetField("injNature", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Body part(s) affected</label><input value={irForm.injPart} onChange={e => irSetField("injPart", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">First aid given?</label><select value={irForm.injFirstAid} onChange={e => irSetField("injFirstAid", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"><option value="">—</option><option>Yes</option><option>No</option></select></div>
+                <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">First aider name</label><input value={irForm.injFirstAider} onChange={e => irSetField("injFirstAider", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Ambulance / 111 / GP called?</label><select value={irForm.injAmbulance} onChange={e => irSetField("injAmbulance", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"><option value="">—</option><option>Yes</option><option>No</option></select></div>
+                <div className="sm:col-span-3"><label className="text-xs font-medium text-slate-500 mb-1.5 block">Treatment given and outcome</label><textarea value={irForm.injTreatment} onChange={e => irSetField("injTreatment", e.target.value)} rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <p className="text-sm font-semibold text-slate-800">6. Witnesses</p>
+            {irForm.witnesses.map(w => (
+              <div key={w.id} className="grid sm:grid-cols-4 gap-2 items-start border border-slate-200 rounded-lg p-2">
+                <input value={w.name} onChange={e => updateWitness(w.id, "name", e.target.value)} placeholder="Name" className="border border-slate-200 rounded-md px-2 py-1.5 text-xs" />
+                <input value={w.contact} onChange={e => updateWitness(w.id, "contact", e.target.value)} placeholder="Contact" className="border border-slate-200 rounded-md px-2 py-1.5 text-xs" />
+                <textarea value={w.statement} onChange={e => updateWitness(w.id, "statement", e.target.value)} placeholder="Statement" rows={1} className="border border-slate-200 rounded-md px-2 py-1.5 text-xs sm:col-span-1" />
+                <button onClick={() => removeWitness(w.id)} className="text-slate-300 hover:text-red-600 justify-self-start"><X className="w-4 h-4" /></button>
+              </div>
+            ))}
+            <button onClick={addWitness} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">+ Add witness</button>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <p className="text-sm font-semibold text-slate-800">7. Immediate Action Taken &amp; Equipment Involved</p>
+            <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Immediate action taken</label><textarea value={irForm.action} onChange={e => irSetField("action", e.target.value)} rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Equipment / facility involved (describe and note any defects)</label>
+              <textarea value={irForm.equip} onChange={e => irSetField("equip", e.target.value)} rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            {irForm.equip.trim() && !irForm.equipRestocked && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">⚠ First Aid Kit restock reminder: equipment has been listed above. This stays attached until an Executive Manager confirms it's been replaced.</p>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <p className="text-sm font-semibold text-slate-800">8. Reported By</p>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Name *</label>
+                <select value={irForm.repNameId} onChange={e => selectIrReporter(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                  <option value="">Select CET...</option>
+                  {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Role *</label><input value={irForm.repRole} onChange={e => irSetField("repRole", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Date *</label><input type="date" value={irForm.repDate} onChange={e => irSetField("repDate", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+            </div>
+            <p className="text-xs text-slate-400">Section 9 (Office / Management Use Only) is completed by the Executive Manager in the Admin area once this report is submitted.</p>
+            <div className="flex gap-2">
+              <button onClick={saveIncident} className="bg-slate-900 text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-800">Submit Incident Report</button>
+              {irEditingId && <button onClick={resetIrForm} className="px-6 py-2.5 rounded-lg text-sm font-medium text-slate-500">Cancel</button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {subTab === "incidents" && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-sm font-semibold text-slate-800">Submitted Incident Reports</p>
+            <input value={irSearch} onChange={e => setIrSearch(e.target.value)} placeholder="Search course or venue..." className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs w-56" />
+          </div>
+          {irFiltered.length === 0 ? (
+            <p className="text-xs text-slate-400">No incident reports submitted yet.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {irFiltered.map(i => (
+                <div key={i.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">{i.course}{i.status === "reviewed" && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full ml-1.5">REVIEWED</span>}</p>
+                    <p className="text-xs text-slate-400">{i.venue} · {i.incDate ? new Date(i.incDate).toLocaleDateString("en-GB") : ""} · Reported by {i.repName}</p>
+                  </div>
+                  <button onClick={() => openIncident(i)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Open</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {subTab === "admin" && (
+        <div className="space-y-4">
+          {!masterAuthed ? (
+            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+              <p className="text-sm font-semibold text-slate-800">Executive Manager Access</p>
+              <p className="text-xs text-slate-500">Enter a Master Admin name and PIN to review proposals, incidents, assessments, and the hazard catalogue.</p>
+              <div className="grid sm:grid-cols-2 gap-2">
+                <input value={masterAuthName} onChange={e => { setMasterAuthName(e.target.value); setMasterAuthError(false); }} placeholder="Admin name" className={`border rounded-lg px-3 py-2 text-sm ${masterAuthError ? "border-red-400" : "border-slate-300"}`} />
+                <input type="password" inputMode="numeric" maxLength={4} value={masterAuthPin}
+                  onChange={e => { setMasterAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setMasterAuthError(false); }}
+                  onKeyDown={e => { if (e.key === "Enter") handleMasterAuth(); }} placeholder="PIN"
+                  className={`border rounded-lg px-3 py-2 text-sm text-center tracking-widest ${masterAuthError ? "border-red-400" : "border-slate-300"}`} />
+              </div>
+              <button onClick={handleMasterAuth} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-800">Unlock</button>
+              {masterAuthError && (
+                <p className="text-xs text-red-600">
+                  {isLockedOut(adminLockouts, masterAuthName)
+                    ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, masterAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, masterAuthName) === 1 ? "" : "s"}.`
+                    : "Incorrect admin name or PIN, or not a Master Admin."}
+                </p>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+                <p className="text-sm font-semibold text-slate-800">Hazard Proposals ({pendingProposals.length} pending)</p>
+                {pendingProposals.length === 0 ? (
+                  <p className="text-xs text-slate-400">No pending proposals.</p>
+                ) : pendingProposals.map(p => (
+                  <div key={p.id} className="border border-amber-200 bg-amber-50 rounded-lg p-3 space-y-1.5">
+                    <p className="text-sm font-semibold text-slate-800">{p.name}</p>
+                    <p className="text-xs text-slate-500">Proposed by {p.proposedByName || "(unknown)"} · {p.date}</p>
+                    {p.relatedHazardNote && <p className="text-xs text-slate-600">Session note: {p.relatedHazardNote}</p>}
+                    <p className="text-xs text-slate-600">{p.desc}</p>
+                    {(p.suggestedRating1 || p.suggestedRating2) && (
+                      <div className="flex gap-1.5">
+                        {p.suggestedRating1 && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${rapaRatingBadgeClass(p.suggestedRating1)}`}>Suggested initial: {p.suggestedRating1}</span>}
+                        {p.suggestedRating2 && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${rapaRatingBadgeClass(p.suggestedRating2)}`}>Suggested residual: {p.suggestedRating2}</span>}
+                      </div>
+                    )}
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={() => approveProposal(p.id, true)} className="text-xs font-semibold text-emerald-700 hover:text-emerald-800">Approve &amp; update catalogue</button>
+                      <button onClick={() => approveProposal(p.id, false)} className="text-xs font-semibold text-slate-600 hover:text-slate-700">Approve (no catalogue change)</button>
+                      <button onClick={() => rejectProposal(p.id)} className="text-xs font-semibold text-red-600 hover:text-red-700">Reject</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+                <p className="text-sm font-semibold text-slate-800">Equipment Restock Reminders ({equipPendingIncidents.length})</p>
+                {equipPendingIncidents.length === 0 ? (
+                  <p className="text-xs text-slate-400">Nothing outstanding.</p>
+                ) : equipPendingIncidents.map(i => (
+                  <div key={i.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{i.course} — {i.venue}</p>
+                      <p className="text-xs text-slate-500">{i.equip}</p>
+                    </div>
+                    <button onClick={() => markEquipRestocked(i.id)} className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 whitespace-nowrap">Mark Restocked</button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+                <p className="text-sm font-semibold text-slate-800">Hazard Catalogue</p>
+                <p className="text-xs text-slate-500">The standard information shown to CETs when adding a hazard. This is the authoritative source — edit here to keep it current.</p>
+                <div className="space-y-1.5">
+                  {Object.entries(catalogue).map(([key, c]) => (
+                    <div key={key} className="border border-slate-200 rounded-lg p-3">
+                      {catEditingKey === key ? (
+                        <div className="space-y-2">
+                          <input value={catDraft.label} onChange={e => setCatDraft(prev => ({ ...prev, label: e.target.value }))} className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm font-semibold" />
+                          <textarea value={catDraft.typical} onChange={e => setCatDraft(prev => ({ ...prev, typical: e.target.value }))} rows={2} placeholder="Typical hazards" className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs" />
+                          <textarea value={catDraft.controls} onChange={e => setCatDraft(prev => ({ ...prev, controls: e.target.value }))} rows={2} placeholder="Controls" className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs" />
+                          <div className="grid sm:grid-cols-2 gap-2">
+                            <select value={catDraft.stdRating1 || ""} onChange={e => setCatDraft(prev => ({ ...prev, stdRating1: e.target.value || null }))} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white">
+                              <option value="">No standard initial rating</option>{RAPA_RATING_NAMES.map(r => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                            <select value={catDraft.stdRating2 || ""} onChange={e => setCatDraft(prev => ({ ...prev, stdRating2: e.target.value || null }))} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white">
+                              <option value="">No standard residual rating</option>{RAPA_RATING_NAMES.map(r => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={saveCatalogueEdit} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Save</button>
+                            <button onClick={() => { setCatEditingKey(null); setCatDraft(null); }} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-800">{c.label}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{c.typical}</p>
+                            {c.stdRating1 && (
+                              <div className="flex gap-1.5 mt-1">
+                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${rapaRatingBadgeClass(c.stdRating1)}`}>{c.stdRating1}</span>
+                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${rapaRatingBadgeClass(c.stdRating2)}`}>{c.stdRating2}</span>
+                              </div>
+                            )}
+                          </div>
+                          <button onClick={() => startEditCatalogue(key)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">Edit</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+                <p className="text-sm font-semibold text-slate-800">All Risk Assessments ({rapaAssessments.length})</p>
+                <div className="space-y-1.5 max-h-96 overflow-y-auto">
+                  {[...rapaAssessments].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map(a => (
+                    <div key={a.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
+                      <p className="text-sm text-slate-700">{a.session} · {a.leadCetName} · {a.date ? new Date(a.date).toLocaleDateString("en-GB") : ""}</p>
+                      <button onClick={() => openAssessment(a)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">Open</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, saveCetAssessments, adminSettings, adminLockouts, recordAdminAttempt }) {
   const [form, setForm] = useState(emptyCetAssessmentForm());
   const [editingId, setEditingId] = useState(null);
@@ -6426,7 +7312,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                           )}
                           {(() => {
                             if (!g.courseNumber) return null;
-                            const groupBlockOpts = isADiploma(g.courseTitle) ? DIPLOMA_BLOCK_OPTIONS_A : isBDiploma(g.courseTitle) ? DIPLOMA_BLOCK_OPTIONS_B : [];
+                            const isCDip = isCDiploma(g.courseTitle);
+                            const groupBlockOpts = isADiploma(g.courseTitle) ? DIPLOMA_BLOCK_OPTIONS_A : isBDiploma(g.courseTitle) ? DIPLOMA_BLOCK_OPTIONS_B : isCDip ? ["Course"] : [];
                             if (groupBlockOpts.length === 0) return null;
                             const groupClosedBlocks = closedCourseBlocks[g.courseNumber] || [];
                             const nextBlockToClose = groupBlockOpts.find(b => !groupClosedBlocks.includes(b));
@@ -6438,7 +7325,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                 </button>
                               );
                             }
-                            const isFinal = nextBlockToClose === groupBlockOpts[groupBlockOpts.length - 1];
+                            const isFinal = isCDip ? true : nextBlockToClose === groupBlockOpts[groupBlockOpts.length - 1];
                             const groupMf = (() => {
                               const counts = {};
                               g.records.forEach(t => { const k = t.memberFederation || ""; counts[k] = (counts[k] || 0) + 1; });
@@ -6449,7 +7336,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                 className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg whitespace-nowrap border ${
                                   isFinal ? "text-red-700 border-red-200 hover:bg-red-50" : "text-violet-700 border-violet-200 hover:bg-violet-50"
                                 }`}>
-                                <Lock className="w-3.5 h-3.5" /> {isFinal ? `Close ${nextBlockToClose} & Course` : `Provisionally Close ${nextBlockToClose}`}
+                                <Lock className="w-3.5 h-3.5" /> {isCDip ? "Close Course" : isFinal ? `Close ${nextBlockToClose} & Course` : `Provisionally Close ${nextBlockToClose}`}
                               </button>
                             );
                           })()}
@@ -9144,6 +10031,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     { table: "observations", label: "Observations", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
     { table: "completed_tasks", label: "Completed Tasks", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"}${i.courseNumber ? ` — #${i.courseNumber}` : ""}` },
     { table: "cet_assessments", label: "CET Assessments", masterOnly: false, nameOf: (i) => `${i.cetName || "Unknown CET"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
+    { table: "rapa_assessments", label: "RAPA Risk Assessments", masterOnly: false, nameOf: (i) => `${i.session || "Untitled session"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
+    { table: "rapa_incidents", label: "RAPA Incident Reports", masterOnly: false, nameOf: (i) => `${i.course || "Untitled course"} — ${i.incDate ? new Date(i.incDate).toLocaleDateString("en-GB") : "no date"}` },
   ];
 
   function daysRemaining(deletedAt) {
