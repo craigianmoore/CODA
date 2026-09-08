@@ -4539,6 +4539,14 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
   }
 
   const pendingProposals = rapaProposals.filter(p => p.status === "pending");
+  // Section 5 (Injury Details) only shows when "Injury" is ticked in section 4,
+  // so numbers after it shift down by one when it's hidden — otherwise the
+  // form looks like it's skipped straight from 4 to 6.
+  const irSectionNum = {
+    witnesses: irForm.typeInjury ? 6 : 5,
+    action: irForm.typeInjury ? 7 : 6,
+    reported: irForm.typeInjury ? 8 : 7,
+  };
   const equipPendingIncidents = rapaIncidents.filter(i => (i.equip || "").trim() && !i.equipRestocked);
 
   const subTabs = [
@@ -4864,7 +4872,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
               <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Exact location *</label><input value={irForm.incLoc} onChange={e => irSetField("incLoc", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
             </div>
             <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Activity being undertaken at the time *</label><input value={irForm.incActivity} onChange={e => irSetField("incActivity", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Description of what happened *</label><textarea value={irForm.incDesc} onChange={e => irSetField("incDesc", e.target.value)} rows={3} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Description of what happened *</label><VoiceTextarea value={irForm.incDesc} onChange={e => irSetField("incDesc", e.target.value)} rows={3} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
             <div>
               <p className="text-xs font-medium text-slate-500 mb-1.5">Type of incident</p>
               <div className="flex gap-2 flex-wrap">
@@ -4893,7 +4901,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
           )}
 
           <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-            <p className="text-sm font-semibold text-slate-800">6. Witnesses</p>
+            <p className="text-sm font-semibold text-slate-800">{irSectionNum.witnesses}. Witnesses</p>
             {irForm.witnesses.map(w => (
               <div key={w.id} className="grid sm:grid-cols-4 gap-2 items-start border border-slate-200 rounded-lg p-2">
                 <input value={w.name} onChange={e => updateWitness(w.id, "name", e.target.value)} placeholder="Name" className="border border-slate-200 rounded-md px-2 py-1.5 text-xs" />
@@ -4906,11 +4914,11 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-            <p className="text-sm font-semibold text-slate-800">7. Immediate Action Taken &amp; Equipment Involved</p>
-            <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Immediate action taken</label><textarea value={irForm.action} onChange={e => irSetField("action", e.target.value)} rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
+            <p className="text-sm font-semibold text-slate-800">{irSectionNum.action}. Immediate Action Taken &amp; Equipment Involved</p>
+            <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Immediate action taken</label><VoiceTextarea value={irForm.action} onChange={e => irSetField("action", e.target.value)} rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
             <div>
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">Equipment / facility involved (describe and note any defects)</label>
-              <textarea value={irForm.equip} onChange={e => irSetField("equip", e.target.value)} rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+              <VoiceTextarea value={irForm.equip} onChange={e => irSetField("equip", e.target.value)} rows={2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
             </div>
             {irForm.equip.trim() && !irForm.equipRestocked && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">⚠ First Aid Kit restock reminder: equipment has been listed above. This stays attached until an Executive Manager confirms it's been replaced.</p>
@@ -4918,7 +4926,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-            <p className="text-sm font-semibold text-slate-800">8. Reported By</p>
+            <p className="text-sm font-semibold text-slate-800">{irSectionNum.reported}. Reported By</p>
             <div className="grid sm:grid-cols-3 gap-3">
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Name *</label>
