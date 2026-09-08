@@ -1616,9 +1616,9 @@ function Header({ tab, setTab, viewMode, onViewModeChange, onAdminClick }) {
           {onAdminClick && (
             <button
               onClick={onAdminClick}
-              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 mb-2 text-sm font-semibold text-blue-700 border-2 border-blue-500 rounded-lg whitespace-nowrap hover:bg-blue-50 transition-colors shrink-0"
+              className="ml-auto flex items-center gap-1 px-2 py-1 mb-2 text-xs font-semibold text-blue-700 border border-blue-500 rounded-md whitespace-nowrap hover:bg-blue-50 transition-colors shrink-0"
             >
-              <Lock className="w-3.5 h-3.5" /> Admin
+              <Lock className="w-3 h-3" /> Admin
             </button>
           )}
         </nav>
