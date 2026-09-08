@@ -191,16 +191,17 @@ const DIPLOMA_BLOCK_OPTIONS_A = ["Block 1", "Block 2", "Block 3", "Block 4"];
 // CET Assessment — FV's own tool for assessing a CET's coaching-conversation
 // and session-design practice, distinct from the coach observation rubric.
 const GRIP_ITEMS = [
-  { key: "goals", label: "Goals", hint: "Clarity on what the session/conversation is working towards" },
-  { key: "reflect", label: "Reflect/Review", hint: "Prompting the candidate to reflect on their own practice" },
-  { key: "input", label: "Input", hint: "Options, research or outside perspective brought in" },
-  { key: "plan", label: "Plan", hint: "Clear, agreed next steps" },
+  { key: "goals", label: "Goals", hint: "Clarity on what the session/conversation is working towards", img: "/images/grip-goals.png" },
+  { key: "reflect", label: "Reflect/Review", hint: "Prompting the candidate to reflect on their own practice", img: "/images/grip-reflect.png" },
+  { key: "input", label: "Input", hint: "Options, research or outside perspective brought in", img: "/images/grip-input.png" },
+  { key: "plan", label: "Plan", hint: "Clear, agreed next steps", img: "/images/grip-plan.png" },
 ];
 const CP_ITEMS = [
   { key: "process", label: "Coaching Process", hint: "Presenting: Engage, Explain, Exit · Coaching: Enter, Enhance/Educate, Ensure" },
   { key: "fiveRs", label: "Session Design (5 R's)", hint: "Content: Relevance, Realism, Repetition, Rewards, Reflection · Organisation" },
 ];
 const CET_SOCHANGEIT_ITEMS = [
+  { letter: "S", label: "Safety", desc: "Area, equipment, practice and weather considered." },
   { letter: "O", label: "Organised", desc: "Quick starts and planned transitions." },
   { letter: "C", label: "Coaching style", desc: "In-activity feedback, role models, pre-planned prompts." },
   { letter: "H", label: "How you score/win", desc: "Scoring opportunities/incentives adjusted." },
@@ -4439,7 +4440,12 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
         <div>
           <p className="text-sm font-semibold text-slate-800">GRIP — Coaching Conversation</p>
-          <p className="text-xs text-slate-400">Goals · Reflect/Review · Input · Plan</p>
+          <p className="text-xs text-slate-400">Rate how effectively the CET used GRIP to structure feedback/coaching conversations with candidates.</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {GRIP_ITEMS.map(item => (
+            <img key={item.key} src={item.img} alt={item.label} className="w-full rounded-lg" />
+          ))}
         </div>
         <div className="space-y-3">
           {GRIP_ITEMS.map(item => (
