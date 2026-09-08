@@ -4711,6 +4711,16 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
                 )}
               </div>
             </div>
+            {!raCanSave() && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Still needed before saving: {[
+                  !raForm.session.trim() && "Session / Activity",
+                  !raForm.date && "Date",
+                  !raForm.leadCetId && "Lead CET / TD",
+                  !raForm.assessorName.trim() && "Assessment carried out by (name)",
+                ].filter(Boolean).join(", ")}.
+              </p>
+            )}
             <button onClick={saveAssessment} disabled={!raCanSave()} className="bg-slate-900 text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-800 disabled:bg-slate-300">
               Save Risk Assessment
             </button>
