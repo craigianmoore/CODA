@@ -1556,10 +1556,10 @@ function Header({ tab, setTab, viewMode, onViewModeChange, onAdminClick }) {
     { id: "dashboard", label: "Dashboard", icon: TrendingUp },
     { id: "newObs", label: "New Observation", icon: ClipboardList },
     { id: "tasks", label: "Completed Tasks", icon: ListChecks },
-    { id: "cetAssessment", label: "CET Assessment", icon: Award },
-    { id: "rapa", label: "RAPA", icon: ShieldAlert },
     { id: "logistics", label: "Logistics", icon: Settings },
     { id: "history", label: "History", icon: FileText },
+    { id: "cetAssessment", label: "CET Observation", icon: Award },
+    { id: "rapa", label: "RAPA", icon: ShieldAlert },
   ];
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
@@ -5245,7 +5245,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">CET Assessment</h2>
+          <h2 className="text-xl font-bold text-slate-900">CET Observation</h2>
           <p className="text-sm text-slate-500">A CET's coaching-conversation and session-design practice, assessed against GRIP, SO CHANGE IT, and Coaching Frameworks.</p>
         </div>
         <button onClick={() => { if (!requestAdminAction("assessors")) return; setShowManageAssessors(s => !s); }}
@@ -10080,7 +10080,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     { table: "cets", label: "CETs", masterOnly: false, nameOf: (i) => i.name },
     { table: "observations", label: "Observations", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
     { table: "completed_tasks", label: "Completed Tasks", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"}${i.courseNumber ? ` — #${i.courseNumber}` : ""}` },
-    { table: "cet_assessments", label: "CET Assessments", masterOnly: false, nameOf: (i) => `${i.cetName || "Unknown CET"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
+    { table: "cet_assessments", label: "CET Observations", masterOnly: false, nameOf: (i) => `${i.cetName || "Unknown CET"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
     { table: "rapa_assessments", label: "RAPA Risk Assessments", masterOnly: false, nameOf: (i) => `${i.session || "Untitled session"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
     { table: "rapa_incidents", label: "RAPA Incident Reports", masterOnly: false, nameOf: (i) => `${i.course || "Untitled course"} — ${i.incDate ? new Date(i.incDate).toLocaleDateString("en-GB") : "no date"}` },
   ];
