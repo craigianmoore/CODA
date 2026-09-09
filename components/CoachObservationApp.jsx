@@ -6,6 +6,24 @@ import Papa from "papaparse";
 import * as mammoth from "mammoth";
 import { supabase } from "../lib/supabase";
 
+// Extracts plain text from an uploaded PDF (IDP uploads). Dynamically
+// imported so pdfjs-dist doesn't bloat the initial bundle, matching how
+// html2pdf.js is loaded elsewhere. Uses a CDN-hosted worker matching the
+// installed version — bundling the worker file locally is fragile under
+// Next.js/Turbopack, a CDN URL is the reliable option.
+async function extractPdfText(arrayBuffer) {
+  const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+  const doc = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  const pageTexts = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    pageTexts.push(content.items.map(item => item.str).join(" "));
+  }
+  return pageTexts.join("\n\n").trim();
+}
+
 const ASSESSMENT_AREAS = [
   {
     key: "objective",
@@ -2439,8 +2457,10 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
   function handleIdpFile(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!/\.docx$/i.test(file.name)) {
-      setIdpError("Please upload a .docx file.");
+    const isDocx = /\.docx$/i.test(file.name);
+    const isPdf = /\.pdf$/i.test(file.name);
+    if (!isDocx && !isPdf) {
+      setIdpError("Please upload a .docx or .pdf file.");
       return;
     }
     setIdpParsing(true);
@@ -2449,8 +2469,10 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
     reader.onload = async (ev) => {
       try {
         const arrayBuffer = ev.target.result;
-        const result = await mammoth.extractRawText({ arrayBuffer });
-        setIdpForm(prev => ({ ...prev, fileName: file.name, fileText: (result?.value || "").trim() }));
+        const text = isPdf
+          ? await extractPdfText(arrayBuffer)
+          : (await mammoth.extractRawText({ arrayBuffer }))?.value || "";
+        setIdpForm(prev => ({ ...prev, fileName: file.name, fileText: text.trim() }));
       } catch (err) {
         setIdpError("Could not read this document. You can still fill in the fields manually.");
       }
@@ -2956,14 +2978,14 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
                               className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white" />
                           </div>
                           <div>
-                            <label className="text-xs font-medium text-sky-800 mb-1 block">Upload IDP document (.docx, optional)</label>
+                            <label className="text-xs font-medium text-sky-800 mb-1 block">Upload IDP document (.docx or .pdf, optional)</label>
                             {idpForm.fileName ? (
                               <div className="flex items-center justify-between border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white">
                                 <span className="text-xs text-slate-600 truncate">{idpForm.fileName}</span>
                                 <button onClick={removeIdpFile} className="text-xs font-semibold text-red-600 hover:text-red-700 shrink-0 ml-2">Remove</button>
                               </div>
                             ) : (
-                              <input type="file" accept=".docx" onChange={handleIdpFile}
+                              <input type="file" accept=".docx,.pdf" onChange={handleIdpFile}
                                 className="block w-full text-xs text-slate-600 border border-slate-300 rounded-lg px-2.5 py-1.5 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 file:text-xs" />
                             )}
                             {idpParsing && <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Reading document...</p>}
@@ -8185,8 +8207,10 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   function handleIdpFile(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!/\.docx$/i.test(file.name)) {
-      setIdpError("Please upload a .docx file.");
+    const isDocx = /\.docx$/i.test(file.name);
+    const isPdf = /\.pdf$/i.test(file.name);
+    if (!isDocx && !isPdf) {
+      setIdpError("Please upload a .docx or .pdf file.");
       return;
     }
     setIdpParsing(true);
@@ -8195,8 +8219,10 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     reader.onload = async (ev) => {
       try {
         const arrayBuffer = ev.target.result;
-        const result = await mammoth.extractRawText({ arrayBuffer });
-        setIdpForm(prev => ({ ...prev, fileName: file.name, fileText: (result?.value || "").trim() }));
+        const text = isPdf
+          ? await extractPdfText(arrayBuffer)
+          : (await mammoth.extractRawText({ arrayBuffer }))?.value || "";
+        setIdpForm(prev => ({ ...prev, fileName: file.name, fileText: text.trim() }));
       } catch (err) {
         setIdpError("Could not read this document. You can still fill in the fields manually.");
       }
@@ -8803,14 +8829,14 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                       className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white" />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-sky-800 mb-1 block">Upload IDP document (.docx, optional)</label>
+                    <label className="text-xs font-medium text-sky-800 mb-1 block">Upload IDP document (.docx or .pdf, optional)</label>
                     {idpForm.fileName ? (
                       <div className="flex items-center justify-between border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white">
                         <span className="text-xs text-slate-600 truncate">{idpForm.fileName}</span>
                         <button onClick={removeIdpFile} className="text-xs font-semibold text-red-600 hover:text-red-700 shrink-0 ml-2">Remove</button>
                       </div>
                     ) : (
-                      <input type="file" accept=".docx" onChange={handleIdpFile}
+                      <input type="file" accept=".docx,.pdf" onChange={handleIdpFile}
                         className="block w-full text-xs text-slate-600 border border-slate-300 rounded-lg px-2.5 py-1.5 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 file:text-xs" />
                     )}
                     {idpParsing && <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Reading document...</p>}
