@@ -9570,6 +9570,7 @@ function buildSingleObservationHtml(obs) {
             <p class="subtitle">${esc(obs.coachName) || "—"}</p>
           </div>
           <span class="type-badge">${obs.sessionType === "formal" ? `Formal · ${esc(obs.formalCourseName)}${obs.courseNumber ? ` (#${esc(obs.courseNumber)})` : ""}${obs.diplomaBlock ? " · " + esc(obs.diplomaBlock) : ""}` : "Informal Club Session"}</span>
+          ${obs.memberFederation !== "FA" ? `<div class="header-icon"><img src="${(MEMBER_FEDERATIONS.find(m => m.key === "FA") || {}).logoUrl || ""}" alt="Football Australia logo" /></div>` : ""}
         </div>
 
         <div class="meta-grid">
