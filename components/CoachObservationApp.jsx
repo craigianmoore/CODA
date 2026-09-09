@@ -518,8 +518,9 @@ function migrateAdminSettings(raw) {
     // working loses anything on this migration. The old "mf" role becomes
     // "lead" (Lead Admin), same scope and behaviour, just renamed.
     if (typeof a === "string") return { name: a, pin: raw.pin || DEFAULT_ADMIN_SETTINGS.admins[0].pin, role: "master" };
-    const role = (a.role === "mf" || a.role === "lead") ? "lead" : (a.role === "course" ? "course" : "master");
+    const role = (a.role === "mf" || a.role === "lead") ? "lead" : (a.role === "course" ? "course" : a.role === "coordinator" ? "coordinator" : "master");
     if (role === "lead") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || [] };
+    if (role === "coordinator") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || [] };
     if (role === "course") return { name: a.name || "", pin: a.pin || "", role, memberFederation: a.memberFederation || "", assignedCourseNumbers: a.assignedCourseNumbers || [] };
     return { name: a.name || "", pin: a.pin || "", role: "master" };
   }).filter(a => a.name);
@@ -538,6 +539,7 @@ function migrateAdminSettings(raw) {
 function adminTier(adminMatch) {
   if (!adminMatch) return "master";
   if (adminMatch.role === "lead") return "lead";
+  if (adminMatch.role === "coordinator") return "coordinator";
   if (adminMatch.role === "course") return "course";
   return "master";
 }
@@ -547,22 +549,28 @@ function isMasterAdmin(adminMatch) {
 function isCourseAdmin(adminMatch) {
   return adminTier(adminMatch) === "course";
 }
+function isCoordinatorAdmin(adminMatch) {
+  return adminTier(adminMatch) === "coordinator";
+}
 // MF-level access (Clear History, Remove All CETs, Merge Duplicate CETs) —
-// Master always; Lead if the MF matches theirs; Course Admins never get
-// blanket MF access, only specific courses (see adminHasCourseAccess).
+// Master always; Lead if the MF matches theirs. MF Coordinators do NOT get
+// this — it's the one thing that separates them from Lead Admin. Course
+// Admins never get blanket MF access, only specific courses (see
+// adminHasCourseAccess).
 function adminHasMfAccess(adminMatch, mfKey) {
   const tier = adminTier(adminMatch);
   if (tier === "master") return true;
   if (tier === "lead") return (adminMatch.memberFederations || []).includes(mfKey);
   return false;
 }
-// Course-level access (Reopen Report, Export PDF) — Master always; Lead if
-// the MF matches theirs (they can act on every course in their MF); Course
-// Admin only if this specific course number is one of theirs.
+// Course-level access (Reopen Report, Export PDF, Progress Tracking) —
+// Master always; Lead or Coordinator if the MF matches theirs (both can
+// act on every course in their MF, just not the bulk-destructive actions
+// above); Course Admin only if this specific course number is one of theirs.
 function adminHasCourseAccess(adminMatch, courseNumber, mfKey) {
   const tier = adminTier(adminMatch);
   if (tier === "master") return true;
-  if (tier === "lead") return (adminMatch.memberFederations || []).includes(mfKey);
+  if (tier === "lead" || tier === "coordinator") return (adminMatch.memberFederations || []).includes(mfKey);
   if (tier === "course") return (adminMatch.assignedCourseNumbers || []).includes((courseNumber || "").trim());
   return false;
 }
@@ -2131,6 +2139,11 @@ function RemoveAllBar({ label, count, onClear, warningText, adminSettings, admin
       setScopeError("Course Admins can't remove CETs — this needs a Lead Admin or Master Admin.");
       return;
     }
+    if (!masterOnly && isCoordinatorAdmin(match)) {
+      recordAdminAttempt(adminName, true);
+      setScopeError("MF Coordinators can't remove CETs — this needs a Lead Admin or Master Admin.");
+      return;
+    }
     recordAdminAttempt(adminName, true);
     onClear(match);
     setConfirmClear(false);
@@ -3129,6 +3142,12 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
       recordAdminAttempt(mergeAuthName, true);
       setMergeAuthError(false);
       setMergeAuthScopeError("Course Admins can't merge duplicate CETs — this needs a Lead Admin or Master Admin.");
+      return;
+    }
+    if (isCoordinatorAdmin(match)) {
+      recordAdminAttempt(mergeAuthName, true);
+      setMergeAuthError(false);
+      setMergeAuthScopeError("MF Coordinators can't merge duplicate CETs — this needs a Lead Admin or Master Admin.");
       return;
     }
     recordAdminAttempt(mergeAuthName, true);
@@ -5119,7 +5138,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
   const [adminAuthFor, setAdminAuthFor] = useState(null); // "assessors" | "export"
 
   const iAmMaster = adminAuthed && isMasterAdmin(adminAuthMatch);
-  const iAmLead = adminAuthed && adminTier(adminAuthMatch) === "lead";
+  const iAmLead = adminAuthed && (adminTier(adminAuthMatch) === "lead" || adminTier(adminAuthMatch) === "coordinator");
   const myMf = iAmLead ? (adminAuthMatch.memberFederations || [])[0] : null;
 
   function handleAdminAuth() {
@@ -5137,7 +5156,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
     setAdminAuthed(true);
     setAdminAuthMatch(match);
     setAdminAuthError(false);
-    if (adminTier(match) === "lead") setAssessorMfPicker((match.memberFederations || [])[0] || "");
+    if (adminTier(match) === "lead" || adminTier(match) === "coordinator") setAssessorMfPicker((match.memberFederations || [])[0] || "");
     setAdminAuthFor(null);
   }
 
@@ -5256,7 +5275,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
 
       {adminAuthFor === "assessors" && (
         <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-          <p className="text-xs text-indigo-700">Managing assessors needs a Lead or Master Admin name and PIN. A Lead Admin manages assessors for their own Member Federation only.</p>
+          <p className="text-xs text-indigo-700">Managing assessors needs a Lead Admin, MF Coordinator, or Master Admin name and PIN. A Lead Admin or MF Coordinator manages assessors for their own Member Federation only.</p>
           <div className="grid sm:grid-cols-2 gap-2">
             <input value={adminAuthName} onChange={e => { setAdminAuthName(e.target.value); setAdminAuthError(false); }} placeholder="Admin name"
               className={`border rounded-lg px-3 py-2 text-sm ${adminAuthError ? "border-red-400" : "border-indigo-300"}`} />
@@ -5273,7 +5292,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
             <p className="text-xs text-red-600">
               {isLockedOut(adminLockouts, adminAuthName)
                 ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, adminAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, adminAuthName) === 1 ? "" : "s"}.`
-                : "Incorrect admin name or PIN, or a Course Admin (needs Lead or Master)."}
+                : "Incorrect admin name or PIN, or a Course Admin (needs Lead, Coordinator, or Master)."}
             </p>
           )}
         </div>
@@ -5400,7 +5419,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
                     }`}>{opt}</button>
                 ))}
               </div>
-              <input value={form.grip[item.key].note} onChange={e => setGripField(item.key, "note", e.target.value)} placeholder="Evidence..."
+              <textarea value={form.grip[item.key].note} onChange={e => setGripField(item.key, "note", e.target.value)} placeholder="Evidence..." rows={3}
                 className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-xs" />
             </div>
           ))}
@@ -5426,7 +5445,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
                 className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${form.sochangeit.rating === opt ? "bg-indigo-100 text-indigo-700 border-indigo-300" : "bg-white text-slate-400 border-slate-200"}`}>{opt}</button>
             ))}
           </div>
-          <input value={form.sochangeit.notes} onChange={e => setForm(prev => ({ ...prev, sochangeit: { ...prev.sochangeit, notes: e.target.value } }))} placeholder="Notes..."
+          <textarea value={form.sochangeit.notes} onChange={e => setForm(prev => ({ ...prev, sochangeit: { ...prev.sochangeit, notes: e.target.value } }))} placeholder="Notes..." rows={3}
             className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-xs" />
         </div>
       </div>
@@ -5445,7 +5464,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
                       className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${form.coachingProcess[item.key].rating === opt ? "bg-indigo-100 text-indigo-700 border-indigo-300" : "bg-white text-slate-400 border-slate-200"}`}>{opt}</button>
                   ))}
                 </div>
-                <input value={form.coachingProcess[item.key].evidence} onChange={e => setCpField(item.key, "evidence", e.target.value)} placeholder="Evidence..."
+                <textarea value={form.coachingProcess[item.key].evidence} onChange={e => setCpField(item.key, "evidence", e.target.value)} placeholder="Evidence..." rows={3}
                   className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-xs" />
               </div>
             ))}
@@ -5570,7 +5589,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
         </div>
         {adminAuthFor === "export" && (
           <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-            <p className="text-xs text-indigo-700">Exporting needs a Lead or Master Admin name and PIN. A Lead Admin's export is limited to their own Member Federation.</p>
+            <p className="text-xs text-indigo-700">Exporting needs a Lead Admin, MF Coordinator, or Master Admin name and PIN. A Lead Admin or MF Coordinator's export is limited to their own Member Federation.</p>
             <div className="grid sm:grid-cols-2 gap-2">
               <input value={adminAuthName} onChange={e => { setAdminAuthName(e.target.value); setAdminAuthError(false); }} placeholder="Admin name"
                 className={`border rounded-lg px-3 py-2 text-sm ${adminAuthError ? "border-red-400" : "border-indigo-300"}`} />
@@ -5587,7 +5606,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
               <p className="text-xs text-red-600">
                 {isLockedOut(adminLockouts, adminAuthName)
                   ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, adminAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, adminAuthName) === 1 ? "" : "s"}.`
-                  : "Incorrect admin name or PIN, or a Course Admin (needs Lead or Master)."}
+                  : "Incorrect admin name or PIN, or a Course Admin (needs Lead, Coordinator, or Master)."}
               </p>
             )}
           </div>
@@ -8434,7 +8453,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   const steps = ["Session Details", "Session Plan", "Assessment Scoring", "Feedback", "Development Plan"];
 
   return (
-    <div className={`space-y-5 ${step === 2 ? "pb-28" : ""}`}>
+    <div className={`space-y-5 ${step === 2 ? "pb-52" : ""}`}>
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-900">{isEditing ? "Edit Observation" : "New Observation"}</h2>
         <button onClick={onCancel} className="text-sm text-slate-400 hover:text-slate-600 flex items-center gap-1">
@@ -9280,7 +9299,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
           <div className="max-w-5xl mx-auto px-4 py-3">
             <p className="text-sm font-semibold text-slate-800 mb-1">General Notes</p>
             <p className="text-xs text-slate-400 mb-2">Always visible while scoring — use this for anything that doesn't fit neatly under one assessment area.</p>
-            <VoiceTextarea value={cetNotes} onChange={e => setCetNotes(e.target.value)} rows={2}
+            <VoiceTextarea value={cetNotes} onChange={e => setCetNotes(e.target.value)} rows={5}
               placeholder="Add any general notes here..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
           </div>
         </div>
@@ -10191,10 +10210,15 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   const iAmSessionHost = panelAuthed && isSessionHost(adminSettings, signedInAdminName);
   const iAmMaster = panelAuthed && isMasterAdmin(signedInAdminMatch);
   const iAmLead = panelAuthed && adminTier(signedInAdminMatch) === "lead";
+  const iAmCoordinator = panelAuthed && adminTier(signedInAdminMatch) === "coordinator";
   // A Lead Admin's role picker is hidden (they only ever add Course
   // Admins), so newAdminRole may still hold its unused "master" default —
   // this is what the form conditionals actually key off, not the raw state.
   const formEffectiveRole = iAmLead ? "course" : newAdminRole;
+  // MF Coordinators can view/manage things for their own federation (Bin,
+  // Reopen Report, Export PDF, RAPA assessors) but — unlike Lead Admin —
+  // cannot add or remove other admins, and don't get Clear History,
+  // Remove All CETs, or Merge Duplicate CETs (see adminHasMfAccess).
   const canManageAdmins = iAmMaster || iAmLead;
   // Course numbers known within a given MF, derived from Completed Tasks —
   // used to build the Course Admin course-number picker without relying on
@@ -10546,8 +10570,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   function canRemoveAdmin(targetName) {
     const target = adminSettings.admins.find(a => a.name.trim().toLowerCase() === targetName.trim().toLowerCase());
     if (!target) return { ok: false, reason: "Admin not found." };
-    if (target.role !== "lead" && target.role !== "course") {
-      const masterCount = adminSettings.admins.filter(a => a.role !== "lead" && a.role !== "course").length;
+    if (adminTier(target) === "master") {
+      const masterCount = adminSettings.admins.filter(a => adminTier(a) === "master").length;
       if (masterCount <= 1) return { ok: false, reason: "This is the last Master Admin — add another Master before removing this one." };
     }
     if (iAmMaster) return { ok: true };
@@ -10569,7 +10593,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     // reference needs to move to someone who still exists — the first
     // remaining Master, or cleared entirely if somehow none remain.
     if (adminSettings.sessionHostName && adminSettings.sessionHostName.trim().toLowerCase() === targetName.trim().toLowerCase()) {
-      const fallbackMaster = remainingAdmins.find(a => a.role !== "lead" && a.role !== "course");
+      const fallbackMaster = remainingAdmins.find(a => adminTier(a) === "master");
       nextSettings.sessionHostName = fallbackMaster ? fallbackMaster.name : "";
     }
     saveAdminSettings(nextSettings);
@@ -10614,6 +10638,19 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
         return;
       }
     }
+    if (effectiveRole === "coordinator") {
+      if (newAdminMfSelection.length === 0) {
+        setAddAdminError("Select a Member Federation for this MF Coordinator.");
+        return;
+      }
+      const claimedMfs = new Set(adminSettings.admins.filter(a => a.role === "coordinator").flatMap(a => a.memberFederations || []));
+      const alreadyClaimed = newAdminMfSelection.filter(mf => claimedMfs.has(mf));
+      if (alreadyClaimed.length > 0) {
+        const labels = alreadyClaimed.map(k => (MEMBER_FEDERATIONS.find(m => m.key === k) || {}).label || k);
+        setAddAdminError(`${labels.join(", ")} already ${alreadyClaimed.length === 1 ? "has" : "have"} an MF Coordinator — each federation gets exactly one.`);
+        return;
+      }
+    }
     if (effectiveRole === "course") {
       if (!newAdminCourseMf) {
         setAddAdminError("Select the Member Federation this Course Admin belongs to.");
@@ -10653,6 +10690,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     }
     const newAdmin = effectiveRole === "lead"
       ? { name, pin: pinToUse, role: "lead", memberFederations: newAdminMfSelection }
+      : effectiveRole === "coordinator"
+      ? { name, pin: pinToUse, role: "coordinator", memberFederations: newAdminMfSelection }
       : effectiveRole === "course"
       ? { name, pin: pinToUse, role: "course", memberFederation: newAdminCourseMf, assignedCourseNumbers: newAdminCourseNumbers }
       : { name, pin: pinToUse, role: "master" };
@@ -10783,6 +10822,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                 <p className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
                   {iAmLead
                     ? "You're a Lead Admin — Clear History, Remove All CETs, Reopen Report, Merge Duplicate CETs, and PDF export below are scoped to your Member Federation(s) only. You can also add Course Admins for your federation. Data export/import and Coach-related admin actions are Master Admin only."
+                    : iAmCoordinator
+                    ? "You're an MF Coordinator — Reopen Report, PDF export, RAPA assessor management, and the Bin below are scoped to your Member Federation only. Unlike a Lead Admin, you can't Clear History, Remove All CETs, Merge Duplicate CETs, or add/remove other admins."
                     : "You're a Course Admin — Reopen Report and PDF export below are scoped to your assigned course number(s) only. Clear History, Remove All CETs, Merge Duplicates, Data export/import, and Coach-related admin actions are not available at this level."}
                 </p>
               )}
@@ -10842,7 +10883,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
               </div>
               )}
 
-              {(iAmMaster || iAmLead) && (
+              {(iAmMaster || iAmLead || iAmCoordinator) && (
                 <div className="border-t border-slate-100 pt-3">
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <p className="text-sm font-semibold text-slate-800">Bin</p>
@@ -10905,6 +10946,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                       {isSessionHost(adminSettings, a.name) && <Lock className="w-3 h-3 text-amber-600" />}
                       {a.role === "lead"
                         ? <span className="text-[10px] font-bold text-indigo-600">· Lead: {(a.memberFederations || []).join(", ")}</span>
+                        : a.role === "coordinator"
+                        ? <span className="text-[10px] font-bold text-teal-600">· Coordinator: {(a.memberFederations || []).join(", ")}</span>
                         : a.role === "course"
                         ? <span className="text-[10px] font-bold text-violet-600">· Course: {a.memberFederation} (#{(a.assignedCourseNumbers || []).join(", #")})</span>
                         : <span className="text-[10px] font-bold text-slate-400">· Master</span>}
@@ -10960,7 +11003,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                     <input value={newAdminName} onChange={e => { setNewAdminName(e.target.value); setAddAdminError(""); }}
                       placeholder={`Name for Admin ${adminSettings.admins.length + 1}`} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
                     {iAmMaster && (
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <button onClick={() => { setNewAdminRole("master"); setNewAdminMfSelection([]); setAddAdminError(""); }} type="button"
                           className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "master" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
                           Master Admin
@@ -10968,6 +11011,10 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         <button onClick={() => { setNewAdminRole("lead"); setAddAdminError(""); }} type="button"
                           className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "lead" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
                           Lead Admin ({adminSettings.admins.filter(a => a.role === "lead").length}/{MEMBER_FEDERATIONS.length})
+                        </button>
+                        <button onClick={() => { setNewAdminRole("coordinator"); setAddAdminError(""); }} type="button"
+                          className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "coordinator" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
+                          MF Coordinator ({adminSettings.admins.filter(a => a.role === "coordinator").length}/{MEMBER_FEDERATIONS.length})
                         </button>
                         <button onClick={() => { setNewAdminRole("course"); setAddAdminError(""); }} type="button"
                           className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "course" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
@@ -10983,6 +11030,30 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                       return (
                         <div>
                           <p className="text-xs font-medium text-slate-500 mb-1">Member Federation — one Lead Admin per federation</p>
+                          <div className="flex gap-1.5 flex-wrap">
+                            {MEMBER_FEDERATIONS.map(mf => {
+                              const taken = claimedMfs.has(mf.key);
+                              return (
+                                <button key={mf.key} type="button" disabled={taken}
+                                  onClick={() => setNewAdminMfSelection([mf.key])}
+                                  className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                                    taken ? "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
+                                    : newAdminMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                                  }`}>
+                                  {mf.label}{taken ? " (taken)" : ""}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {formEffectiveRole === "coordinator" && iAmMaster && (() => {
+                      const claimedMfs = new Set(adminSettings.admins.filter(a => a.role === "coordinator").flatMap(a => a.memberFederations || []));
+                      return (
+                        <div>
+                          <p className="text-xs font-medium text-slate-500 mb-1">Member Federation — one MF Coordinator per federation</p>
+                          <p className="text-xs text-slate-400 mb-1">Can view and manage things for their federation (Reopen Report, Export PDF, RAPA assessors, Bin) but not Clear History, Remove All CETs, or Merge Duplicate CETs.</p>
                           <div className="flex gap-1.5 flex-wrap">
                             {MEMBER_FEDERATIONS.map(mf => {
                               const taken = claimedMfs.has(mf.key);
