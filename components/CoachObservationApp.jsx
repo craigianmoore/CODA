@@ -4208,37 +4208,81 @@ function parseOnlineModulesCell(raw) {
 // file via html2pdf.js. Used by both the single-observation Save PDF and
 // the combined candidate report below.
 async function saveHtmlAsPdf(htmlContent, filename) {
-  const html2pdf = (await import("html2pdf.js")).default;
-  const iframe = document.createElement("iframe");
-  iframe.style.position = "fixed";
-  iframe.style.left = "-99999px";
-  iframe.style.top = "0";
-  iframe.style.width = "800px";
-  iframe.style.height = "1131px";
-  document.body.appendChild(iframe);
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+    import("html2canvas"),
+    import("jspdf"),
+  ]);
+  // Some HTML templates (built for "open in a new tab and print directly")
+  // embed a window.print() script. That script would otherwise also fire
+  // when this same markup loads for rendering — stripping it here keeps
+  // PDF generation self-contained.
+  const safeHtmlContent = htmlContent.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
 
-  iframe.contentDocument.open();
-  iframe.contentDocument.write(htmlContent);
-  iframe.contentDocument.close();
+  // Rendering used to go through html2pdf.js's own wrapper around
+  // html2canvas, fed via an offscreen <iframe>. That combination has two
+  // confirmed, separately-reproduced bugs: (1) html2pdf.js/html2canvas
+  // silently drops every CSS class rule from a <style> tag when the source
+  // element lives in an iframe — inline styles survive, class-based ones
+  // don't, producing a technically-complete but totally unstyled PDF; and
+  // (2) rendering straight into the main document (no iframe) fixes the
+  // styling, but html2pdf.js's own internal element-cloning step then
+  // computes a zero-height canvas for that content, producing a blank
+  // PDF — worse than the original bug. Calling html2canvas directly (no
+  // html2pdf.js wrapper) on a container in the main document avoids both:
+  // styling applies correctly and height computes correctly. Page-splitting
+  // is done by hand below, replacing what html2pdf.js would normally do.
+  const styleMatch = safeHtmlContent.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+  const bodyMatch = safeHtmlContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
 
-  await new Promise((resolve) => {
-    const imgs = iframe.contentDocument.images;
-    if (!imgs || imgs.length === 0) { resolve(); return; }
-    let loaded = 0;
-    const done = () => { loaded++; if (loaded >= imgs.length) resolve(); };
-    Array.from(imgs).forEach((img) => { img.complete ? done() : (img.onload = img.onerror = done); });
-    setTimeout(resolve, 3000);
-  });
+  const styleEl = document.createElement("style");
+  styleEl.textContent = styleMatch ? styleMatch[1] : "";
+  document.head.appendChild(styleEl);
 
-  await html2pdf().set({
-    margin: 0,
-    filename,
-    image: { type: "jpeg", quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true },
-    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-  }).from(iframe.contentDocument.body).save();
+  const container = document.createElement("div");
+  container.style.position = "absolute";
+  container.style.left = "-99999px";
+  container.style.top = "0";
+  container.style.width = "800px";
+  container.innerHTML = bodyMatch ? bodyMatch[1] : safeHtmlContent;
+  document.body.appendChild(container);
 
-  document.body.removeChild(iframe);
+  try {
+    await new Promise((resolve) => {
+      const imgs = container.querySelectorAll("img");
+      if (!imgs || imgs.length === 0) { resolve(); return; }
+      let loaded = 0;
+      const done = () => { loaded++; if (loaded >= imgs.length) resolve(); };
+      Array.from(imgs).forEach((img) => { img.complete ? done() : (img.onload = img.onerror = done); });
+      setTimeout(resolve, 3000);
+    });
+
+    const canvas = await html2canvas(container, { scale: 2, useCORS: true });
+
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+    const pageWidthMm = 210, pageHeightMm = 297;
+    const pxPerMm = canvas.width / pageWidthMm;
+    const pageHeightPx = pageHeightMm * pxPerMm;
+    const totalPages = Math.max(1, Math.ceil(canvas.height / pageHeightPx));
+
+    for (let i = 0; i < totalPages; i++) {
+      const sliceCanvas = document.createElement("canvas");
+      sliceCanvas.width = canvas.width;
+      const remainingPx = canvas.height - i * pageHeightPx;
+      const sliceHeightPx = Math.min(pageHeightPx, remainingPx);
+      sliceCanvas.height = sliceHeightPx;
+      const ctx = sliceCanvas.getContext("2d");
+      ctx.drawImage(canvas, 0, i * pageHeightPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+      const imgData = sliceCanvas.toDataURL("image/jpeg", 0.98);
+      if (i > 0) pdf.addPage();
+      const sliceHeightMm = sliceHeightPx / pxPerMm;
+      pdf.addImage(imgData, "JPEG", 0, 0, pageWidthMm, sliceHeightMm);
+    }
+
+    pdf.save(filename);
+  } finally {
+    document.body.removeChild(container);
+    document.head.removeChild(styleEl);
+  }
 }
 
 // Course Report export — either the full cohort or filtered to just
@@ -9452,7 +9496,8 @@ function buildSingleObservationHtml(obs) {
         h1 { margin: 0; font-size: 21px; }
         .subtitle { color: #64748b; font-size: 13px; margin: 2px 0 0; }
         .type-badge { margin-left: auto; font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: #eef2ff; color: #4338ca; white-space: nowrap; }
-        .meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 18px 0; }
+        .meta-grid { display: flex; flex-wrap: wrap; gap: 14px; margin: 18px 0; }
+        .meta-grid > div { flex: 1 1 calc(33.333% - 10px); min-width: 150px; }
         .meta-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #4f46e5; margin: 0 0 2px; }
         .meta-value { font-size: 13px; font-weight: 600; color: #1e293b; margin: 0; }
         .section { margin: 20px 0; }
@@ -9460,15 +9505,15 @@ function buildSingleObservationHtml(obs) {
         .score-total { font-size: 14px; font-weight: 700; }
         .info-box { border-radius: 10px; border: 1px solid #e0e7ff; background: #eef2ff; padding: 12px; font-size: 13px; margin-bottom: 12px; }
         .info-box-label { font-size: 11px; font-weight: 700; color: #4338ca; margin: 0 0 4px; }
-        .plan-fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .plan-field-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px; background: #f8fafc; break-inside: avoid; }
+        .plan-fields-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+        .plan-field-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px; background: #f8fafc; break-inside: avoid; flex: 1 1 calc(50% - 5px); min-width: 200px; }
         .plan-field-label { font-size: 10.5px; font-weight: 700; color: #64748b; margin: 0 0 3px; }
         .plan-field-value { font-size: 12.5px; color: #1e293b; margin: 0; white-space: pre-wrap; }
         .plan-field-sub { font-size: 11px; color: #64748b; margin: 4px 0 0; }
         .chip-slate { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: #e2e8f0; color: #334155; margin: 0 6px 4px 0; }
         .action-plan-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; background: #fff; }
-        .areas-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .area-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; background: #fff; break-inside: avoid; }
+        .areas-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+        .area-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; background: #fff; break-inside: avoid; flex: 1 1 calc(50% - 5px); min-width: 200px; }
         .area-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
         .area-name { font-weight: 700; font-size: 13px; }
         .area-desc { font-size: 10.5px; color: #94a3b8; margin: 0 0 6px; }
@@ -9480,13 +9525,15 @@ function buildSingleObservationHtml(obs) {
         .badge-2 { background: #fef9c3; color: #854d0e; border-color: #fde68a; }
         .badge-3 { background: #dcfce7; color: #15803d; border-color: #bbf7d0; }
         .badge-none { background: #f1f5f9; color: #94a3b8; border-color: #e2e8f0; }
-        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .two-col { display: flex; flex-wrap: wrap; gap: 12px; }
+        .two-col > div { flex: 1 1 calc(50% - 6px); min-width: 200px; }
         .box { border-radius: 10px; padding: 12px; font-size: 12.5px; }
         .box-green { background: #ecfdf5; }
         .box-amber { background: #fffbeb; }
         .box-slate { background: #f8fafc; border: 1px solid #e2e8f0; }
         .box-title { font-size: 13px; font-weight: 700; margin: 0 0 6px; }
-        .final-score-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+        .final-score-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+        .final-score-row > div { flex: 1 1 calc(50% - 6px); min-width: 200px; }
         .final-score-box { border-radius: 10px; padding: 12px; }
         .final-score-pass { background: #ecfdf5; border: 1px solid #bbf7d0; }
         .final-score-fail { background: #fef2f2; border: 1px solid #fecaca; }
@@ -9505,7 +9552,8 @@ function buildSingleObservationHtml(obs) {
         .pathway-chip { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 4px 12px; border-radius: 999px; background: #ede9fe; color: #6d28d9; border: 1px solid #ddd6fe; margin: 0 6px 6px 0; }
         ol.action-plan { margin: 0; padding-left: 18px; font-size: 12.5px; }
         ol.action-plan li { margin-bottom: 6px; }
-        .signature-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; border-top: 1px solid #e2e8f0; padding-top: 14px; margin-top: 20px; }
+        .signature-row { display: flex; flex-wrap: wrap; gap: 20px; border-top: 1px solid #e2e8f0; padding-top: 14px; margin-top: 20px; }
+        .signature-row > div { flex: 1 1 calc(50% - 10px); min-width: 150px; }
         .signature-label { font-size: 11px; color: #94a3b8; margin: 0 0 2px; }
         .signature-name { font-size: 13px; font-weight: 600; margin: 0; }
         .signature-script { font-family: "Brush Script MT", cursive; font-size: 22px; margin: 0; }
