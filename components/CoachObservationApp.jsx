@@ -10214,7 +10214,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   // A Lead Admin's role picker is hidden (they only ever add Course
   // Admins), so newAdminRole may still hold its unused "master" default —
   // this is what the form conditionals actually key off, not the raw state.
-  const formEffectiveRole = iAmLead ? "course" : newAdminRole;
+  const formEffectiveRole = iAmLead ? (newAdminRole === "coordinator" ? "coordinator" : "course") : newAdminRole;
   // MF Coordinators can view/manage things for their own federation (Bin,
   // Reopen Report, Export PDF, RAPA assessors) but — unlike Lead Admin —
   // cannot add or remove other admins, and don't get Clear History,
@@ -10578,6 +10578,9 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     if (iAmLead && target.role === "course" && target.memberFederation && (signedInAdminMatch.memberFederations || []).includes(target.memberFederation)) {
       return { ok: true };
     }
+    if (iAmLead && target.role === "coordinator" && (target.memberFederations || []).some(mf => (signedInAdminMatch.memberFederations || []).includes(mf))) {
+      return { ok: true };
+    }
     return { ok: false, reason: "You don't have permission to remove this admin." };
   }
 
@@ -10611,7 +10614,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     // Course Admins) — newAdminRole may still hold its "master" default
     // since they never got a control to change it, so the effective role
     // is forced here rather than trusting the raw state for their case.
-    const effectiveRole = iAmLead ? "course" : newAdminRole;
+    const effectiveRole = iAmLead ? (newAdminRole === "coordinator" ? "coordinator" : "course") : newAdminRole;
     const name = newAdminName.trim();
     if (adminSettings.admins.length >= maxAdmins) {
       setAddAdminError(`Only ${maxAdmins} admin${maxAdmins === 1 ? "" : "s"} allowed — a Master Admin can raise this limit in settings below.`);
@@ -10641,6 +10644,10 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     if (effectiveRole === "coordinator") {
       if (newAdminMfSelection.length === 0) {
         setAddAdminError("Select a Member Federation for this MF Coordinator.");
+        return;
+      }
+      if (iAmLead && !(signedInAdminMatch.memberFederations || []).includes(newAdminMfSelection[0])) {
+        setAddAdminError("You can only add an MF Coordinator for your own Member Federation.");
         return;
       }
       const claimedMfs = new Set(adminSettings.admins.filter(a => a.role === "coordinator").flatMap(a => a.memberFederations || []));
@@ -10821,7 +10828,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
               {!iAmMaster && (
                 <p className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
                   {iAmLead
-                    ? "You're a Lead Admin — Clear History, Remove All CETs, Reopen Report, Merge Duplicate CETs, and PDF export below are scoped to your Member Federation(s) only. You can also add Course Admins for your federation. Data export/import and Coach-related admin actions are Master Admin only."
+                    ? "You're a Lead Admin — Clear History, Remove All CETs, Reopen Report, Merge Duplicate CETs, and PDF export below are scoped to your Member Federation(s) only. You can also add Course Admins and one MF Coordinator for your federation. Data export/import and Coach-related admin actions are Master Admin only."
                     : iAmCoordinator
                     ? "You're an MF Coordinator — Reopen Report, PDF export, RAPA assessor management, and the Bin below are scoped to your Member Federation only. Unlike a Lead Admin, you can't Clear History, Remove All CETs, Merge Duplicate CETs, or add/remove other admins."
                     : "You're a Course Admin — Reopen Report and PDF export below are scoped to your assigned course number(s) only. Clear History, Remove All CETs, Merge Duplicates, Data export/import, and Coach-related admin actions are not available at this level."}
@@ -11022,9 +11029,28 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         </button>
                       </div>
                     )}
-                    {iAmLead && (
-                      <p className="text-xs text-slate-500">As a Lead Admin, you can add Course Admins for your own Member Federation.</p>
-                    )}
+                    {iAmLead && (() => {
+                      const myMfKey = (signedInAdminMatch.memberFederations || [])[0];
+                      const coordinatorTaken = adminSettings.admins.some(a => a.role === "coordinator" && (a.memberFederations || []).includes(myMfKey));
+                      return (
+                        <div className="space-y-1.5">
+                          <p className="text-xs text-slate-500">As a Lead Admin, you can add Course Admins for your own Member Federation, and one MF Coordinator.</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => { setNewAdminRole("course"); setAddAdminError(""); }} type="button"
+                              className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${formEffectiveRole === "course" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
+                              Course Admin
+                            </button>
+                            <button onClick={() => { if (!coordinatorTaken) { setNewAdminRole("coordinator"); setNewAdminMfSelection(myMfKey ? [myMfKey] : []); setAddAdminError(""); } }} type="button" disabled={coordinatorTaken}
+                              className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${
+                                coordinatorTaken ? "border-slate-100 text-slate-300 cursor-not-allowed"
+                                : formEffectiveRole === "coordinator" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"
+                              }`}>
+                              MF Coordinator{coordinatorTaken ? " (already set)" : ""}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {formEffectiveRole === "lead" && iAmMaster && (() => {
                       const claimedMfs = new Set(adminSettings.admins.filter(a => a.role === "lead").flatMap(a => a.memberFederations || []));
                       return (
@@ -11072,6 +11098,11 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         </div>
                       );
                     })()}
+                    {formEffectiveRole === "coordinator" && iAmLead && (
+                      <p className="text-xs text-slate-500">
+                        This MF Coordinator will be scoped to {(MEMBER_FEDERATIONS.find(m => m.key === (signedInAdminMatch.memberFederations || [])[0]) || {}).label || "your Member Federation"} — the same one you're Lead Admin for.
+                      </p>
+                    )}
                     {formEffectiveRole === "course" && (
                       <div className="space-y-2">
                         <div>
