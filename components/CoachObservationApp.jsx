@@ -247,7 +247,7 @@ function emptyCetAssessmentForm() {
     grip: { goals: { rating: "", note: "" }, reflect: { rating: "", note: "" }, input: { rating: "", note: "" }, plan: { rating: "", note: "" } },
     sochangeit: { rating: "", notes: "" },
     coachingProcess: { process: { rating: "", evidence: "" }, fiveRs: { rating: "", evidence: "" } },
-    feedback: { strengths: "", development: "", general: "" },
+    feedback: { www: "", ebi: "", general: "" },
     outcome: "",
     actionPlan: [],
     signAssessor: "", signDate: "", signCET: "", ackDiscussed: false,
@@ -5226,7 +5226,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
       && GRIP_ITEMS.every(item => form.grip[item.key].rating)
       && form.sochangeit.rating
       && (!isDiplomaLevel || CP_ITEMS.every(item => form.coachingProcess[item.key].rating))
-      && form.feedback.strengths.trim() && form.feedback.development.trim()
+      && form.feedback.www.trim() && form.feedback.ebi.trim()
       && form.outcome);
   }
 
@@ -5248,7 +5248,15 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
   }
 
   function startEdit(rec) {
-    setForm({ ...emptyCetAssessmentForm(), ...rec });
+    // Older saved records used feedback.strengths/development — fall back
+    // to those if the newer www/ebi fields are empty, so historical
+    // records don't appear to lose their text after this rename.
+    const migratedFeedback = rec.feedback ? {
+      www: rec.feedback.www || rec.feedback.strengths || "",
+      ebi: rec.feedback.ebi || rec.feedback.development || "",
+      general: rec.feedback.general || "",
+    } : undefined;
+    setForm({ ...emptyCetAssessmentForm(), ...rec, ...(migratedFeedback ? { feedback: migratedFeedback } : {}) });
     setEditingId(rec.id);
     setSavedMsg("");
   }
@@ -5270,7 +5278,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
       CET: a.cetName || "", Assessor: a.assessorName || "",
       Course: a.courseTitle || "", Level: courseLevelFor(a.courseTitle), Venue: a.venue || "",
       Outcome: a.outcome || "",
-      Strengths: a.feedback?.strengths || "", "Areas for development": a.feedback?.development || "", "General comments": a.feedback?.general || "",
+      "WWW (What Went Well)": a.feedback?.www || a.feedback?.strengths || "", "EBI (Even Better If)": a.feedback?.ebi || a.feedback?.development || "", "General comments": a.feedback?.general || "",
       "GRIP - Goals": a.grip?.goals?.rating || "", "GRIP - Reflect/Review": a.grip?.reflect?.rating || "",
       "GRIP - Input": a.grip?.input?.rating || "", "GRIP - Plan": a.grip?.plan?.rating || "",
       "SO CHANGE IT (referenced to candidates)": a.sochangeit?.rating || "",
@@ -5502,13 +5510,13 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
         <p className="text-sm font-semibold text-slate-800">Feedback</p>
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Strengths</label>
-            <textarea value={form.feedback.strengths} onChange={e => setForm(prev => ({ ...prev, feedback: { ...prev.feedback, strengths: e.target.value } }))}
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">WWW (What Went Well)</label>
+            <textarea value={form.feedback.www} onChange={e => setForm(prev => ({ ...prev, feedback: { ...prev.feedback, www: e.target.value } }))}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" rows={2} />
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Areas for development</label>
-            <textarea value={form.feedback.development} onChange={e => setForm(prev => ({ ...prev, feedback: { ...prev.feedback, development: e.target.value } }))}
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">EBI (Even Better If)</label>
+            <textarea value={form.feedback.ebi} onChange={e => setForm(prev => ({ ...prev, feedback: { ...prev.feedback, ebi: e.target.value } }))}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" rows={2} />
           </div>
         </div>
@@ -8349,6 +8357,32 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     return planNotes.trim().length > 0;
   }
 
+  // Whether step i's own required fields are filled in — reuses the same
+  // validation the Next button already applies, so "complete" here means
+  // exactly what it already means for advancing normally. Step 4
+  // (Development Plan) has nothing required before it besides 0-3.
+  function stepIsComplete(i) {
+    if (i === 0) return canProceedStep0();
+    if (i === 1) return canProceedSessionPlan();
+    if (i === 2) return canProceedStep1();
+    if (i === 3) return canProceedStep3();
+    return true;
+  }
+  // The furthest step reachable by jumping ahead — the first step (from 0)
+  // whose own requirements aren't yet met. Header clicks can't skip past
+  // an incomplete section, matching "no jumping ahead of Next."
+  function maxReachableStep() {
+    let i = 0;
+    while (i < steps.length - 1 && stepIsComplete(i)) i++;
+    return i;
+  }
+  function goToStep(i) {
+    if (i <= Math.max(step, maxReachableStep())) {
+      if (i !== step) autoSaveDraft();
+      setStep(i);
+    }
+  }
+
   function canSave() {
     return planNotes.trim().length > 0;
   }
@@ -8499,17 +8533,24 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
       )}
 
       <div className="flex items-center gap-2">
-        {steps.map((s, i) => (
-          <div key={s} className="flex items-center gap-2 flex-1">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-              i < step ? "bg-emerald-500 text-white" : i === step ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-400"
-            }`}>
-              {i < step ? <Check className="w-3.5 h-3.5" /> : i + 1}
+        {steps.map((s, i) => {
+          const reachable = i <= Math.max(step, maxReachableStep());
+          return (
+            <div key={s} className="flex items-center gap-2 flex-1">
+              <button type="button" onClick={() => goToStep(i)} disabled={!reachable} title={reachable ? `Go to ${s}` : `Complete earlier sections first`}
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-colors ${
+                  i < step ? "bg-emerald-500 text-white hover:bg-emerald-600" : i === step ? "bg-slate-900 text-white" : reachable ? "bg-slate-200 text-slate-500 hover:bg-slate-300 cursor-pointer" : "bg-slate-100 text-slate-300 cursor-not-allowed"
+                }`}>
+                {i < step ? <Check className="w-3.5 h-3.5" /> : i + 1}
+              </button>
+              <button type="button" onClick={() => goToStep(i)} disabled={!reachable}
+                className={`text-xs font-medium ${i === step ? "text-slate-900" : reachable ? "text-slate-500 hover:text-slate-700" : "text-slate-300 cursor-not-allowed"} hidden sm:block`}>
+                {s}
+              </button>
+              {i < steps.length - 1 && <div className="flex-1 h-px bg-slate-200" />}
             </div>
-            <span className={`text-xs font-medium ${i === step ? "text-slate-900" : "text-slate-400"} hidden sm:block`}>{s}</span>
-            {i < steps.length - 1 && <div className="flex-1 h-px bg-slate-200" />}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 p-5">
