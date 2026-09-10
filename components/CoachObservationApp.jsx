@@ -1581,13 +1581,12 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   }
 
   return (
-    <div className={`min-h-screen bg-slate-50 ${
-        fontScale === "large" ? "coda-font-large" : fontScale === "xlarge" ? "coda-font-xlarge" : ""
-      }`}>
-        <style>{`
-          .coda-font-large { font-size: 112.5%; }
-          .coda-font-xlarge { font-size: 125%; }
-        `}</style>
+    <div
+        className="min-h-screen bg-slate-50"
+        style={{
+          zoom: fontScale === "large" ? 1.15 : fontScale === "xlarge" ? 1.3 : 1,
+        }}
+      >
       <Header tab={tab} setTab={setTab} viewMode={viewMode} onViewModeChange={handleViewModeChange} fontScale={fontScale} onFontScaleChange={handleFontScaleChange}
         onAdminClick={() => { setTab("history"); setHistoryAdminAutoOpen(true); }}
         session={codaSession} onSignOut={handleSignOut} />
