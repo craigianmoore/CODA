@@ -10457,6 +10457,10 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   const [pinChangeError, setPinChangeError] = useState("");
   const [pinChangeSuccess, setPinChangeSuccess] = useState(false);
   const [editingAdminPinName, setEditingAdminPinName] = useState(null);
+  const [editingAdminCoursesName, setEditingAdminCoursesName] = useState(null);
+  const [editAdminCourseNumbers, setEditAdminCourseNumbers] = useState([]);
+  const [editAdminCoursesError, setEditAdminCoursesError] = useState("");
+  const [editAdminCoursesSuccessName, setEditAdminCoursesSuccessName] = useState("");
   const [editAdminPinValue, setEditAdminPinValue] = useState("");
   const [editAdminPinConfirm, setEditAdminPinConfirm] = useState("");
   const [editAdminPinError, setEditAdminPinError] = useState("");
@@ -10903,6 +10907,29 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setEditAdminPinValue(""); setEditAdminPinConfirm(""); setEditAdminPinError("");
   }
 
+  function startEditAdminCourses(name) {
+    setEditingAdminCoursesName(name);
+    const admin = adminSettings.admins.find(a => a.name === name);
+    setEditAdminCourseNumbers((admin && admin.assignedCourseNumbers) || []);
+    setEditAdminCoursesError("");
+    setEditAdminCoursesSuccessName("");
+  }
+
+  function handleSaveAdminCourses() {
+    if (editAdminCourseNumbers.length === 0) {
+      setEditAdminCoursesError("Select at least one course number for this Course Admin.");
+      return;
+    }
+    const updatedAdmins = adminSettings.admins.map(a =>
+      a.name.trim().toLowerCase() === editingAdminCoursesName.trim().toLowerCase() ? { ...a, assignedCourseNumbers: editAdminCourseNumbers } : a
+    );
+    saveAdminSettings({ ...adminSettings, admins: updatedAdmins });
+    setEditAdminCoursesSuccessName(editingAdminCoursesName);
+    setEditingAdminCoursesName(null);
+    setEditAdminCourseNumbers([]);
+    setEditAdminCoursesError("");
+  }
+
   // Removing an admin — this is what actually enables "change who holds
   // MF Admin for an MF": remove the old one, then Add Admin the new one
   // with that Member Federation. A Master can remove anyone. A Lead can
@@ -11307,6 +11334,12 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           Edit PIN
                         </button>
                       )}
+                      {a.role === "course" && (iAmMaster || (iAmLead && (signedInAdminMatch.memberFederations || []).includes(a.memberFederation))) && (
+                        <button onClick={() => editingAdminCoursesName === a.name ? setEditingAdminCoursesName(null) : startEditAdminCourses(a.name)}
+                          className="text-[10px] font-bold text-violet-600 hover:text-violet-800 ml-1">
+                          Edit Courses
+                        </button>
+                      )}
                       {canRemoveAdmin(a.name).ok && (
                         <button onClick={() => { setConfirmRemoveAdminName(a.name); setRemoveAdminError(""); }}
                           className="text-[10px] font-bold text-red-600 hover:text-red-800 ml-0.5">
@@ -11344,6 +11377,38 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                       <button onClick={() => setEditingAdminPinName(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
                     </div>
                     {editAdminPinError && <p className="text-xs text-red-600">{editAdminPinError}</p>}
+                  </div>
+                )}
+                {editAdminCoursesSuccessName && (
+                  <p className="text-xs text-emerald-600 mb-2">Courses updated for {editAdminCoursesSuccessName}.</p>
+                )}
+                {editingAdminCoursesName && (
+                  <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 mb-3 space-y-2">
+                    <p className="text-xs font-semibold text-violet-800">Assigned courses for {editingAdminCoursesName}</p>
+                    {(() => {
+                      const admin = adminSettings.admins.find(a => a.name === editingAdminCoursesName);
+                      const mf = admin ? admin.memberFederation : "";
+                      const options = courseNumbersForMf(mf);
+                      return options.length === 0 ? (
+                        <p className="text-xs text-slate-400">No courses tagged to this federation yet in Completed Tasks.</p>
+                      ) : (
+                        <div className="flex gap-1.5 flex-wrap">
+                          {options.map(num => (
+                            <button key={num} type="button" onClick={() => setEditAdminCourseNumbers(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num])}
+                              className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                                editAdminCourseNumbers.includes(num) ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-white text-slate-400 border-slate-200"
+                              }`}>
+                              #{num}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                    <div className="flex gap-2">
+                      <button onClick={handleSaveAdminCourses} className="text-xs font-semibold text-violet-600 hover:text-violet-700">Save Courses</button>
+                      <button onClick={() => setEditingAdminCoursesName(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+                    </div>
+                    {editAdminCoursesError && <p className="text-xs text-red-600">{editAdminCoursesError}</p>}
                   </div>
                 )}
                 {!canManageAdmins ? (
