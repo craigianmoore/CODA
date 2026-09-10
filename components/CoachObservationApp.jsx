@@ -1308,6 +1308,14 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     return "laptop";
   }
   const [viewMode, setViewMode] = useState(detectViewMode);
+  const [fontScale, setFontScale] = useState(() => {
+    if (typeof window === "undefined") return "normal";
+    try { return localStorage.getItem("coda_font_scale") || "normal"; } catch { return "normal"; }
+  });
+  function handleFontScaleChange(scale) {
+    setFontScale(scale);
+    try { localStorage.setItem("coda_font_scale", scale); } catch {}
+  }
   const [viewModeOverridden, setViewModeOverridden] = useState(false);
 
   useEffect(() => {
@@ -1573,8 +1581,14 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Header tab={tab} setTab={setTab} viewMode={viewMode} onViewModeChange={handleViewModeChange}
+    <div className={`min-h-screen bg-slate-50 ${
+        fontScale === "large" ? "coda-font-large" : fontScale === "xlarge" ? "coda-font-xlarge" : ""
+      }`}>
+        <style>{`
+          .coda-font-large { font-size: 112.5%; }
+          .coda-font-xlarge { font-size: 125%; }
+        `}</style>
+      <Header tab={tab} setTab={setTab} viewMode={viewMode} onViewModeChange={handleViewModeChange} fontScale={fontScale} onFontScaleChange={handleFontScaleChange}
         onAdminClick={() => { setTab("history"); setHistoryAdminAutoOpen(true); }}
         session={codaSession} onSignOut={handleSignOut} />
       {error && (
@@ -1830,7 +1844,7 @@ function SignInGate({ educators, adminSettings, adminLockouts, recordAdminAttemp
   );
 }
 
-function Header({ tab, setTab, viewMode, onViewModeChange, onAdminClick, session, onSignOut }) {
+function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScaleChange, onAdminClick, session, onSignOut }) {
   const items = [
     { id: "dashboard", label: "Dashboard", icon: TrendingUp },
     { id: "newObs", label: "New Observation", icon: ClipboardList },
@@ -1872,6 +1886,27 @@ function Header({ tab, setTab, viewMode, onViewModeChange, onAdminClick, session
                   </button>
                 );
               })}
+            </div>
+          )}
+          {onFontScaleChange && (
+            <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5 ml-1.5">
+              {[
+                { id: "normal", label: "A" },
+                { id: "large", label: "A+" },
+                { id: "xlarge", label: "A++" },
+              ].map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => onFontScaleChange(s.id)}
+                  title="Text size"
+                  className={`px-2 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                    fontScale === s.id ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
             </div>
           )}
           {session && (
