@@ -1299,25 +1299,6 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     setCodaSession(null);
     saveCodaSession(null);
   }
-  // If a signed-in Admin's credentials no longer match a real entry in
-  // adminSettings — removed, or their PIN was changed by someone else —
-  // sign them out. This can't be instant (there's no server push; it
-  // re-checks whenever this browser's own adminSettings reloads, e.g. on
-  // next page load or data refresh), but it closes the gap where a
-  // removed admin's already-signed-in session on their own device would
-  // otherwise stay valid indefinitely.
-  useEffect(() => {
-    if (!codaSession || codaSession.kind !== "admin") return;
-    if (adminSettings === DEFAULT_ADMIN_SETTINGS) return; // not loaded yet
-    const mySessionName = (codaSession.name || "").trim().toLowerCase();
-    const stillValid = (adminSettings.admins || []).some(a =>
-      (a.name || "").trim().toLowerCase() === mySessionName && adminTier(a) === codaSession.tier
-    );
-    if (!stillValid) {
-      setCodaSession(null);
-      saveCodaSession(null);
-    }
-  }, [adminSettings, codaSession]);
 
   function detectViewMode() {
     if (typeof window === "undefined") return "laptop";
