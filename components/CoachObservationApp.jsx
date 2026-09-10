@@ -510,6 +510,85 @@ function memberFederationLogo(key) {
   return (MEMBER_FEDERATIONS.find(m => m.key === key) || MEMBER_FEDERATIONS.find(m => m.key === DEFAULT_MEMBER_FEDERATION)).logoUrl;
 }
 
+// Shared <style> block for both the single-observation report and the
+// candidate checklist/history report — keeps them visually consistent and
+// avoids the two drifting apart when one gets updated.
+const REPORT_STYLE_TAG = `<style>
+        @page { size: A4; margin: 16mm; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: #1e293b; background: #f8fafc; }
+        .page { max-width: 800px; margin: 0 auto; padding: 28px; }
+        .header { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 18px; }
+        .header-icon { width: 44px; height: 44px; border-radius: 9px; background: #fff; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
+        .header-icon img { max-width: 100%; max-height: 100%; object-fit: contain; }
+        h1 { margin: 0; font-size: 21px; }
+        .subtitle { color: #64748b; font-size: 13px; margin: 2px 0 0; }
+        .type-badge { margin-left: auto; font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: #eef2ff; color: #4338ca; white-space: nowrap; }
+        .meta-grid { display: flex; flex-wrap: wrap; gap: 14px; margin: 18px 0; }
+        .meta-grid > div { flex: 1 1 calc(33.333% - 10px); min-width: 150px; }
+        .meta-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #4f46e5; margin: 0 0 2px; }
+        .meta-value { font-size: 13px; font-weight: 600; color: #1e293b; margin: 0; }
+        .section { margin: 20px 0; }
+        .section-title { font-size: 14px; font-weight: 700; color: #1e293b; margin: 0 0 10px; display: flex; align-items: center; justify-content: space-between; }
+        .score-total { font-size: 14px; font-weight: 700; }
+        .info-box { border-radius: 10px; border: 1px solid #e0e7ff; background: #eef2ff; padding: 12px; font-size: 13px; margin-bottom: 12px; }
+        .info-box-label { font-size: 11px; font-weight: 700; color: #4338ca; margin: 0 0 4px; }
+        .plan-fields-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+        .plan-field-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px; background: #f8fafc; break-inside: avoid; flex: 1 1 calc(50% - 5px); min-width: 200px; }
+        .plan-field-label { font-size: 10.5px; font-weight: 700; color: #64748b; margin: 0 0 3px; }
+        .plan-field-value { font-size: 12.5px; color: #1e293b; margin: 0; white-space: pre-wrap; }
+        .plan-field-sub { font-size: 11px; color: #64748b; margin: 4px 0 0; }
+        .chip-slate { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: #e2e8f0; color: #334155; margin: 0 6px 4px 0; }
+        .action-plan-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; background: #fff; }
+        .areas-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+        .area-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; background: #fff; break-inside: avoid; flex: 1 1 calc(50% - 5px); min-width: 200px; }
+        .area-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+        .area-name { font-weight: 700; font-size: 13px; }
+        .area-desc { font-size: 10.5px; color: #94a3b8; margin: 0 0 6px; }
+        .area-descriptor { font-style: italic; font-size: 11px; color: #64748b; background: #f8fafc; border-radius: 6px; padding: 6px 8px; margin: 0 0 6px; }
+        .area-notes { font-size: 12px; color: #475569; margin: 0; }
+        .badge { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
+        .badge-0 { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+        .badge-1 { background: #ffedd5; color: #c2410c; border-color: #fed7aa; }
+        .badge-2 { background: #fef9c3; color: #854d0e; border-color: #fde68a; }
+        .badge-3 { background: #dcfce7; color: #15803d; border-color: #bbf7d0; }
+        .badge-none { background: #f1f5f9; color: #94a3b8; border-color: #e2e8f0; }
+        .two-col { display: flex; flex-wrap: wrap; gap: 12px; }
+        .two-col > div { flex: 1 1 calc(50% - 6px); min-width: 200px; }
+        .box { border-radius: 10px; padding: 12px; font-size: 12.5px; }
+        .box-green { background: #ecfdf5; }
+        .box-amber { background: #fffbeb; }
+        .box-slate { background: #f8fafc; border: 1px solid #e2e8f0; }
+        .box-title { font-size: 13px; font-weight: 700; margin: 0 0 6px; }
+        .final-score-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+        .final-score-row > div { flex: 1 1 calc(50% - 6px); min-width: 200px; }
+        .final-score-box { border-radius: 10px; padding: 12px; }
+        .final-score-pass { background: #ecfdf5; border: 1px solid #bbf7d0; }
+        .final-score-fail { background: #fef2f2; border: 1px solid #fecaca; }
+        .final-score-label { font-size: 11px; color: #64748b; margin: 0 0 2px; }
+        .final-score-value { font-size: 17px; font-weight: 800; margin: 0; }
+        .final-score-value.pass { color: #15803d; }
+        .final-score-value.fail { color: #b91c1c; }
+        .outcome-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; display: flex; align-items: center; justify-content: space-between; }
+        .outcome-badge { font-size: 13px; font-weight: 700; padding: 5px 14px; border-radius: 999px; }
+        .outcome-highly { background: #ede9fe; color: #6d28d9; }
+        .outcome-competent { background: #dcfce7; color: #15803d; }
+        .outcome-notyet { background: #fee2e2; color: #b91c1c; }
+        .outcome-neutral { background: #f1f5f9; color: #64748b; }
+        .pathway-box { border-radius: 10px; padding: 14px; background: #f5f3ff; border: 1px solid #ddd6fe; margin: 16px 0; }
+        .pathway-title { font-size: 13px; font-weight: 700; color: #6d28d9; margin: 0 0 8px; }
+        .pathway-chip { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 4px 12px; border-radius: 999px; background: #ede9fe; color: #6d28d9; border: 1px solid #ddd6fe; margin: 0 6px 6px 0; }
+        ol.action-plan { margin: 0; padding-left: 18px; font-size: 12.5px; }
+        ol.action-plan li { margin-bottom: 6px; }
+        .signature-row { display: flex; flex-wrap: wrap; gap: 20px; border-top: 1px solid #e2e8f0; padding-top: 14px; margin-top: 20px; }
+        .signature-row > div { flex: 1 1 calc(50% - 10px); min-width: 150px; }
+        .signature-label { font-size: 11px; color: #94a3b8; margin: 0 0 2px; }
+        .signature-name { font-size: 13px; font-weight: 600; margin: 0; }
+        .signature-script { font-family: "Brush Script MT", cursive; font-size: 22px; margin: 0; }
+        .footer-note { text-align: center; font-size: 10.5px; color: #94a3b8; border-top: 1px solid #e2e8f0; margin-top: 24px; padding-top: 12px; }
+        @media print { body { background: #fff; } .page { padding: 0; max-width: none; } }
+      </style>`;
+
 const COACH_LEVEL_OPTIONS = [
   "AFC/FA C Diploma",
   "AFC/FA B Diploma",
@@ -4539,43 +4618,77 @@ function buildCandidateHtml(task, coach, observations) {
   const { done, total } = courseworkProgress(task, coach?.topics);
   const items = total > 0 ? courseworkItems(task, coach?.topics, task.team) : [];
   const checklistRows = items.map(i =>
-    `<tr><td style="padding:6px 8px;border:1px solid #ddd;">${i.done ? "✅" : "☐"} ${esc(i.label)}</td><td style="padding:6px 8px;border:1px solid #ddd;">${esc(i.outcome) || "—"}</td></tr>`
+    `<tr><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${i.done ? "✅" : "☐"} ${esc(i.label)}</td><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;">${esc(i.outcome) || "—"}</td></tr>`
   ).join("");
   const matchingReports = (observations || [])
     .filter(o => o.status !== "draft" && o.coachId === task.coachId && (o.courseNumber || "").trim() === (task.courseNumber || "").trim() && task.courseNumber)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
+  const logoUrl = memberFederationLogo(task.memberFederation);
   const reportSections = matchingReports.map(o => {
     const totalScore = totalForObs(o);
-    const areaRows = o.areas
+    const areaCards = o.areas
       ? ASSESSMENT_AREAS.map(a => {
           const d = o.areas[a.key] || {};
           const lvl = SCORE_LEVELS.find(l => l.value === d.score);
-          return `<tr><td style="padding:4px 8px;border:1px solid #ddd;">${esc(a.label)}</td><td style="padding:4px 8px;border:1px solid #ddd;white-space:nowrap;">${lvl ? lvl.value + " · " + esc(lvl.label) : "—"}</td><td style="padding:4px 8px;border:1px solid #ddd;">${esc(d.notes) || "—"}</td></tr>`;
+          const badgeClass = typeof d.score === "number" ? `badge-${d.score}` : "badge-none";
+          return `
+      <div class="area-card">
+        <div class="area-head">
+          <span class="area-name">${esc(a.label)}</span>
+          ${lvl ? `<span class="badge ${badgeClass}">${lvl.value} · ${esc(lvl.label)}</span>` : `<span class="badge badge-none">—</span>`}
+        </div>
+        <p class="area-notes">${esc(d.notes) || "No evidence recorded."}</p>
+      </div>`;
         }).join("")
       : "";
     const pitchMap = o.sessionPlan?.zonesUsed?.length > 0
-      ? `<div style="margin:14px 0;"><p style="font-size:13px;font-weight:600;margin-bottom:6px;">Pitch Zones Used</p>${buildPitchZoneSvg(o.sessionPlan.zonesUsed)}</div>`
+      ? `<div class="section"><p class="section-title">Pitch Zones Used</p>${buildPitchZoneSvg(o.sessionPlan.zonesUsed)}</div>`
       : "";
     return `
-      <div style="page-break-before: always; padding-top: 20px;">
-        <h3 style="margin:0 0 2px 0;">${new Date(o.date).toLocaleDateString("en-GB")}${o.sessionTopic ? " · " + esc(o.sessionTopic) : ""}</h3>
-        ${areaRows ? `<p style="font-size:13px;font-weight:600;margin:10px 0 4px;">Assessment Scoring (${totalScore ?? "—"} / ${MAX_TOTAL_SCORE})</p>
-        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;">${areaRows}</table>` : ""}
+      <div class="section" style="page-break-before: always;">
+        <p class="section-title"><span>${new Date(o.date).toLocaleDateString("en-GB")}${o.sessionTopic ? " · " + esc(o.sessionTopic) : ""}</span>${areaCards ? `<span class="score-total">${totalScore ?? "—"} / ${MAX_TOTAL_SCORE}</span>` : ""}</p>
+        ${areaCards ? `<div class="areas-grid">${areaCards}</div>` : ""}
         ${pitchMap}
-        <p style="font-size:13px;font-weight:600;margin:10px 0 4px;">Strengths</p><p style="font-size:13px;margin:0;">${esc(o.strengths) || "—"}</p>
-        <p style="font-size:13px;font-weight:600;margin:10px 0 4px;">Areas for Development</p><p style="font-size:13px;margin:0;">${esc(o.areas_feedback) || "—"}</p>
-        ${o.assessmentOutcome ? `<p style="font-size:13px;margin-top:10px;"><strong>Outcome:</strong> ${esc(o.assessmentOutcome)}</p>` : ""}
+        <div class="two-col">
+          <div class="box box-green"><p class="box-title">Strengths</p><p style="margin:0;">${esc(o.strengths) || "—"}</p></div>
+          <div class="box box-amber"><p class="box-title">Areas for Development</p><p style="margin:0;">${esc(o.areas_feedback) || "—"}</p></div>
+        </div>
+        ${o.assessmentOutcome ? `<div class="outcome-box" style="margin-top:12px;"><p style="font-size:11px;color:#64748b;margin:0;">Assessment Outcome</p><span class="outcome-badge ${
+          o.assessmentOutcome === "Highly Competent" ? "outcome-highly" : o.assessmentOutcome === "Competent" ? "outcome-competent" : o.assessmentOutcome === "Not Yet Competent" ? "outcome-notyet" : "outcome-neutral"
+        }">${esc(o.assessmentOutcome)}</span></div>` : ""}
       </div>`;
   }).join("");
-  return `<html><head><title>${esc(task.coachName)} - Observation History</title></head><body style="margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1e293b;padding:28px;">
-    <h1 style="margin:0 0 4px 0;">${esc(task.coachName)}</h1>
-    <p style="color:#64748b;margin:0 0 20px 0;">${esc(task.courseTitle)}${task.courseNumber ? ` (#${esc(task.courseNumber)})` : ""}</p>
-    <h2 style="margin:0 0 8px 0;">Completed Tasks Checklist</h2>
-    <p style="font-size:13px;">Attendance: <strong>${task.attendancePercent}%</strong> · Online Modules: <strong>${task.onlineModulesPercent || 0}%</strong> · Coursework: <strong>${total > 0 ? `${done}/${total}` : "—"}</strong></p>
-    ${checklistRows ? `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px;">${checklistRows}</table>` : ""}
-    <h2 style="margin:20px 0 0 0;">Observation Reports (${matchingReports.length})</h2>
-    ${reportSections || '<p style="font-size:13px;color:#64748b;">No submitted observation reports linked to this course yet.</p>'}
-  </body></html>`;
+  return `<html>
+    <head>
+      <title>${esc(task.coachName)} - Observation History</title>
+      ${REPORT_STYLE_TAG}
+    </head>
+    <body>
+      <div class="page">
+        <div class="header">
+          <div class="header-icon"><img src="${logoUrl}" alt="${esc((MEMBER_FEDERATIONS.find(m => m.key === task.memberFederation) || {}).label || "Football Victoria")} logo" /></div>
+          <div>
+            <h1>${esc(task.coachName)}</h1>
+            <p class="subtitle">${esc(task.courseTitle)}${task.courseNumber ? ` (#${esc(task.courseNumber)})` : ""}</p>
+          </div>
+          <span class="type-badge">Completed Tasks &amp; Observation History</span>
+          ${task.memberFederation !== "FA" ? `<div class="header-icon"><img src="${(MEMBER_FEDERATIONS.find(m => m.key === "FA") || {}).logoUrl || ""}" alt="Football Australia logo" /></div>` : ""}
+        </div>
+
+        <div class="section">
+          <p class="section-title">Completed Tasks Checklist</p>
+          <p style="font-size:13px;margin:0 0 10px;">Attendance: <strong>${task.attendancePercent}%</strong> · Online Modules: <strong>${task.onlineModulesPercent || 0}%</strong> · Coursework: <strong>${total > 0 ? `${done}/${total}` : "—"}</strong></p>
+          ${checklistRows ? `<table style="width:100%;border-collapse:collapse;font-size:13px;">${checklistRows}</table>` : ""}
+        </div>
+
+        <div class="section">
+          <p class="section-title">Observation Reports (${matchingReports.length})</p>
+          ${matchingReports.length === 0 ? `<p style="font-size:13px;color:#94a3b8;">No submitted observation reports linked to this course yet.</p>` : ""}
+        </div>
+      ${reportSections}
+      </div>
+    </body>
+  </html>`;
 }
 
 function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
@@ -9672,81 +9785,7 @@ function buildSingleObservationHtml(obs) {
   return `<html>
     <head>
       <title>${esc(obs.coachName)} - Coaching Observation Report</title>
-      <style>
-        @page { size: A4; margin: 16mm; }
-        * { box-sizing: border-box; }
-        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: #1e293b; background: #f8fafc; }
-        .page { max-width: 800px; margin: 0 auto; padding: 28px; }
-        .header { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 18px; }
-        .header-icon { width: 44px; height: 44px; border-radius: 9px; background: #fff; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
-        .header-icon img { max-width: 100%; max-height: 100%; object-fit: contain; }
-        h1 { margin: 0; font-size: 21px; }
-        .subtitle { color: #64748b; font-size: 13px; margin: 2px 0 0; }
-        .type-badge { margin-left: auto; font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: #eef2ff; color: #4338ca; white-space: nowrap; }
-        .meta-grid { display: flex; flex-wrap: wrap; gap: 14px; margin: 18px 0; }
-        .meta-grid > div { flex: 1 1 calc(33.333% - 10px); min-width: 150px; }
-        .meta-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #4f46e5; margin: 0 0 2px; }
-        .meta-value { font-size: 13px; font-weight: 600; color: #1e293b; margin: 0; }
-        .section { margin: 20px 0; }
-        .section-title { font-size: 14px; font-weight: 700; color: #1e293b; margin: 0 0 10px; display: flex; align-items: center; justify-content: space-between; }
-        .score-total { font-size: 14px; font-weight: 700; }
-        .info-box { border-radius: 10px; border: 1px solid #e0e7ff; background: #eef2ff; padding: 12px; font-size: 13px; margin-bottom: 12px; }
-        .info-box-label { font-size: 11px; font-weight: 700; color: #4338ca; margin: 0 0 4px; }
-        .plan-fields-grid { display: flex; flex-wrap: wrap; gap: 10px; }
-        .plan-field-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px; background: #f8fafc; break-inside: avoid; flex: 1 1 calc(50% - 5px); min-width: 200px; }
-        .plan-field-label { font-size: 10.5px; font-weight: 700; color: #64748b; margin: 0 0 3px; }
-        .plan-field-value { font-size: 12.5px; color: #1e293b; margin: 0; white-space: pre-wrap; }
-        .plan-field-sub { font-size: 11px; color: #64748b; margin: 4px 0 0; }
-        .chip-slate { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: #e2e8f0; color: #334155; margin: 0 6px 4px 0; }
-        .action-plan-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; background: #fff; }
-        .areas-grid { display: flex; flex-wrap: wrap; gap: 10px; }
-        .area-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; background: #fff; break-inside: avoid; flex: 1 1 calc(50% - 5px); min-width: 200px; }
-        .area-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
-        .area-name { font-weight: 700; font-size: 13px; }
-        .area-desc { font-size: 10.5px; color: #94a3b8; margin: 0 0 6px; }
-        .area-descriptor { font-style: italic; font-size: 11px; color: #64748b; background: #f8fafc; border-radius: 6px; padding: 6px 8px; margin: 0 0 6px; }
-        .area-notes { font-size: 12px; color: #475569; margin: 0; }
-        .badge { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
-        .badge-0 { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
-        .badge-1 { background: #ffedd5; color: #c2410c; border-color: #fed7aa; }
-        .badge-2 { background: #fef9c3; color: #854d0e; border-color: #fde68a; }
-        .badge-3 { background: #dcfce7; color: #15803d; border-color: #bbf7d0; }
-        .badge-none { background: #f1f5f9; color: #94a3b8; border-color: #e2e8f0; }
-        .two-col { display: flex; flex-wrap: wrap; gap: 12px; }
-        .two-col > div { flex: 1 1 calc(50% - 6px); min-width: 200px; }
-        .box { border-radius: 10px; padding: 12px; font-size: 12.5px; }
-        .box-green { background: #ecfdf5; }
-        .box-amber { background: #fffbeb; }
-        .box-slate { background: #f8fafc; border: 1px solid #e2e8f0; }
-        .box-title { font-size: 13px; font-weight: 700; margin: 0 0 6px; }
-        .final-score-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
-        .final-score-row > div { flex: 1 1 calc(50% - 6px); min-width: 200px; }
-        .final-score-box { border-radius: 10px; padding: 12px; }
-        .final-score-pass { background: #ecfdf5; border: 1px solid #bbf7d0; }
-        .final-score-fail { background: #fef2f2; border: 1px solid #fecaca; }
-        .final-score-label { font-size: 11px; color: #64748b; margin: 0 0 2px; }
-        .final-score-value { font-size: 17px; font-weight: 800; margin: 0; }
-        .final-score-value.pass { color: #15803d; }
-        .final-score-value.fail { color: #b91c1c; }
-        .outcome-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; display: flex; align-items: center; justify-content: space-between; }
-        .outcome-badge { font-size: 13px; font-weight: 700; padding: 5px 14px; border-radius: 999px; }
-        .outcome-highly { background: #ede9fe; color: #6d28d9; }
-        .outcome-competent { background: #dcfce7; color: #15803d; }
-        .outcome-notyet { background: #fee2e2; color: #b91c1c; }
-        .outcome-neutral { background: #f1f5f9; color: #64748b; }
-        .pathway-box { border-radius: 10px; padding: 14px; background: #f5f3ff; border: 1px solid #ddd6fe; margin: 16px 0; }
-        .pathway-title { font-size: 13px; font-weight: 700; color: #6d28d9; margin: 0 0 8px; }
-        .pathway-chip { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 4px 12px; border-radius: 999px; background: #ede9fe; color: #6d28d9; border: 1px solid #ddd6fe; margin: 0 6px 6px 0; }
-        ol.action-plan { margin: 0; padding-left: 18px; font-size: 12.5px; }
-        ol.action-plan li { margin-bottom: 6px; }
-        .signature-row { display: flex; flex-wrap: wrap; gap: 20px; border-top: 1px solid #e2e8f0; padding-top: 14px; margin-top: 20px; }
-        .signature-row > div { flex: 1 1 calc(50% - 10px); min-width: 150px; }
-        .signature-label { font-size: 11px; color: #94a3b8; margin: 0 0 2px; }
-        .signature-name { font-size: 13px; font-weight: 600; margin: 0; }
-        .signature-script { font-family: "Brush Script MT", cursive; font-size: 22px; margin: 0; }
-        .footer-note { text-align: center; font-size: 10.5px; color: #94a3b8; border-top: 1px solid #e2e8f0; margin-top: 24px; padding-top: 12px; }
-        @media print { body { background: #fff; } .page { padding: 0; max-width: none; } }
-      </style>
+      ${REPORT_STYLE_TAG}
     </head>
     <body>
       <div class="page">
