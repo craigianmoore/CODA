@@ -394,6 +394,14 @@ function groupCoursesByNumber(completedTasks) {
   return Object.values(map);
 }
 
+// The Member Federation most of a course group's records are tagged to —
+// used both for MF-grouped display and for MF/course visibility filtering.
+function dominantMfForGroup(group) {
+  const counts = {};
+  group.records.forEach(t => { const k = t.memberFederation || ""; counts[k] = (counts[k] || 0) + 1; });
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+}
+
 function courseNumericSort(a, b) {
   const na = parseInt(a.courseNumber, 10);
   const nb = parseInt(b.courseNumber, 10);
@@ -1512,6 +1520,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             onEditDraft={handleEditDraft}
             onSubmitDraft={handleSubmitDraft}
             onViewDraft={(id) => { setReportId(id); setTab("report"); }}
+            session={codaSession}
           />
         )}
         {tab === "newObs" && (
@@ -1536,6 +1545,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             closedCourseNumbers={closedCourseNumbers} saveClosedCourseNumbers={saveClosedCourseNumbers}
             closedCourseBlocks={closedCourseBlocks} saveClosedCourseBlocks={saveClosedCourseBlocks}
             adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
+            session={codaSession}
           />
         )}
         {tab === "cetAssessment" && (
@@ -1638,6 +1648,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             saveAdminSettings={saveAdminSettings}
             adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
             autoOpenAdmin={historyAdminAutoOpen} onAutoOpenHandled={() => setHistoryAdminAutoOpen(false)}
+            session={codaSession}
           />
         )}
       </main>
@@ -1824,7 +1835,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, onAdminClick, session
   );
 }
 
-function Dashboard({ coaches, educators, observations, courses, drafts, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goNewObs, goHistory, onEditDraft, onSubmitDraft, onViewDraft }) {
+function Dashboard({ coaches, educators, observations, courses, drafts, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goNewObs, goHistory, onEditDraft, onSubmitDraft, onViewDraft, session }) {
   const coachSummaries = Object.values(
     observations.reduce((acc, o) => {
       if (!acc[o.coachId]) {
@@ -1933,13 +1944,13 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
       <CourseTrackingSections
         coaches={coaches} completedTasks={completedTasks} saveCompletedTasks={saveCompletedTasks}
         closedCourseNumbers={closedCourseNumbers} saveClosedCourseNumbers={saveClosedCourseNumbers}
-        goHistory={goHistory}
+        goHistory={goHistory} session={session}
       />
     </div>
   );
 }
 
-function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goHistory }) {
+function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goHistory, session }) {
   const [expandedCourse, setExpandedCourse] = useState(null);
   const [expandedOpenCourse, setExpandedOpenCourse] = useState(null);
   const [expandedOpenMfs, setExpandedOpenMfs] = useState(() => new Set());
@@ -1947,7 +1958,11 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
   const [individualDaysInputs, setIndividualDaysInputs] = useState({});
   const [groupOnlineInputs, setGroupOnlineInputs] = useState({});
   const [individualOnlineInputs, setIndividualOnlineInputs] = useState({});
-  const groups = groupCoursesByNumber(completedTasks);
+  // Display-only visibility scoping — completedTasks/saveCompletedTasks
+  // above stay the full, unfiltered arrays, so saving a change never
+  // accidentally drops records outside the signed-in admin's own scope.
+  const allGroups = groupCoursesByNumber(completedTasks);
+  const groups = allGroups.filter(g => sessionCanSeeRecord(session, g.courseNumber, dominantMfForGroup(g)));
   const openGroups = groups.filter(g => !closedCourseNumbers.includes(g.courseNumber)).sort(courseNumericSort);
   const completedGroups = groups.filter(g => closedCourseNumbers.includes(g.courseNumber)).sort(courseNumericSort);
 
@@ -5889,7 +5904,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
   );
 }
 
-function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, closedCourseNumbers, saveClosedCourseNumbers, closedCourseBlocks, saveClosedCourseBlocks, adminSettings, adminLockouts, recordAdminAttempt }) {
+function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, closedCourseNumbers, saveClosedCourseNumbers, closedCourseBlocks, saveClosedCourseBlocks, adminSettings, adminLockouts, recordAdminAttempt, session }) {
   // Duplicate detection & merge for Completed Tasks — a different problem
   // from duplicate coach/CET profiles: this catches the same person, same
   // course, showing up as TWO separate attendance/checklist records (from
@@ -7550,7 +7565,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               ...g,
               records: [...g.records].sort((a, b) => (a.coachName || "").localeCompare(b.coachName || ""))
                 .filter(t => !q || (t.coachName || "").toLowerCase().split(/\s+/).some(part => part.includes(q))),
-            })).filter(g => g.records.length > 0);
+            })).filter(g => g.records.length > 0)
+              .filter(g => sessionCanSeeRecord(session, g.courseNumber, dominantMfForGroup(g)));
             if (groups.length === 0) {
               return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">{q ? `No records match "${searchQuery}".` : "No records yet."}</div>;
             }
@@ -10363,7 +10379,7 @@ function DataImportTool({ onImported }) {
   );
 }
 
-function HistoryTab({ coaches, educators, observations, completedTasks, coachId, setCoachId, cetFilter, setCetFilter, onView, onClearHistory, onDeleteObservation, onDataRestored, adminSettings, saveAdminSettings, adminLockouts, recordAdminAttempt, autoOpenAdmin, onAutoOpenHandled }) {
+function HistoryTab({ coaches, educators, observations, completedTasks, coachId, setCoachId, cetFilter, setCetFilter, onView, onClearHistory, onDeleteObservation, onDataRestored, adminSettings, saveAdminSettings, adminLockouts, recordAdminAttempt, autoOpenAdmin, onAutoOpenHandled, session }) {
   const [courseNumberFilter, setCourseNumberFilter] = useState("");
   const [courseTypeFilter, setCourseTypeFilter] = useState("");
   const [dateFromFilter, setDateFromFilter] = useState("");
@@ -10538,6 +10554,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     if (competenceFilter && (o.assessmentOutcome || "") !== competenceFilter) return false;
     if (minScoreFilter !== "" && (total == null || total < Number(minScoreFilter))) return false;
     if (maxScoreFilter !== "" && (total == null || total > Number(maxScoreFilter))) return false;
+    if (!sessionCanSeeRecord(session, o.courseNumber, o.memberFederation)) return false;
     return true;
   });
   const filtersActive = !!(coachId || cetFilter || courseNumberFilter || courseTypeFilter || dateFromFilter || dateToFilter || competenceFilter || minScoreFilter !== "" || maxScoreFilter !== "");
