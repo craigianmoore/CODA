@@ -9120,7 +9120,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                   </div>
                 </div>
               )}
-              <VoiceTextarea value={keyOutcomesFocus} onChange={e => setKeyOutcomesFocus(e.target.value)} rows={3}
+              <VoiceTextarea value={keyOutcomesFocus} onChange={e => setKeyOutcomesFocus(e.target.value)} rows={4}
                 placeholder="Note the key outcomes from the coach's Individual Development Plan this session is focused on..."
                 className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
             </div>
@@ -9189,7 +9189,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">
                 Session Objective <span className="text-red-500">*</span>
               </label>
-              <VoiceTextarea value={sessionPlan.sessionObjective} onChange={e => setSessionPlanField("sessionObjective", e.target.value)} rows={2}
+              <VoiceTextarea value={sessionPlan.sessionObjective} onChange={e => setSessionPlanField("sessionObjective", e.target.value)} rows={4}
                 placeholder="What is the clear, measurable objective of this session?"
                 className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
               {!sessionPlan.sessionObjective.trim() && (
@@ -9247,7 +9247,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                     <label className="text-xs font-medium text-slate-500 mb-1.5 block">
                       {f.label} {f.required && <span className="text-red-500">*</span>}
                     </label>
-                    <VoiceTextarea value={sessionPlan[f.key]} onChange={e => setSessionPlanField(f.key, e.target.value)} rows={2}
+                    <VoiceTextarea value={sessionPlan[f.key]} onChange={e => setSessionPlanField(f.key, e.target.value)} rows={4}
                       placeholder={`Notes on ${f.label.toLowerCase()}...`} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
                     {f.required && !sessionPlan[f.key].trim() && (
                       <p className="text-xs text-red-500 mt-1">Required.</p>
@@ -9419,7 +9419,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                     placeholder={`Evidence for ${a.label.toLowerCase()} observed in this session...`}
                     className={`w-full border rounded-lg px-3 py-2 text-sm bg-white ${
                       typeof currentScore === "number" && currentScore <= 1 && !areas[a.key].notes.trim() ? "border-red-300" : "border-slate-200"
-                    }`} rows={2} />
+                    }`} rows={4} />
                   {typeof currentScore === "number" && currentScore <= 1 && !areas[a.key].notes.trim() && (
                     <p className="text-xs text-red-500 mt-1">Required — please add evidence/comments for this score before continuing.</p>
                   )}
@@ -9445,7 +9445,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
             </div>
             <div>
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">Additional plan notes for the coach <span className="text-red-500">*</span></label>
-              <VoiceTextarea value={planNotes} onChange={e => setPlanNotes(e.target.value)} rows={3}
+              <VoiceTextarea value={planNotes} onChange={e => setPlanNotes(e.target.value)} rows={4}
                 placeholder="Add any specific actions, timelines, or goals for this coach's development..." className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
               {!planNotes.trim() && (
                 <p className="text-xs text-red-500 mt-1">Required — please add at least a brief note before saving.</p>
