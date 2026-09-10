@@ -1309,8 +1309,9 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   useEffect(() => {
     if (!codaSession || codaSession.kind !== "admin") return;
     if (adminSettings === DEFAULT_ADMIN_SETTINGS) return; // not loaded yet
+    const mySessionName = (codaSession.name || "").trim().toLowerCase();
     const stillValid = (adminSettings.admins || []).some(a =>
-      a.name.trim().toLowerCase() === codaSession.name.trim().toLowerCase() && adminTier(a) === codaSession.tier
+      (a.name || "").trim().toLowerCase() === mySessionName && adminTier(a) === codaSession.tier
     );
     if (!stillValid) {
       setCodaSession(null);
@@ -11378,11 +11379,11 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         </button>
                         <button onClick={() => { setNewAdminRole("lead"); setAddAdminError(""); }} type="button"
                           className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "lead" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
-                          MF Admin ({adminSettings.admins.filter(a => a.role === "lead").length}/{MEMBER_FEDERATIONS.length})
+                          MF Admin ({adminSettings.admins.filter(a => a.role === "lead").length}/MF)
                         </button>
                         <button onClick={() => { setNewAdminRole("coordinator"); setAddAdminError(""); }} type="button"
                           className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "coordinator" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
-                          MF Coordinator ({adminSettings.admins.filter(a => a.role === "coordinator").length}/{MEMBER_FEDERATIONS.length})
+                          MF Coordinator ({adminSettings.admins.filter(a => a.role === "coordinator").length}/MF)
                         </button>
                         <button onClick={() => { setNewAdminRole("course"); setAddAdminError(""); }} type="button"
                           className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "course" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
