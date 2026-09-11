@@ -626,7 +626,7 @@ function migrateAdminSettings(raw) {
     const role = (a.role === "mf" || a.role === "lead") ? "lead" : (a.role === "course" ? "course" : a.role === "coordinator" ? "coordinator" : "master");
     if (role === "lead") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || [] };
     if (role === "coordinator") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || [] };
-    if (role === "course") return { name: a.name || "", pin: a.pin || "", role, memberFederation: a.memberFederation || "", assignedCourseNumbers: a.assignedCourseNumbers || [] };
+    if (role === "course") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || (a.memberFederation ? [a.memberFederation] : []), assignedCourseNumbers: a.assignedCourseNumbers || [] };
     return { name: a.name || "", pin: a.pin || "", role: "master" };
   }).filter(a => a.name);
   return {
@@ -733,7 +733,7 @@ function sessionVisibleMfKeys(session) {
   if (!session || session.kind !== "admin") return null;
   if (session.tier === "master") return null;
   if (session.tier === "lead" || session.tier === "coordinator") return session.memberFederations || [];
-  if (session.tier === "course") return session.memberFederation ? [session.memberFederation] : [];
+  if (session.tier === "course") return session.memberFederations || [];
   return null;
 }
 // null return = unrestricted. Only Course Admin is scoped this way.
@@ -10505,6 +10505,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   const [pinChangeSuccess, setPinChangeSuccess] = useState(false);
   const [editingAdminPinName, setEditingAdminPinName] = useState(null);
   const [editingAdminCoursesName, setEditingAdminCoursesName] = useState(null);
+  const [editAdminMfSelection, setEditAdminMfSelection] = useState([]);
   const [editAdminCourseNumbers, setEditAdminCourseNumbers] = useState([]);
   const [editAdminCoursesError, setEditAdminCoursesError] = useState("");
   const [editAdminCoursesSuccessName, setEditAdminCoursesSuccessName] = useState("");
@@ -10583,7 +10584,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   const [addAdminError, setAddAdminError] = useState("");
   const [newAdminRole, setNewAdminRole] = useState("master");
   const [newAdminMfSelection, setNewAdminMfSelection] = useState([]);
-  const [newAdminCourseMf, setNewAdminCourseMf] = useState("");
+  const [newAdminCourseMfSelection, setNewAdminCourseMfSelection] = useState([]);
   const [newAdminCourseNumbers, setNewAdminCourseNumbers] = useState([]);
   const [resetAllPin, setResetAllPin] = useState("");
   const [resetAllPinConfirm, setResetAllPinConfirm] = useState("");
@@ -10783,7 +10784,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setNewPin(""); setNewPinConfirm(""); setPinChangeError(""); setPinChangeSuccess(false);
     setNewAdminName(""); setNewAdminPin(""); setNewAdminPinSelf(""); setNewAdminPinSelfConfirm(""); setNewAdminPinMode("me"); setAddAdminError("");
     setNewAdminRole("master"); setNewAdminMfSelection([]);
-    setNewAdminCourseMf(""); setNewAdminCourseNumbers([]);
+    setNewAdminCourseMfSelection([]); setNewAdminCourseNumbers([]);
     setConfirmRemoveAdminName(null); setRemoveAdminError("");
     setBinOpen(false); setBinItems(null); setBinLoading(false); setRestoringKey(null);
     setSessionHostNameInput(""); setSessionHostError(""); setSessionHostSuccess(false);
@@ -10957,22 +10958,38 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   function startEditAdminCourses(name) {
     setEditingAdminCoursesName(name);
     const admin = adminSettings.admins.find(a => a.name === name);
+    setEditAdminMfSelection((admin && admin.memberFederations) || []);
     setEditAdminCourseNumbers((admin && admin.assignedCourseNumbers) || []);
     setEditAdminCoursesError("");
     setEditAdminCoursesSuccessName("");
   }
 
   function handleSaveAdminCourses() {
+    if (editAdminMfSelection.length === 0) {
+      setEditAdminCoursesError("Select at least one Member Federation for this Course Admin.");
+      return;
+    }
     if (editAdminCourseNumbers.length === 0) {
       setEditAdminCoursesError("Select at least one course number for this Course Admin.");
       return;
     }
+    const currentMfs = (adminSettings.admins.find(a => a.name.trim().toLowerCase() === editingAdminCoursesName.trim().toLowerCase())?.memberFederations) || [];
+    const newlyAddedMfs = editAdminMfSelection.filter(mf => !currentMfs.includes(mf));
+    const fullMf = newlyAddedMfs.find(mf =>
+      adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mf)).length >= 4
+    );
+    if (fullMf) {
+      const fullMfLabel = (MEMBER_FEDERATIONS.find(m => m.key === fullMf) || {}).label || fullMf;
+      setEditAdminCoursesError(`${fullMfLabel} already has 4 Course Admins — the maximum.`);
+      return;
+    }
     const updatedAdmins = adminSettings.admins.map(a =>
-      a.name.trim().toLowerCase() === editingAdminCoursesName.trim().toLowerCase() ? { ...a, assignedCourseNumbers: editAdminCourseNumbers } : a
+      a.name.trim().toLowerCase() === editingAdminCoursesName.trim().toLowerCase() ? { ...a, memberFederations: editAdminMfSelection, assignedCourseNumbers: editAdminCourseNumbers } : a
     );
     saveAdminSettings({ ...adminSettings, admins: updatedAdmins });
     setEditAdminCoursesSuccessName(editingAdminCoursesName);
     setEditingAdminCoursesName(null);
+    setEditAdminMfSelection([]);
     setEditAdminCourseNumbers([]);
     setEditAdminCoursesError("");
   }
@@ -10992,7 +11009,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       if (masterCount <= 1) return { ok: false, reason: "This is the last MA Admin — add another Master before removing this one." };
     }
     if (iAmMaster) return { ok: true };
-    if (iAmLead && target.role === "course" && target.memberFederation && (signedInAdminMatch.memberFederations || []).includes(target.memberFederation)) {
+    if (iAmLead && target.role === "course" && (target.memberFederations || []).some(mf => (signedInAdminMatch.memberFederations || []).includes(mf))) {
       return { ok: true };
     }
     if (iAmLead && target.role === "coordinator" && (target.memberFederations || []).some(mf => (signedInAdminMatch.memberFederations || []).includes(mf))) {
@@ -11076,11 +11093,11 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       }
     }
     if (effectiveRole === "course") {
-      if (!newAdminCourseMf) {
-        setAddAdminError("Select the Member Federation this Course Admin belongs to.");
+      if (newAdminCourseMfSelection.length === 0) {
+        setAddAdminError("Select at least one Member Federation this Course Admin belongs to.");
         return;
       }
-      if (iAmLead && !(signedInAdminMatch.memberFederations || []).includes(newAdminCourseMf)) {
+      if (iAmLead && newAdminCourseMfSelection.some(mf => !(signedInAdminMatch.memberFederations || []).includes(mf))) {
         setAddAdminError("You can only add Course Admins for your own Member Federation.");
         return;
       }
@@ -11088,9 +11105,12 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
         setAddAdminError("Select at least one course number for this Course Admin.");
         return;
       }
-      const existingCourseAdminsInMf = adminSettings.admins.filter(a => a.role === "course" && a.memberFederation === newAdminCourseMf).length;
-      if (existingCourseAdminsInMf >= 4) {
-        setAddAdminError(`This Member Federation already has 4 Course Admins — the maximum. Remove one before adding another.`);
+      const fullMf = newAdminCourseMfSelection.find(mf =>
+        adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mf)).length >= 4
+      );
+      if (fullMf) {
+        const fullMfLabel = (MEMBER_FEDERATIONS.find(m => m.key === fullMf) || {}).label || fullMf;
+        setAddAdminError(`${fullMfLabel} already has 4 Course Admins — the maximum. Remove one before adding another.`);
         return;
       }
     }
@@ -11117,7 +11137,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       : effectiveRole === "coordinator"
       ? { name, pin: pinToUse, role: "coordinator", memberFederations: newAdminMfSelection }
       : effectiveRole === "course"
-      ? { name, pin: pinToUse, role: "course", memberFederation: newAdminCourseMf, assignedCourseNumbers: newAdminCourseNumbers }
+      ? { name, pin: pinToUse, role: "course", memberFederations: newAdminCourseMfSelection, assignedCourseNumbers: newAdminCourseNumbers }
       : { name, pin: pinToUse, role: "master" };
     saveAdminSettings({ ...adminSettings, admins: [...adminSettings.admins, newAdmin] });
     setNewAdminName("");
@@ -11127,7 +11147,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setNewAdminPinMode("me");
     setNewAdminRole("master");
     setNewAdminMfSelection([]);
-    setNewAdminCourseMf("");
+    setNewAdminCourseMfSelection([]);
     setNewAdminCourseNumbers([]);
     setAddAdminError("");
   }
@@ -11373,7 +11393,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         : a.role === "coordinator"
                         ? <span className="text-[10px] font-bold text-teal-600">· Coordinator: {(a.memberFederations || []).join(", ")}</span>
                         : a.role === "course"
-                        ? <span className="text-[10px] font-bold text-violet-600">· Course: {a.memberFederation} (#{(a.assignedCourseNumbers || []).join(", #")})</span>
+                        ? <span className="text-[10px] font-bold text-violet-600">· Course: {(a.memberFederations || []).join(", ")} (#{(a.assignedCourseNumbers || []).join(", #")})</span>
                         : <span className="text-[10px] font-bold text-slate-400">· Master</span>}
                       {iAmMaster && (
                         <button onClick={() => editingAdminPinName === a.name ? setEditingAdminPinName(null) : startEditAdminPin(a.name)}
@@ -11381,7 +11401,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           Edit PIN
                         </button>
                       )}
-                      {a.role === "course" && (iAmMaster || (iAmLead && (signedInAdminMatch.memberFederations || []).includes(a.memberFederation))) && (
+                      {a.role === "course" && (iAmMaster || (iAmLead && (a.memberFederations || []).some(mf => (signedInAdminMatch.memberFederations || []).includes(mf)))) && (
                         <button onClick={() => editingAdminCoursesName === a.name ? setEditingAdminCoursesName(null) : startEditAdminCourses(a.name)}
                           className="text-[10px] font-bold text-violet-600 hover:text-violet-800 ml-1">
                           Edit Courses
@@ -11431,29 +11451,54 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                 )}
                 {editingAdminCoursesName && (
                   <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 mb-3 space-y-2">
-                    <p className="text-xs font-semibold text-violet-800">Assigned courses for {editingAdminCoursesName}</p>
-                    {(() => {
-                      const admin = adminSettings.admins.find(a => a.name === editingAdminCoursesName);
-                      const mf = admin ? admin.memberFederation : "";
-                      const options = courseNumbersForMf(mf);
-                      return options.length === 0 ? (
-                        <p className="text-xs text-slate-400">No courses tagged to this federation yet in Completed Tasks.</p>
-                      ) : (
-                        <div className="flex gap-1.5 flex-wrap">
-                          {options.map(num => (
-                            <button key={num} type="button" onClick={() => setEditAdminCourseNumbers(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num])}
-                              className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                                editAdminCourseNumbers.includes(num) ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-white text-slate-400 border-slate-200"
-                              }`}>
-                              #{num}
-                            </button>
-                          ))}
+                    <p className="text-xs font-semibold text-violet-800">Federations &amp; courses for {editingAdminCoursesName}</p>
+                    <div>
+                      <p className="text-[11px] font-medium text-violet-700 mb-1">Member Federation(s)</p>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {(iAmLead ? MEMBER_FEDERATIONS.filter(mf => (signedInAdminMatch.memberFederations || []).includes(mf.key)) : MEMBER_FEDERATIONS).map(mf => (
+                          <button key={mf.key} type="button"
+                            onClick={() => setEditAdminMfSelection(prev => {
+                              if (prev.includes(mf.key)) {
+                                const numbersForThisMf = new Set(courseNumbersForMf(mf.key));
+                                setEditAdminCourseNumbers(nums => nums.filter(n => !numbersForThisMf.has(n)));
+                                return prev.filter(k => k !== mf.key);
+                              }
+                              return [...prev, mf.key];
+                            })}
+                            className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                              editAdminMfSelection.includes(mf.key) ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-white text-slate-400 border-slate-200"
+                            }`}>
+                            {mf.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {editAdminMfSelection.map(mfKey => {
+                      const mfLabel = (MEMBER_FEDERATIONS.find(m => m.key === mfKey) || {}).label || mfKey;
+                      const options = courseNumbersForMf(mfKey);
+                      return (
+                        <div key={mfKey}>
+                          <p className="text-[11px] font-medium text-violet-700 mb-1">{mfLabel} course number(s)</p>
+                          {options.length === 0 ? (
+                            <p className="text-xs text-slate-400">No courses tagged to this federation yet in Completed Tasks.</p>
+                          ) : (
+                            <div className="flex gap-1.5 flex-wrap">
+                              {options.map(num => (
+                                <button key={num} type="button" onClick={() => setEditAdminCourseNumbers(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num])}
+                                  className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                                    editAdminCourseNumbers.includes(num) ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-white text-slate-400 border-slate-200"
+                                  }`}>
+                                  #{num}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       );
-                    })()}
+                    })}
                     <div className="flex gap-2">
-                      <button onClick={handleSaveAdminCourses} className="text-xs font-semibold text-violet-600 hover:text-violet-700">Save Courses</button>
-                      <button onClick={() => setEditingAdminCoursesName(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+                      <button onClick={handleSaveAdminCourses} className="text-xs font-semibold text-violet-600 hover:text-violet-700">Save</button>
+                      <button onClick={() => { setEditingAdminCoursesName(null); setEditAdminMfSelection([]); setEditAdminCourseNumbers([]); setEditAdminCoursesError(""); }} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
                     </div>
                     {editAdminCoursesError && <p className="text-xs text-red-600">{editAdminCoursesError}</p>}
                   </div>
@@ -11561,39 +11606,51 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                     {formEffectiveRole === "course" && (
                       <div className="space-y-2">
                         <div>
-                          <p className="text-xs font-medium text-slate-500 mb-1">Member Federation</p>
+                          <p className="text-xs font-medium text-slate-500 mb-1">Member Federation(s)</p>
                           <div className="flex gap-1.5 flex-wrap">
                             {(iAmLead ? MEMBER_FEDERATIONS.filter(mf => (signedInAdminMatch.memberFederations || []).includes(mf.key)) : MEMBER_FEDERATIONS).map(mf => (
-                              <button key={mf.key} type="button" onClick={() => { setNewAdminCourseMf(mf.key); setNewAdminCourseNumbers([]); }}
+                              <button key={mf.key} type="button"
+                                onClick={() => setNewAdminCourseMfSelection(prev => {
+                                  if (prev.includes(mf.key)) {
+                                    const numbersForThisMf = new Set(courseNumbersForMf(mf.key));
+                                    setNewAdminCourseNumbers(nums => nums.filter(n => !numbersForThisMf.has(n)));
+                                    return prev.filter(k => k !== mf.key);
+                                  }
+                                  return [...prev, mf.key];
+                                })}
                                 className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                                  newAdminCourseMf === mf.key ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                                  newAdminCourseMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
                                 }`}>
                                 {mf.label}
                               </button>
                             ))}
                           </div>
                         </div>
-                        {newAdminCourseMf && (
-                          <div>
-                            <p className="text-xs font-medium text-slate-500 mb-1">
-                              Course number(s) — {adminSettings.admins.filter(a => a.role === "course" && a.memberFederation === newAdminCourseMf).length}/4 Course Admins already set for this federation
-                            </p>
-                            {courseNumbersForMf(newAdminCourseMf).length === 0 ? (
-                              <p className="text-xs text-slate-400">No courses tagged to this federation yet in Completed Tasks.</p>
-                            ) : (
-                              <div className="flex gap-1.5 flex-wrap">
-                                {courseNumbersForMf(newAdminCourseMf).map(num => (
-                                  <button key={num} type="button" onClick={() => setNewAdminCourseNumbers(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num])}
-                                    className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                                      newAdminCourseNumbers.includes(num) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
-                                    }`}>
-                                    #{num}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                        {newAdminCourseMfSelection.map(mfKey => {
+                          const mfLabel = (MEMBER_FEDERATIONS.find(m => m.key === mfKey) || {}).label || mfKey;
+                          const options = courseNumbersForMf(mfKey);
+                          return (
+                            <div key={mfKey}>
+                              <p className="text-xs font-medium text-slate-500 mb-1">
+                                {mfLabel} course number(s) — {adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mfKey)).length}/4 Course Admins already set for this federation
+                              </p>
+                              {options.length === 0 ? (
+                                <p className="text-xs text-slate-400">No courses tagged to this federation yet in Completed Tasks.</p>
+                              ) : (
+                                <div className="flex gap-1.5 flex-wrap">
+                                  {options.map(num => (
+                                    <button key={num} type="button" onClick={() => setNewAdminCourseNumbers(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num])}
+                                      className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                                        newAdminCourseNumbers.includes(num) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                                      }`}>
+                                      #{num}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                     <div className="flex gap-2">
