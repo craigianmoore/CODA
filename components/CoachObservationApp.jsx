@@ -2079,6 +2079,7 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
 function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goHistory, session }) {
   const [expandedCourse, setExpandedCourse] = useState(null);
   const [completedCoursesExpanded, setCompletedCoursesExpanded] = useState(false);
+  const [expandedIncompleteCourse, setExpandedIncompleteCourse] = useState(null);
   const [expandedOpenCourse, setExpandedOpenCourse] = useState(null);
   const [expandedOpenMfs, setExpandedOpenMfs] = useState(() => new Set());
   const [groupDaysInputs, setGroupDaysInputs] = useState({});
@@ -2181,6 +2182,14 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
         return { ...t, courseNumber: g.courseNumber, done, total };
       })
   );
+  const incompleteByCourse = (() => {
+    const map = {};
+    incompleteEntries.forEach(t => {
+      if (!map[t.courseNumber]) map[t.courseNumber] = { courseNumber: t.courseNumber, courseTitle: t.courseTitle, entries: [] };
+      map[t.courseNumber].entries.push(t);
+    });
+    return Object.values(map).sort(courseNumericSort);
+  })();
 
   return (
     <div className="space-y-6">
@@ -2373,24 +2382,43 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
           <h3 className="font-semibold text-slate-800 text-sm">Incompleted Course</h3>
           <p className="text-xs text-slate-400">Coaches from Completed Courses who still have outstanding attendance or coursework.</p>
         </div>
-        {incompleteEntries.length === 0 ? (
+        {incompleteByCourse.length === 0 ? (
           <div className="p-6 text-center text-slate-400 text-sm">No outstanding coaches on any completed course.</div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {incompleteEntries.map(t => {
-              const reqs = outstandingRequirements(t, coachTopicsFor(t.coachId));
+            {incompleteByCourse.map(g => {
+              const isExpanded = expandedIncompleteCourse === g.courseNumber;
               return (
-                <div key={t.id} className="px-5 py-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-800">{t.coachName}</p>
-                    <p className="text-xs text-slate-400">
-                      #{t.courseNumber} — {t.courseTitle} · Attendance {t.attendancePercent}%{t.total > 0 ? ` · Coursework ${t.done}/${t.total}` : ""}
-                    </p>
-                    {reqs.length > 0 && (
-                      <p className="text-xs font-semibold text-red-600 mt-0.5">Still needed: {reqs.join(", ")}</p>
-                    )}
-                  </div>
-                  <button onClick={() => goHistory(t.coachId)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">History</button>
+                <div key={g.courseNumber}>
+                  <button onClick={() => setExpandedIncompleteCourse(isExpanded ? null : g.courseNumber)} type="button"
+                    className="w-full flex items-center gap-2 text-left px-5 py-3 hover:bg-slate-50 transition-colors">
+                    <ChevronRight className={`w-4 h-4 text-slate-300 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-800 truncate">#{g.courseNumber} — {g.courseTitle}</p>
+                    </div>
+                    <span className="text-xs font-semibold text-red-600 shrink-0 whitespace-nowrap">{g.entries.length} incomplete</span>
+                  </button>
+                  {isExpanded && (
+                    <div className="pb-1">
+                      {g.entries.map(t => {
+                        const reqs = outstandingRequirements(t, coachTopicsFor(t.coachId));
+                        return (
+                          <div key={t.id} className="px-5 py-3 border-t border-slate-100 flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium text-slate-800">{t.coachName}</p>
+                              <p className="text-xs text-slate-400">
+                                Attendance {t.attendancePercent}%{t.total > 0 ? ` · Coursework ${t.done}/${t.total}` : ""}
+                              </p>
+                              {reqs.length > 0 && (
+                                <p className="text-xs font-semibold text-red-600 mt-0.5">Still needed: {reqs.join(", ")}</p>
+                              )}
+                            </div>
+                            <button onClick={() => goHistory(t.coachId)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">History</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
