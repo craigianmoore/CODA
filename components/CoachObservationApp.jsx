@@ -2078,6 +2078,7 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
 
 function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goHistory, session }) {
   const [expandedCourse, setExpandedCourse] = useState(null);
+  const [completedCoursesExpanded, setCompletedCoursesExpanded] = useState(false);
   const [expandedOpenCourse, setExpandedOpenCourse] = useState(null);
   const [expandedOpenMfs, setExpandedOpenMfs] = useState(() => new Set());
   const [groupDaysInputs, setGroupDaysInputs] = useState({});
@@ -2311,10 +2312,13 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-100">
-          <h3 className="font-semibold text-slate-800 text-sm">Completed Courses</h3>
-        </div>
-        {completedGroups.length === 0 ? (
+        <button onClick={() => setCompletedCoursesExpanded(v => !v)} type="button"
+          className="w-full flex items-center gap-2 text-left px-5 py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors">
+          <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${completedCoursesExpanded ? "rotate-90" : ""}`} />
+          <h3 className="font-semibold text-slate-800 text-sm flex-1">Completed Courses</h3>
+          <span className="text-xs text-slate-400">{completedGroups.length} course{completedGroups.length === 1 ? "" : "s"}</span>
+        </button>
+        {completedCoursesExpanded && (completedGroups.length === 0 ? (
           <div className="p-6 text-center text-slate-400 text-sm">No completed courses yet.</div>
         ) : (
           <div className="divide-y divide-slate-100">
@@ -2361,7 +2365,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
               </div>
             ))}
           </div>
-        )}
+        ))}
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
