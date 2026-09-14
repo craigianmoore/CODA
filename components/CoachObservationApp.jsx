@@ -105,7 +105,7 @@ const SCORE_LEVELS = [
 
 const DIPLOMA_THRESHOLDS = { "c diploma": 9, "b diploma": 12, "a diploma": 16 };
 const HIGHLY_COMPETENT_THRESHOLD = 16;
-const POTENTIAL_PATHWAY_OPTIONS = ["Analyst", "High Performance Coach", "S&C Coach"];
+const POTENTIAL_PATHWAY_OPTIONS = ["Analyst", "High Performance Coach", "S&C Coach", "CET (Coach Education Tutor)"];
 
 function diplomaThresholdFor(name) {
   if (!name) return null;
