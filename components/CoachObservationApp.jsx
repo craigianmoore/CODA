@@ -4541,8 +4541,22 @@ async function saveHtmlAsPdf(htmlContent, filename) {
   // computes a zero-height canvas for that content, producing a blank
   // PDF — worse than the original bug. Calling html2canvas directly (no
   // html2pdf.js wrapper) on a container in the main document avoids both:
-  // styling applies correctly and height computes correctly. Page-splitting
-  // is done by hand below, replacing what html2pdf.js would normally do.
+  // styling applies correctly and height computes correctly.
+  //
+  // Page-splitting is done by hand below, with two refinements on top of
+  // a plain fixed-height slice: (1) real page margins, since a raw pixel
+  // slice reaching edge-to-edge made every export look like a screenshot
+  // rather than a document; (2) "don't split me" awareness for any element
+  // marked data-pdf-nosplit — a blind pixel-count cut has no idea a
+  // candidate card or an assessment-area card is mid-way through, so
+  // before each cut this checks whether it would land inside one of those
+  // elements and, if so, pulls the cut back to just above it — pushing
+  // that element whole onto the next page instead of slicing through it.
+  //
+  // If the template has a \.header block (course/coach title, MF logo,
+  // badge), it's captured once as its own small canvas and stamped at the
+  // top of every page, the way a running header works in a real document,
+  // rather than only appearing once at the top of page 1.
   const styleMatch = safeHtmlContent.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
   const bodyMatch = safeHtmlContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
 
@@ -4558,6 +4572,8 @@ async function saveHtmlAsPdf(htmlContent, filename) {
   container.innerHTML = bodyMatch ? bodyMatch[1] : safeHtmlContent;
   document.body.appendChild(container);
 
+  let headerContainer = null;
+
   try {
     await new Promise((resolve) => {
       const imgs = container.querySelectorAll("img");
@@ -4568,31 +4584,87 @@ async function saveHtmlAsPdf(htmlContent, filename) {
       setTimeout(resolve, 3000);
     });
 
+    // Pull the header out so it can be captured once and repeated on
+    // every page, instead of only appearing at the top of page 1.
+    const headerEl = container.querySelector(".header");
+    let headerCanvas = null;
+    if (headerEl) {
+      headerContainer = document.createElement("div");
+      headerContainer.style.position = "absolute";
+      headerContainer.style.left = "-99999px";
+      headerContainer.style.top = "0";
+      headerContainer.style.width = "800px";
+      headerContainer.appendChild(headerEl.cloneNode(true));
+      document.body.appendChild(headerContainer);
+      await new Promise((resolve) => {
+        const hImgs = headerContainer.querySelectorAll("img");
+        if (!hImgs || hImgs.length === 0) { resolve(); return; }
+        let loaded = 0;
+        const done = () => { loaded++; if (loaded >= hImgs.length) resolve(); };
+        Array.from(hImgs).forEach((img) => { img.complete ? done() : (img.onload = img.onerror = done); });
+        setTimeout(resolve, 3000);
+      });
+      headerCanvas = await html2canvas(headerContainer, { scale: 2, useCORS: true });
+      headerEl.remove();
+    }
+
     const canvas = await html2canvas(container, { scale: 2, useCORS: true });
 
     const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
     const pageWidthMm = 210, pageHeightMm = 297;
-    const pxPerMm = canvas.width / pageWidthMm;
-    const pageHeightPx = pageHeightMm * pxPerMm;
-    const totalPages = Math.max(1, Math.ceil(canvas.height / pageHeightPx));
+    const sideMarginMm = 12, topMarginMm = 12, bottomMarginMm = 14, headerGapMm = 4;
+    const contentWidthMm = pageWidthMm - sideMarginMm * 2;
+    const pxPerMm = canvas.width / contentWidthMm;
+    const headerHeightMm = headerCanvas ? (headerCanvas.height / pxPerMm) : 0;
+    const contentTopMm = topMarginMm + (headerCanvas ? headerHeightMm + headerGapMm : 0);
+    const contentAreaHeightMm = pageHeightMm - contentTopMm - bottomMarginMm;
+    const contentAreaHeightPx = Math.max(1, contentAreaHeightMm * pxPerMm);
 
-    for (let i = 0; i < totalPages; i++) {
+    // Elements marked as not to be split across a page break — measured
+    // in container CSS px (via the shared viewport frame, so it stays
+    // correct regardless of page scroll), then converted to canvas px
+    // using the same width ratio html2canvas used to produce the canvas.
+    const scaleFactor = canvas.width / container.offsetWidth;
+    const containerTop = container.getBoundingClientRect().top;
+    const noSplitBlocks = Array.from(container.querySelectorAll("[data-pdf-nosplit]"))
+      .map(el => {
+        const rect = el.getBoundingClientRect();
+        return { top: (rect.top - containerTop) * scaleFactor, bottom: (rect.bottom - containerTop) * scaleFactor };
+      })
+      .sort((a, b) => a.top - b.top);
+
+    const slices = [];
+    let start = 0;
+    while (start < canvas.height - 1) {
+      let end = Math.min(start + contentAreaHeightPx, canvas.height);
+      const violated = noSplitBlocks.find(b => b.top > start && b.top < end && b.bottom > end && (b.bottom - b.top) <= contentAreaHeightPx);
+      if (violated) end = violated.top;
+      if (end <= start) end = Math.min(start + contentAreaHeightPx, canvas.height);
+      slices.push({ start, end });
+      start = end;
+    }
+    if (slices.length === 0) slices.push({ start: 0, end: canvas.height });
+
+    slices.forEach((slice, i) => {
+      if (i > 0) pdf.addPage();
+      if (headerCanvas) {
+        pdf.addImage(headerCanvas.toDataURL("image/png"), "PNG", sideMarginMm, topMarginMm, contentWidthMm, headerHeightMm);
+      }
+      const sliceHeightPx = slice.end - slice.start;
       const sliceCanvas = document.createElement("canvas");
       sliceCanvas.width = canvas.width;
-      const remainingPx = canvas.height - i * pageHeightPx;
-      const sliceHeightPx = Math.min(pageHeightPx, remainingPx);
       sliceCanvas.height = sliceHeightPx;
       const ctx = sliceCanvas.getContext("2d");
-      ctx.drawImage(canvas, 0, i * pageHeightPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+      ctx.drawImage(canvas, 0, slice.start, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
       const imgData = sliceCanvas.toDataURL("image/jpeg", 0.98);
-      if (i > 0) pdf.addPage();
       const sliceHeightMm = sliceHeightPx / pxPerMm;
-      pdf.addImage(imgData, "JPEG", 0, 0, pageWidthMm, sliceHeightMm);
-    }
+      pdf.addImage(imgData, "JPEG", sideMarginMm, contentTopMm, contentWidthMm, sliceHeightMm);
+    });
 
     pdf.save(filename);
   } finally {
     document.body.removeChild(container);
+    if (headerContainer) document.body.removeChild(headerContainer);
     document.head.removeChild(styleEl);
   }
 }
@@ -4622,7 +4694,7 @@ function buildCourseReportHtml(group, coaches, incompleteOnly) {
       ? `<p style="font-size:12px;margin:0 0 10px;color:#475569;">Progress Tracking: ${blockOpts.map(b => `${esc(b)}: ${esc(statuses[b] || "not set")}`).join(" · ")}</p>`
       : "";
     return `
-      <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:10px;">
+      <div data-pdf-nosplit="1" style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:10px;">
         <p style="font-weight:600;margin:0 0 2px;">${esc(t.coachName)}</p>
         <p style="font-size:12px;color:#64748b;margin:0 0 8px;">Attendance ${t.attendancePercent}% · Coursework ${total > 0 ? `${done}/${total}` : "—"}</p>
         ${outstandingRows}
@@ -4630,12 +4702,30 @@ function buildCourseReportHtml(group, coaches, incompleteOnly) {
       </div>`;
   }).join("");
 
-  return `<html><head><title>Course Report - #${esc(group.courseNumber)}</title></head><body style="margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1e293b;padding:28px;">
-    <h1 style="margin:0 0 4px 0;">Course Report — #${esc(group.courseNumber)}</h1>
-    <p style="color:#64748b;margin:0 0 4px 0;">${esc(group.courseTitle)}</p>
-    <p style="color:#64748b;margin:0 0 20px 0;font-size:13px;">${incompleteOnly ? `Candidates with outstanding coursework (${rows.length} of ${group.records.length})` : `All candidates (${rows.length})`} · Generated ${new Date().toLocaleDateString("en-GB")}</p>
-    ${candidateSections || '<p style="font-size:13px;color:#64748b;">No candidates to show.</p>'}
-  </body></html>`;
+  const dominantMf = dominantMfForGroup(group);
+  const logoUrl = memberFederationLogo(dominantMf);
+  const mfLabel = (MEMBER_FEDERATIONS.find(m => m.key === dominantMf) || {}).label || "Football Victoria";
+
+  return `<html>
+    <head>
+      <title>Course Report - #${esc(group.courseNumber)}</title>
+      ${REPORT_STYLE_TAG}
+    </head>
+    <body>
+      <div class="page">
+        <div class="header">
+          <div class="header-icon"><img src="${logoUrl}" alt="${esc(mfLabel)} logo" /></div>
+          <div>
+            <h1>Course Report — #${esc(group.courseNumber)}</h1>
+            <p class="subtitle">${esc(group.courseTitle)}</p>
+          </div>
+          <span class="type-badge">${incompleteOnly ? `Outstanding (${rows.length} of ${group.records.length})` : `All Candidates (${rows.length})`}</span>
+        </div>
+        <p style="color:#64748b;margin:-6px 0 16px;font-size:12.5px;">Generated ${new Date().toLocaleDateString("en-GB")}</p>
+        ${candidateSections || '<p style="font-size:13px;color:#64748b;">No candidates to show.</p>'}
+      </div>
+    </body>
+  </html>`;
 }
 
 // A short, focused document for a single candidate listing just what's
@@ -4679,7 +4769,7 @@ function buildCandidateHtml(task, coach, observations) {
           const lvl = SCORE_LEVELS.find(l => l.value === d.score);
           const badgeClass = typeof d.score === "number" ? `badge-${d.score}` : "badge-none";
           return `
-      <div class="area-card">
+      <div class="area-card" data-pdf-nosplit="1">
         <div class="area-head">
           <span class="area-name">${esc(a.label)}</span>
           ${lvl ? `<span class="badge ${badgeClass}">${lvl.value} · ${esc(lvl.label)}</span>` : `<span class="badge badge-none">—</span>`}
@@ -4689,7 +4779,7 @@ function buildCandidateHtml(task, coach, observations) {
         }).join("")
       : "";
     const pitchMap = o.sessionPlan?.zonesUsed?.length > 0
-      ? `<div class="section"><p class="section-title">Pitch Zones Used</p>${buildPitchZoneSvg(o.sessionPlan.zonesUsed)}</div>`
+      ? `<div class="section" data-pdf-nosplit="1"><p class="section-title">Pitch Zones Used</p>${buildPitchZoneSvg(o.sessionPlan.zonesUsed)}</div>`
       : "";
     return `
       <div class="section" style="page-break-before: always;">
@@ -9775,7 +9865,7 @@ function buildSingleObservationHtml(obs) {
   const total = totalForObs(obs);
   const actionItems = (obs.actionPlan || []).filter(a => a && a.trim());
   const pitchMap = obs.sessionPlan?.zonesUsed?.length > 0
-    ? `<div class="section"><p class="section-title">Pitch Zones Used</p>${buildPitchZoneSvg(obs.sessionPlan.zonesUsed)}</div>`
+    ? `<div class="section" data-pdf-nosplit="1"><p class="section-title">Pitch Zones Used</p>${buildPitchZoneSvg(obs.sessionPlan.zonesUsed)}</div>`
     : "";
   const showPathways = obs.assessmentOutcome === "Highly Competent" && obs.potentialPathways && obs.potentialPathways.length > 0;
   const outcomeClass = obs.assessmentOutcome === "Highly Competent" ? "outcome-highly"
@@ -9818,7 +9908,7 @@ function buildSingleObservationHtml(obs) {
     const lvl = SCORE_LEVELS.find(l => l.value === d.score);
     const badgeClass = typeof d.score === "number" ? `badge-${d.score}` : "badge-none";
     return `
-      <div class="area-card">
+      <div class="area-card" data-pdf-nosplit="1">
         <div class="area-head">
           <span class="area-name">${esc(a.label)}</span>
           ${lvl ? `<span class="badge ${badgeClass}">${lvl.value} · ${esc(lvl.label)}</span>` : `<span class="badge badge-none">—</span>`}
@@ -9864,7 +9954,7 @@ function buildSingleObservationHtml(obs) {
           <div class="areas-grid">${areaCards}</div>
         </div>` : ""}
 
-        <div class="two-col">
+        <div class="two-col" data-pdf-nosplit="1">
           <div class="box box-green">
             <p class="box-title">Strengths</p>
             <p style="margin:0;">${esc(obs.strengths) || "—"}</p>
@@ -9876,7 +9966,7 @@ function buildSingleObservationHtml(obs) {
         </div>
 
         ${(obs.diplomaThreshold != null || obs.assessmentOutcome) ? `
-        <div class="final-score-row">
+        <div class="final-score-row" data-pdf-nosplit="1">
           ${obs.diplomaThreshold != null ? `
           <div class="final-score-box ${thresholdPass ? "final-score-pass" : "final-score-fail"}">
             <p class="final-score-label">Final Score vs. ${esc(obs.formalCourseName)} threshold</p>
@@ -9890,7 +9980,7 @@ function buildSingleObservationHtml(obs) {
         </div>` : ""}
 
         ${showPathways ? `
-        <div class="pathway-box">
+        <div class="pathway-box" data-pdf-nosplit="1">
           <p class="pathway-title">Potential Future Pathways</p>
           ${obs.potentialPathways.map(p => `<span class="pathway-chip">${esc(p)}</span>`).join("")}
         </div>` : ""}
