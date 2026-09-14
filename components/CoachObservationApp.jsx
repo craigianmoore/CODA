@@ -9656,6 +9656,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
 
         {step === 2 && (
           <div className="space-y-5">
+            {!(isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && (
             <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
               <p className="text-sm font-semibold text-indigo-800 mb-1">SOCHANGEIT Evidence Checklist</p>
               <p className="text-xs text-indigo-600 mb-3">Tick any elements observed as evidence of turning around a faltering session. These do not count toward the assessment score.</p>
@@ -9675,6 +9676,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 ))}
               </div>
             </div>
+            )}
 
             <div className="sticky top-0 bg-white pb-2 z-10">
               <div className="flex items-center justify-between mb-1.5">
