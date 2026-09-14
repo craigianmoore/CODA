@@ -8639,6 +8639,17 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     }));
   }
 
+  function toggleThird(third) {
+    const zones = third === "D3" ? [1, 2, 3, 4, 5, 6] : third === "M3" ? [7, 8, 9, 10, 11, 12] : [13, 14, 15, 16, 17, 18];
+    setSessionPlan(prev => {
+      const allSelected = zones.every(z => prev.zonesUsed.includes(z));
+      const nextZones = allSelected
+        ? prev.zonesUsed.filter(z => !zones.includes(z))
+        : [...new Set([...prev.zonesUsed, ...zones])].sort((a, b) => a - b);
+      return { ...prev, zonesUsed: nextZones };
+    });
+  }
+
   useEffect(() => {
     const thirdsPresent = new Set(sessionPlan.zonesUsed.map(zoneThird));
     setSessionPlan(prev => {
@@ -9612,15 +9623,15 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
 
             <div>
               <p className="text-sm font-semibold text-slate-800 mb-1.5">Pitch Geography</p>
-              <p className="text-xs text-slate-400 mb-2">D3 / M3 / F3 are calculated automatically from the zones you select below.</p>
+              <p className="text-xs text-slate-400 mb-2">Tap D3 / M3 / F3 to select all six zones in that third at once, or tap individual zones on the pitch below.</p>
               <div className="flex gap-2 flex-wrap mb-3">
                 {["D3", "M3", "F3"].map(opt => (
-                  <span key={opt}
-                    className={`text-sm font-medium px-3 py-1.5 rounded-full border ${
-                      sessionPlan.pitchGeography.includes(opt) ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-400 border-slate-200"
+                  <button key={opt} type="button" onClick={() => toggleThird(opt)}
+                    className={`text-sm font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                      sessionPlan.pitchGeography.includes(opt) ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-400 border-slate-200 hover:border-slate-300"
                     }`}>
                     {opt}
-                  </span>
+                  </button>
                 ))}
               </div>
 
