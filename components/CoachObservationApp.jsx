@@ -4543,20 +4543,28 @@ async function saveHtmlAsPdf(htmlContent, filename) {
   // html2pdf.js wrapper) on a container in the main document avoids both:
   // styling applies correctly and height computes correctly.
   //
-  // Page-splitting is done by hand below, with two refinements on top of
-  // a plain fixed-height slice: (1) real page margins, since a raw pixel
-  // slice reaching edge-to-edge made every export look like a screenshot
-  // rather than a document; (2) "don't split me" awareness for any element
-  // marked data-pdf-nosplit — a blind pixel-count cut has no idea a
-  // candidate card or an assessment-area card is mid-way through, so
-  // before each cut this checks whether it would land inside one of those
-  // elements and, if so, pulls the cut back to just above it — pushing
-  // that element whole onto the next page instead of slicing through it.
+  // Everything (header included) is captured in ONE html2canvas pass —
+  // deliberately not a separate render for the header. An earlier version
+  // cloned the header into its own offscreen container and rendered it
+  // with a second html2canvas call, which meant the hotlinked Member
+  // Federation logo images got fetched a second time; that second fetch
+  // raced/failed and produced a blank logo. Capturing everything together
+  // in a single pass — the same approach that already renders these
+  // images correctly everywhere else in the app — avoids that entirely.
+  // The header is then cropped out of that one canvas and reused as a
+  // repeating header on every page, the way a running header works in a
+  // real document, rather than only appearing once at the top of page 1.
   //
-  // If the template has a \.header block (course/coach title, MF logo,
-  // badge), it's captured once as its own small canvas and stamped at the
-  // top of every page, the way a running header works in a real document,
-  // rather than only appearing once at the top of page 1.
+  // Page-splitting is done by hand below too, with two refinements on top
+  // of a plain fixed-height slice: (1) real page margins, since a raw
+  // pixel slice reaching edge-to-edge made every export look like a
+  // screenshot rather than a document; (2) "don't split me" awareness for
+  // any element marked data-pdf-nosplit — a blind pixel-count cut has no
+  // idea a candidate card or an assessment-area card is mid-way through,
+  // so before each cut this checks whether it would land inside one of
+  // those elements and, if so, pulls the cut back to just above it —
+  // pushing that element whole onto the next page instead of slicing
+  // through it.
   const styleMatch = safeHtmlContent.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
   const bodyMatch = safeHtmlContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
 
@@ -4572,8 +4580,6 @@ async function saveHtmlAsPdf(htmlContent, filename) {
   container.innerHTML = bodyMatch ? bodyMatch[1] : safeHtmlContent;
   document.body.appendChild(container);
 
-  let headerContainer = null;
-
   try {
     await new Promise((resolve) => {
       const imgs = container.querySelectorAll("img");
@@ -4584,29 +4590,14 @@ async function saveHtmlAsPdf(htmlContent, filename) {
       setTimeout(resolve, 3000);
     });
 
-    // Pull the header out so it can be captured once and repeated on
-    // every page, instead of only appearing at the top of page 1.
+    // Measure the header's extent (if any) before rendering, so it can be
+    // cropped out of the single resulting canvas afterwards. Left in
+    // place for the render itself — removing it would just leave a gap.
     const headerEl = container.querySelector(".header");
-    let headerCanvas = null;
-    if (headerEl) {
-      headerContainer = document.createElement("div");
-      headerContainer.style.position = "absolute";
-      headerContainer.style.left = "-99999px";
-      headerContainer.style.top = "0";
-      headerContainer.style.width = "800px";
-      headerContainer.appendChild(headerEl.cloneNode(true));
-      document.body.appendChild(headerContainer);
-      await new Promise((resolve) => {
-        const hImgs = headerContainer.querySelectorAll("img");
-        if (!hImgs || hImgs.length === 0) { resolve(); return; }
-        let loaded = 0;
-        const done = () => { loaded++; if (loaded >= hImgs.length) resolve(); };
-        Array.from(hImgs).forEach((img) => { img.complete ? done() : (img.onload = img.onerror = done); });
-        setTimeout(resolve, 3000);
-      });
-      headerCanvas = await html2canvas(headerContainer, { scale: 2, useCORS: true });
-      headerEl.remove();
-    }
+    const containerTopForHeader = container.getBoundingClientRect().top;
+    const headerRectPx = headerEl
+      ? { top: headerEl.getBoundingClientRect().top - containerTopForHeader, bottom: headerEl.getBoundingClientRect().bottom - containerTopForHeader }
+      : null;
 
     const canvas = await html2canvas(container, { scale: 2, useCORS: true });
 
@@ -4615,6 +4606,18 @@ async function saveHtmlAsPdf(htmlContent, filename) {
     const sideMarginMm = 12, topMarginMm = 12, bottomMarginMm = 14, headerGapMm = 4;
     const contentWidthMm = pageWidthMm - sideMarginMm * 2;
     const pxPerMm = canvas.width / contentWidthMm;
+    const scaleFactor = canvas.width / container.offsetWidth;
+
+    let headerCanvas = null;
+    let contentStartPx = 0;
+    if (headerRectPx) {
+      const headerBottomPx = Math.round(headerRectPx.bottom * scaleFactor);
+      headerCanvas = document.createElement("canvas");
+      headerCanvas.width = canvas.width;
+      headerCanvas.height = headerBottomPx;
+      headerCanvas.getContext("2d").drawImage(canvas, 0, 0, canvas.width, headerBottomPx, 0, 0, canvas.width, headerBottomPx);
+      contentStartPx = headerBottomPx;
+    }
     const headerHeightMm = headerCanvas ? (headerCanvas.height / pxPerMm) : 0;
     const contentTopMm = topMarginMm + (headerCanvas ? headerHeightMm + headerGapMm : 0);
     const contentAreaHeightMm = pageHeightMm - contentTopMm - bottomMarginMm;
@@ -4622,9 +4625,7 @@ async function saveHtmlAsPdf(htmlContent, filename) {
 
     // Elements marked as not to be split across a page break — measured
     // in container CSS px (via the shared viewport frame, so it stays
-    // correct regardless of page scroll), then converted to canvas px
-    // using the same width ratio html2canvas used to produce the canvas.
-    const scaleFactor = canvas.width / container.offsetWidth;
+    // correct regardless of page scroll), then converted to canvas px.
     const containerTop = container.getBoundingClientRect().top;
     const noSplitBlocks = Array.from(container.querySelectorAll("[data-pdf-nosplit]"))
       .map(el => {
@@ -4634,7 +4635,7 @@ async function saveHtmlAsPdf(htmlContent, filename) {
       .sort((a, b) => a.top - b.top);
 
     const slices = [];
-    let start = 0;
+    let start = contentStartPx;
     while (start < canvas.height - 1) {
       let end = Math.min(start + contentAreaHeightPx, canvas.height);
       const violated = noSplitBlocks.find(b => b.top > start && b.top < end && b.bottom > end && (b.bottom - b.top) <= contentAreaHeightPx);
@@ -4643,7 +4644,7 @@ async function saveHtmlAsPdf(htmlContent, filename) {
       slices.push({ start, end });
       start = end;
     }
-    if (slices.length === 0) slices.push({ start: 0, end: canvas.height });
+    if (slices.length === 0) slices.push({ start: contentStartPx, end: canvas.height });
 
     slices.forEach((slice, i) => {
       if (i > 0) pdf.addPage();
@@ -4664,7 +4665,6 @@ async function saveHtmlAsPdf(htmlContent, filename) {
     pdf.save(filename);
   } finally {
     document.body.removeChild(container);
-    if (headerContainer) document.body.removeChild(headerContainer);
     document.head.removeChild(styleEl);
   }
 }
