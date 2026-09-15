@@ -824,6 +824,57 @@ function idpHasContent(idp) {
   return !!(idp.strengths || idp.performanceGap || idp.goalsPlan || idp.fileText);
 }
 
+// Best-effort heuristic for pre-filling the IDP fields from an uploaded
+// document's extracted text. Scans line-by-line for recognisable labels
+// (e.g. "Strengths:", "Mentor", "Performance Gap") and captures either the
+// rest of that line or the paragraph(s) following it, up to the next
+// recognised label. Deliberately not clever about formatting variations
+// beyond a handful of common synonyms per field — this is meant to save
+// re-typing what's already in the document, not to replace reading it;
+// callers only apply a result to a field the user hasn't already filled
+// in themselves.
+function parseIdpText(text) {
+  const FIELD_LABELS = [
+    { key: "yearsCoaching", labels: ["years coaching", "years of coaching", "coaching experience", "years' experience", "years experience"] },
+    { key: "qualifications", labels: ["qualifications", "coaching qualifications", "accreditations", "accreditation"] },
+    { key: "mentor", labels: ["assigned mentor", "mentors", "mentor"] },
+    { key: "strengths", labels: ["key strengths", "strengths"] },
+    { key: "performanceGap", labels: ["performance gap", "areas for development", "development areas", "development area", "areas to improve", "weaknesses"] },
+    { key: "goalsPlan", labels: ["goals / plan", "goals/plan", "goals and plan", "goals & plan", "development plan", "planned outcomes", "goals", "plan"] },
+  ];
+  const allLabels = [];
+  FIELD_LABELS.forEach(f => f.labels.forEach(l => allLabels.push({ key: f.key, label: l })));
+  allLabels.sort((a, b) => b.label.length - a.label.length);
+
+  const lines = (text || "").split(/\r?\n/);
+  const matches = [];
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    for (const { key, label } of allLabels) {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp("^" + escaped + "\\s*[:\\-\u2013]?\\s*(.*)$", "i");
+      const m = trimmed.match(re);
+      if (m) {
+        matches.push({ key, lineIndex: i, inline: m[1].trim() });
+        break;
+      }
+    }
+  });
+
+  const result = {};
+  matches.forEach((m, idx) => {
+    const nextIdx = idx + 1 < matches.length ? matches[idx + 1].lineIndex : lines.length;
+    const bodyLines = lines.slice(m.lineIndex + 1, nextIdx).map(l => l.trim()).filter(Boolean);
+    const parts = [m.inline, ...bodyLines].filter(Boolean);
+    if (parts.length) {
+      result[m.key] = (result[m.key] ? result[m.key] + " " : "") + parts.join(" ");
+    }
+  });
+  Object.keys(result).forEach(k => { result[k] = result[k].trim().slice(0, 2000); });
+  return result;
+}
+
 function isTopicSuggestedByGap(topic, performanceGap) {
   if (!topic || !performanceGap) return false;
   const gapLower = performanceGap.toLowerCase();
@@ -2816,7 +2867,18 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
         const text = isPdf
           ? await extractPdfText(arrayBuffer)
           : (await mammoth.extractRawText({ arrayBuffer }))?.value || "";
-        setIdpForm(prev => ({ ...prev, fileName: file.name, fileText: text.trim() }));
+        const trimmedText = text.trim();
+        // Best-effort auto-fill: only touches fields the CET hasn’t already
+        // typed into, so a manually-entered value is never overwritten by
+        // a heuristic guess from the document.
+        const parsed = parseIdpText(trimmedText);
+        setIdpForm(prev => {
+          const next = { ...prev, fileName: file.name, fileText: trimmedText };
+          Object.keys(parsed).forEach(key => {
+            if (!prev[key] && parsed[key]) next[key] = parsed[key];
+          });
+          return next;
+        });
       } catch (err) {
         setIdpError("Could not read this document. You can still fill in the fields manually.");
       }
@@ -8754,7 +8816,18 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
         const text = isPdf
           ? await extractPdfText(arrayBuffer)
           : (await mammoth.extractRawText({ arrayBuffer }))?.value || "";
-        setIdpForm(prev => ({ ...prev, fileName: file.name, fileText: text.trim() }));
+        const trimmedText = text.trim();
+        // Best-effort auto-fill: only touches fields the CET hasn’t already
+        // typed into, so a manually-entered value is never overwritten by
+        // a heuristic guess from the document.
+        const parsed = parseIdpText(trimmedText);
+        setIdpForm(prev => {
+          const next = { ...prev, fileName: file.name, fileText: trimmedText };
+          Object.keys(parsed).forEach(key => {
+            if (!prev[key] && parsed[key]) next[key] = parsed[key];
+          });
+          return next;
+        });
       } catch (err) {
         setIdpError("Could not read this document. You can still fill in the fields manually.");
       }
