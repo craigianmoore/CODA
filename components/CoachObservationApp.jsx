@@ -2378,7 +2378,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
         <button onClick={() => setCompletedCoursesExpanded(v => !v)} type="button"
           className="w-full flex items-center gap-2 text-left px-5 py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors">
           <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${completedCoursesExpanded ? "rotate-90" : ""}`} />
-          <h3 className="font-semibold text-slate-800 text-sm flex-1">Completed Courses</h3>
+          <h3 className="font-semibold text-slate-800 text-sm flex-1">Closed Courses</h3>
           <span className="text-xs text-slate-400">{completedGroups.length} course{completedGroups.length === 1 ? "" : "s"}</span>
         </button>
         {completedCoursesExpanded && (completedGroups.length === 0 ? (
@@ -2433,8 +2433,8 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-5 py-3 border-b border-slate-100">
-          <h3 className="font-semibold text-slate-800 text-sm">Incompleted Course</h3>
-          <p className="text-xs text-slate-400">Coaches from Completed Courses who still have outstanding attendance or coursework.</p>
+          <h3 className="font-semibold text-slate-800 text-sm">Outstanding Coaches</h3>
+          <p className="text-xs text-slate-400">Coaches from Closed Courses who still have outstanding attendance or coursework.</p>
         </div>
         {incompleteByCourse.length === 0 ? (
           <div className="p-6 text-center text-slate-400 text-sm">No outstanding coaches on any completed course.</div>
