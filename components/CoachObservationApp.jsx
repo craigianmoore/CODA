@@ -2264,6 +2264,9 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                     })} type="button"
                     className="w-full flex items-center gap-2 text-left px-5 py-2.5 bg-slate-50 hover:bg-slate-100 transition-colors">
                     <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${mfExpanded ? "rotate-90" : ""}`} />
+                    <div className="w-6 h-6 rounded-md bg-white border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden">
+                      <img src={memberFederationLogo(mfKey)} alt="" className="max-w-full max-h-full object-contain" />
+                    </div>
                     <p className="text-sm font-semibold text-slate-700 flex-1">{mfLabel}</p>
                     <span className="text-xs text-slate-400">{groupsForMf.length} course{groupsForMf.length === 1 ? "" : "s"}</span>
                   </button>
