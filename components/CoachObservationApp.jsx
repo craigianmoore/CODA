@@ -2013,6 +2013,12 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
 }
 
 function Dashboard({ coaches, educators, observations, courses, drafts, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goNewObs, goHistory, onEditDraft, onSubmitDraft, onViewDraft, session }) {
+  const [draftsExpanded, setDraftsExpanded] = useState(false);
+  const [recentObsExpanded, setRecentObsExpanded] = useState(false);
+  // Recent Observations is now a rolling 4-day window rather than a fixed
+  // top-N list, so the count on the heading reflects genuinely recent
+  // activity rather than an arbitrary cap.
+  const RECENT_OBSERVATIONS_WINDOW_MS = 4 * 24 * 60 * 60 * 1000;
   const coachSummaries = Object.values(
     observations.reduce((acc, o) => {
       if (!acc[o.coachId]) {
@@ -2022,7 +2028,9 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
       if (new Date(o.date) > new Date(acc[o.coachId].lastDate)) acc[o.coachId].lastDate = o.date;
       return acc;
     }, {})
-  ).sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate)).slice(0, 5);
+  )
+    .filter(c => Date.now() - new Date(c.lastDate).getTime() <= RECENT_OBSERVATIONS_WINDOW_MS)
+    .sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
 
   return (
     <div className="space-y-6">
@@ -2067,10 +2075,14 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
 
       {drafts && drafts.length > 0 && (
         <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-amber-100 bg-amber-50 flex items-center justify-between">
-            <h3 className="font-semibold text-amber-800 text-sm flex items-center gap-1.5"><Clock className="w-4 h-4" /> Drafts ({drafts.length})</h3>
-            <p className="text-xs text-amber-600">Saved but not yet submitted</p>
-          </div>
+          <button onClick={() => setDraftsExpanded(v => !v)} type="button"
+            className="w-full flex items-center gap-2 text-left px-5 py-3 border-b border-amber-100 bg-amber-50 hover:bg-amber-100 transition-colors">
+            <ChevronRight className={`w-4 h-4 text-amber-500 transition-transform shrink-0 ${draftsExpanded ? "rotate-90" : ""}`} />
+            <h3 className="font-semibold text-amber-800 text-sm flex items-center gap-1.5 flex-1"><Clock className="w-4 h-4" /> Drafts</h3>
+            <span className="text-xs font-semibold text-amber-700">{drafts.length}</span>
+            <p className="text-xs text-amber-600 hidden sm:block">Saved but not yet submitted</p>
+          </button>
+          {draftsExpanded && (
           <div className="divide-y divide-slate-100">
             {[...drafts].sort((a, b) => new Date(b.date) - new Date(a.date)).map(d => (
               <div key={d.id} className="px-5 py-3 flex items-center justify-between gap-3">
@@ -2091,15 +2103,20 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
               </div>
             ))}
           </div>
+          )}
         </div>
       )}
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-semibold text-slate-800 text-sm">Recent Observations</h3>
-        </div>
-        {coachSummaries.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 text-sm">No observations yet. Start your first one above.</div>
+          <button onClick={() => setRecentObsExpanded(v => !v)} type="button"
+            className="w-full flex items-center gap-2 text-left px-5 py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors">
+            <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${recentObsExpanded ? "rotate-90" : ""}`} />
+            <h3 className="font-semibold text-slate-800 text-sm flex-1">Recent Observations</h3>
+            <span className="text-xs text-slate-400">{coachSummaries.length}</span>
+          </button>
+        {recentObsExpanded && (
+        coachSummaries.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 text-sm">No observations in the last 4 days.</div>
         ) : (
           <div className="divide-y divide-slate-100">
             {coachSummaries.map(c => (
@@ -2115,7 +2132,7 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
               </div>
             ))}
           </div>
-        )}
+        ))}
       </div>
 
       <CourseTrackingSections
