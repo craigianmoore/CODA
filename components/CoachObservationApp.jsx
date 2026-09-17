@@ -7490,7 +7490,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               <span>Practical Session</span>
               <span className="flex items-center gap-2">
                 {form.practicalSessionOutcome && (
-                  <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${outcomeBadgeClass(form.practicalSessionOutcome)}`}>{form.practicalSessionOutcome}</span>
+                  <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${outcomeBadgeClass(form.practicalSessionOutcome)}`}>Assessed: {form.practicalSessionOutcome}</span>
                 )}
                 <input type="checkbox" checked={form.practicalSessionDone} disabled={form.practicalSessionOutcome === "Not Yet Competent"}
                   onChange={() => setField("practicalSessionDone", !form.practicalSessionDone)}
@@ -7527,7 +7527,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                         </span>
                         <span className="flex items-center gap-2">
                           {form.sessionPlansOutcomes?.[topic] && (
-                            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${outcomeBadgeClass(form.sessionPlansOutcomes[topic])}`}>{form.sessionPlansOutcomes[topic]}</span>
+                            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${outcomeBadgeClass(form.sessionPlansOutcomes[topic])}`}>Assessed: {form.sessionPlansOutcomes[topic]}</span>
                           )}
                           <input type="checkbox" checked={!!form.sessionPlansDone?.[topic]} disabled={isNyc} onChange={() => toggleSessionPlanTopic(topic)}
                             className="rounded border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed" />
