@@ -8510,6 +8510,37 @@ function VoiceTextarea({ value, onChange, className, rows, placeholder, ...rest 
   );
 }
 
+// Keeps a fixed-position element correctly anchored to what's actually
+// visible on screen once the on-screen keyboard is open. Plain CSS
+// position:fixed is anchored to the full layout viewport, which on
+// mobile (iOS Safari especially) doesn't shrink when the keyboard opens
+// -- so a fixed element can end up pushed out of view or hidden behind
+// the keyboard even though nothing about its own CSS changed. Tracking
+// window.visualViewport (supported on iOS Safari 13+ and Chrome/Android)
+// gives the real visible height and vertical offset so those elements
+// can be repositioned to match what the user can actually see.
+function useVisualViewportKeyboard() {
+  const [state, setState] = useState({ offsetTop: 0, insetBottom: 0 });
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    function handle() {
+      setState({
+        offsetTop: vv.offsetTop,
+        insetBottom: Math.max(0, window.innerHeight - vv.height - vv.offsetTop),
+      });
+    }
+    handle();
+    vv.addEventListener("resize", handle);
+    vv.addEventListener("scroll", handle);
+    return () => {
+      vv.removeEventListener("resize", handle);
+      vv.removeEventListener("scroll", handle);
+    };
+  }, []);
+  return state;
+}
+
 function NewObservation({ coaches, courses, educators, saveCoaches, saveEducators, observations, saveObservations, completedTasks, existingObservation, defaultMemberFederation, onSaved, onCancel }) {
   const isEditing = !!existingObservation;
 
@@ -8591,6 +8622,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     const s = total % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
+  const keyboard = useVisualViewportKeyboard();
   const [potentialPathways, setPotentialPathways] = useState(() => existingObservation?.potentialPathways || []);
 
   const selectedCoach = coaches.find(c => c.id === coachId);
@@ -9965,7 +9997,8 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
       </div>
 
       {step === 2 && (
-        <div className="fixed top-32 right-4 z-40 bg-white border-2 border-slate-300 rounded-xl shadow-lg px-3 py-2.5 flex flex-col items-center gap-1.5 w-24">
+        <div className="fixed right-4 z-40 bg-white border-2 border-slate-300 rounded-xl shadow-lg px-3 py-2.5 flex flex-col items-center gap-1.5 w-24"
+          style={{ top: `calc(8rem + ${keyboard.offsetTop}px)` }}>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Timer</p>
           <p className="text-xl font-bold text-slate-900 tabular-nums">{swFormat(swSeconds)}</p>
           <div className="flex items-center gap-1">
@@ -9981,7 +10014,8 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
         </div>
       )}
       {step === 2 && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-300 shadow-[0_-4px_16px_rgba(0,0,0,0.08)]">
+        <div className="fixed left-0 right-0 z-30 bg-white border-t border-slate-300 shadow-[0_-4px_16px_rgba(0,0,0,0.08)]"
+          style={{ bottom: keyboard.insetBottom }}>
           <div className="max-w-5xl mx-auto px-4 py-3">
             <p className="text-sm font-semibold text-slate-800 mb-1">General Notes</p>
             <p className="text-xs text-slate-400 mb-2">Always visible while scoring — use this for anything that doesn't fit neatly under one assessment area.</p>
