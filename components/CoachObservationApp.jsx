@@ -1531,27 +1531,70 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
       : [...observations, obs];
     await saveObservations(nextObservations);
 
-    if (obs.status === "submitted" && obs.coachId) {
+    if (obs.status === "submitted" && obs.coachId && obs.sessionType === "formal" && obs.formalCourseName) {
       const matchIdx = completedTasks.findIndex(t =>
         t.coachId === obs.coachId &&
         ((obs.courseNumber && (t.courseNumber || "").trim() === obs.courseNumber.trim()) ||
          (!obs.courseNumber && t.courseTitle === obs.formalCourseName))
       );
-      if (matchIdx !== -1) {
-        const task = completedTasks[matchIdx];
-        const updatedTask = { ...task };
-        if ((isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) && obs.sessionTopic) {
-          const isNyc = obs.assessmentOutcome === "Not Yet Competent";
-          updatedTask.sessionPlansDone = { ...(task.sessionPlansDone || {}), [obs.sessionTopic]: !isNyc };
-          updatedTask.sessionPlansOutcomes = { ...(task.sessionPlansOutcomes || {}), [obs.sessionTopic]: obs.assessmentOutcome || "" };
-        } else if (isCDiploma(task.courseTitle)) {
-          const isNyc = obs.assessmentOutcome === "Not Yet Competent";
-          updatedTask.practicalSessionDone = !isNyc;
-          updatedTask.practicalSessionOutcome = obs.assessmentOutcome || "";
-        }
-        updatedTask.updatedAt = new Date().toISOString();
-        await saveCompletedTasks(completedTasks.map((t, i) => i === matchIdx ? updatedTask : t));
+
+      // No matching Completed Tasks record used to mean the coursework
+      // tick was silently skipped — most sessions get observed before
+      // the coach has ever been manually added to Completed Tasks, so
+      // that left the checklist quietly out of sync with reality. Create
+      // the record here instead (attendance/Online Modules left blank
+      // for the CET to fill in) so submitting the observation is enough
+      // on its own.
+      const isNewTask = matchIdx === -1;
+      const coach = coaches.find(c => c.id === obs.coachId);
+      const task = isNewTask
+        ? {
+            id: uid(),
+            coachId: obs.coachId,
+            coachName: coach ? coach.name : obs.coachName || "",
+            courseTitle: obs.formalCourseName,
+            courseNumber: obs.courseNumber || "",
+            memberFederation: obs.memberFederation || DEFAULT_MEMBER_FEDERATION,
+            attendancePercent: "",
+            onlineModulesPercent: "",
+            formativeAssessmentDone: false,
+            videoLink: "",
+            checkpoint: "",
+            team: "",
+            sessionPlansDone: {},
+            sessionPlansOutcomes: {},
+            goalscoringPresentationDone: false,
+            gamePlanDone: false,
+            analysisSessionPlanDone: false,
+            annualPlanDone: false,
+            coachingSession25MinDone: false,
+            sixWeekCycleDone: false,
+            fcDetailsDone: false,
+            practicalSessionDone: false,
+            practicalSessionOutcome: "",
+            courseworkNotes: {},
+            recommendNextLevel: false,
+            recommendNextLevelNotes: "",
+          }
+        : completedTasks[matchIdx];
+
+      const updatedTask = { ...task };
+      if ((isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) && obs.sessionTopic) {
+        const isNyc = obs.assessmentOutcome === "Not Yet Competent";
+        updatedTask.sessionPlansDone = { ...(task.sessionPlansDone || {}), [obs.sessionTopic]: !isNyc };
+        updatedTask.sessionPlansOutcomes = { ...(task.sessionPlansOutcomes || {}), [obs.sessionTopic]: obs.assessmentOutcome || "" };
+      } else if (isCDiploma(task.courseTitle)) {
+        const isNyc = obs.assessmentOutcome === "Not Yet Competent";
+        updatedTask.practicalSessionDone = !isNyc;
+        updatedTask.practicalSessionOutcome = obs.assessmentOutcome || "";
       }
+      updatedTask.updatedAt = new Date().toISOString();
+
+      await saveCompletedTasks(
+        isNewTask
+          ? [...completedTasks, updatedTask]
+          : completedTasks.map((t, i) => i === matchIdx ? updatedTask : t)
+      );
     }
 
     setEditingObservationId(null);
