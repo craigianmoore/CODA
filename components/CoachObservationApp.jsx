@@ -2139,7 +2139,7 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
           </button>
           {draftsExpanded && (
           <div className="divide-y divide-slate-100">
-            {[...drafts].sort((a, b) => new Date(b.date) - new Date(a.date)).map(d => (
+            {[...drafts].sort((a, b) => (a.coachName || "Unnamed coach").localeCompare(b.coachName || "Unnamed coach")).map(d => (
               <div key={d.id} className="px-5 py-3 flex items-center justify-between gap-3">
                 <div onClick={() => onViewDraft(d.id)} className="cursor-pointer flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 truncate">{d.coachName || "Unnamed coach"}</p>
@@ -11534,14 +11534,14 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
           <option value="Not Yet Competent">Not Yet Competent</option>
           <option value="N/A">N/A</option>
         </select>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 sm:col-span-2 lg:col-span-1">
           <input type="date" value={dateFromFilter} onChange={e => setDateFromFilter(e.target.value)} title="From date"
             className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
           <span className="text-slate-400 text-sm shrink-0">to</span>
           <input type="date" value={dateToFilter} onChange={e => setDateToFilter(e.target.value)} title="To date"
             className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 sm:col-span-2 lg:col-span-1">
           <input type="number" min="0" max={MAX_TOTAL_SCORE} value={minScoreFilter} onChange={e => setMinScoreFilter(e.target.value)}
             placeholder="Min score" title="Minimum score" className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
           <span className="text-slate-400 text-sm shrink-0">–</span>
