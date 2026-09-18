@@ -1602,7 +1602,18 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     setTab("report");
   }
 
-  function handleEditDraft(obs) {
+  async function handleEditDraft(obs) {
+    // Re-fetch this record fresh from Supabase before opening it for editing.
+    // The in-memory `observations` array was loaded once on page load, so on a
+    // device/tab that has been open a while it can be stale relative to edits
+    // saved from another device. Without this, resuming a draft here seeds every
+    // field from that stale snapshot, and saving later silently overwrites any
+    // fields someone else already saved with the old values.
+    const { data, error } = await supabase.from("observations").select("id, data").eq("id", obs.id).single();
+    if (!error && data) {
+      const fresh = { ...data.data, id: data.id };
+      setObservations(prev => prev.map(o => (o.id === fresh.id ? fresh : o)));
+    }
     setEditingObservationId(obs.id);
     setTab("newObs");
   }
