@@ -8568,9 +8568,11 @@ function useVisualViewportKeyboard() {
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     if (!vv) return;
     function handle() {
+      const rawInset = window.innerHeight - vv.height - vv.offsetTop;
+      const clampedInset = rawInset > 40 ? Math.min(rawInset, window.innerHeight * 0.45) : 0;
       setState({
         offsetTop: vv.offsetTop,
-        insetBottom: Math.max(0, window.innerHeight - vv.height - vv.offsetTop),
+        insetBottom: clampedInset,
       });
     }
     handle();
@@ -10062,7 +10064,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
           <div className="max-w-5xl mx-auto px-4 py-3">
             <p className="text-sm font-semibold text-slate-800 mb-1">General Notes</p>
             <p className="text-xs text-slate-400 mb-2">Always visible while scoring — use this for anything that doesn't fit neatly under one assessment area.</p>
-            <VoiceTextarea value={cetNotes} onChange={e => setCetNotes(e.target.value)} rows={5}
+            <VoiceTextarea value={cetNotes} onChange={e => setCetNotes(e.target.value)} rows={3}
               placeholder="Add any general notes here..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
           </div>
         </div>
