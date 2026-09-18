@@ -128,7 +128,7 @@ const COURSE_TITLE_OPTIONS = [
   "Workshop",
 ];
 
-const COURSE_LEVEL_GROUP_ORDER = ["Pro Diploma", "A Diploma", "B Diploma", "C Diploma", "Foundation Courses (FoF)", "Workshops", "Other"];
+const COURSE_LEVEL_GROUP_ORDER = ["Pro Diploma", "A Diploma", "B Diploma", "C Diploma", "Foundation Courses", "Workshops", "MiniRoos", "Other"];
 
 function courseLevelGroup(title) {
   const t = (title || "").toLowerCase();
@@ -136,8 +136,9 @@ function courseLevelGroup(title) {
   if (/\ba diploma\b/.test(t)) return "A Diploma";
   if (/\bb diploma\b/.test(t)) return "B Diploma";
   if (/\bc diploma\b/.test(t)) return "C Diploma";
-  if (t.includes("foundation of")) return "Foundation Courses (FoF)";
+  if (t.includes("foundation of")) return "Foundation Courses";
   if (t.includes("workshop")) return "Workshops";
+  if (t.includes("miniroos")) return "MiniRoos";
   return "Other";
 }
 
