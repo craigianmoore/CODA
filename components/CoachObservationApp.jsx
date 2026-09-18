@@ -6812,6 +6812,17 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       : t));
   }
 
+  function setBlockNote(task, block, note) {
+    if (!progressAuthed || !adminHasCourseAccess(progressAuthMatch, task.courseNumber, task.memberFederation)) {
+      setProgressAuthForTaskId(task.id);
+      setProgressAuthName(""); setProgressAuthPin(""); setProgressAuthError(false);
+      return;
+    }
+    saveCompletedTasks(completedTasks.map(t => t.id === task.id
+      ? { ...t, blockNotes: { ...(t.blockNotes || {}), [block]: note }, updatedAt: new Date().toISOString() }
+      : t));
+  }
+
   // B Diploma candidates can be recommended for A Diploma; C Diploma
   // candidates for B Diploma. No recommendation exists at A Diploma
   // itself (no higher tier was specified for it).
@@ -8374,6 +8385,18 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                         </button>
                                                       ))}
                                                     </div>
+                                                    {status && (
+                                                      <div className="mt-1.5">
+                                                        <textarea
+                                                          defaultValue={t.blockNotes?.[block] || ""}
+                                                          onBlur={e => setBlockNote(t, block, e.target.value)}
+                                                          disabled={locked}
+                                                          placeholder={`Notes for ${block}...`}
+                                                          rows={2}
+                                                          className="w-full text-xs border border-violet-200 rounded-md px-2 py-1 bg-white text-slate-700 placeholder:text-slate-400 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+                                                        />
+                                                      </div>
+                                                    )}
                                                     {!status && isActive && (
                                                       <p className="text-[10px] text-violet-500 mt-1">Not yet set for {block}.</p>
                                                     )}
