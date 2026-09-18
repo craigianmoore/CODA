@@ -2069,6 +2069,11 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
 
 function Dashboard({ coaches, educators, observations, courses, drafts, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goNewObs, goHistory, onEditDraft, onSubmitDraft, onViewDraft, session }) {
   const [draftsExpanded, setDraftsExpanded] = useState(false);
+  const [draftsSortMode, setDraftsSortMode] = useState("name");
+  useEffect(() => {
+    if (!session?.name) return;
+    kvGet(`draftsSortMode:${session.name}`).then(v => { if (v === "name" || v === "date") setDraftsSortMode(v); });
+  }, [session?.name]);
   const [recentObsExpanded, setRecentObsExpanded] = useState(false);
   // Recent Observations is now a rolling 4-day window rather than a fixed
   // top-N list, so the count on the heading reflects genuinely recent
@@ -2138,8 +2143,16 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
             <p className="text-xs text-amber-600 hidden sm:block">Saved but not yet submitted</p>
           </button>
           {draftsExpanded && (
+          <>
+          <div className="px-5 py-2 flex items-center gap-2 text-xs bg-slate-50 border-b border-slate-100">
+            <span className="text-slate-400 font-medium">Sort:</span>
+            <button onClick={() => { setDraftsSortMode("name"); if (session?.name) kvSet(`draftsSortMode:${session.name}`, "name"); }} className={`px-2 py-0.5 rounded-full border transition-colors ${draftsSortMode === "name" ? "bg-amber-100 border-amber-300 text-amber-700 font-semibold" : "border-slate-200 text-slate-400 hover:text-slate-600"}`}>A–Z</button>
+            <button onClick={() => { setDraftsSortMode("date"); if (session?.name) kvSet(`draftsSortMode:${session.name}`, "date"); }} className={`px-2 py-0.5 rounded-full border transition-colors ${draftsSortMode === "date" ? "bg-amber-100 border-amber-300 text-amber-700 font-semibold" : "border-slate-200 text-slate-400 hover:text-slate-600"}`}>Date</button>
+          </div>
           <div className="divide-y divide-slate-100">
-            {[...drafts].sort((a, b) => (a.coachName || "Unnamed coach").localeCompare(b.coachName || "Unnamed coach")).map(d => (
+            {[...drafts].sort((a, b) => draftsSortMode === "date"
+              ? new Date(b.date) - new Date(a.date)
+              : (a.coachName || "Unnamed coach").localeCompare(b.coachName || "Unnamed coach")).map(d => (
               <div key={d.id} className="px-5 py-3 flex items-center justify-between gap-3">
                 <div onClick={() => onViewDraft(d.id)} className="cursor-pointer flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 truncate">{d.coachName || "Unnamed coach"}</p>
@@ -2158,6 +2171,7 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
               </div>
             ))}
           </div>
+          </>
           )}
         </div>
       )}
