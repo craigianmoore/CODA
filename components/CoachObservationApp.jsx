@@ -11548,14 +11548,14 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
           <option value="Not Yet Competent">Not Yet Competent</option>
           <option value="N/A">N/A</option>
         </select>
-        <div className="flex items-center gap-1.5 sm:col-span-2 lg:col-span-1">
+        <div className="flex items-center gap-1.5 sm:col-span-2">
           <input type="date" value={dateFromFilter} onChange={e => setDateFromFilter(e.target.value)} title="From date"
             className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
           <span className="text-slate-400 text-sm shrink-0">to</span>
           <input type="date" value={dateToFilter} onChange={e => setDateToFilter(e.target.value)} title="To date"
             className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
         </div>
-        <div className="flex items-center gap-1.5 sm:col-span-2 lg:col-span-1">
+        <div className="flex items-center gap-1.5 sm:col-span-2">
           <input type="number" min="0" max={MAX_TOTAL_SCORE} value={minScoreFilter} onChange={e => setMinScoreFilter(e.target.value)}
             placeholder="Min score" title="Minimum score" className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
           <span className="text-slate-400 text-sm shrink-0">–</span>
