@@ -4928,12 +4928,12 @@ function buildOutstandingCandidateHtml(task, coach) {
   }).join("");
   return `<html><head><title>${esc(task.coachName)} - Outstanding Items</title></head><body style="margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1e293b;padding:28px;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:2px solid #0f172a;padding-bottom:16px;margin-bottom:20px;">
-      <div style="width:44px;height:44px;border-radius:9px;background:#fff;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;"><img src="${memberFederationLogo(task.memberFederation)}" alt="${esc((MEMBER_FEDERATIONS.find(m => m.key === task.memberFederation) || {}).label || "Football Victoria")} logo" style="max-width:100%;max-height:100%;object-fit:contain;" /></div>
+      <div style="width:44px;height:44px;border-radius:9px;background:#fff;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;"><img src="/api/logo-proxy?url=${encodeURIComponent(memberFederationLogo(task.memberFederation))}" alt="${esc((MEMBER_FEDERATIONS.find(m => m.key === task.memberFederation) || {}).label || "Football Victoria")} logo" style="max-width:100%;max-height:100%;object-fit:contain;" /></div>
       <div style="flex:1;">
         <h1 style="margin:0;font-size:21px;">${esc(task.coachName)}</h1>
         <p style="color:#64748b;margin:2px 0 0;font-size:13px;">${esc(task.courseTitle)}${task.courseNumber ? ` (#${esc(task.courseNumber)})` : ""}</p>
       </div>
-      ${task.memberFederation !== "FA" ? `<div style="width:44px;height:44px;border-radius:9px;background:#fff;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;"><img src="${(MEMBER_FEDERATIONS.find(m => m.key === "FA") || {}).logoUrl || ""}" alt="Football Australia logo" style="max-width:100%;max-height:100%;object-fit:contain;" /></div>` : ""}
+      ${task.memberFederation !== "FA" ? `<div style="width:44px;height:44px;border-radius:9px;background:#fff;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;"><img src="/api/logo-proxy?url=${encodeURIComponent((MEMBER_FEDERATIONS.find(m => m.key === "FA") || {}).logoUrl || "")}" alt="Football Australia logo" style="max-width:100%;max-height:100%;object-fit:contain;" /></div>` : ""}
     </div>
     <p style="font-size:13px;margin:0 0 20px 0;">Attendance: <strong>${task.attendancePercent}%</strong> · Online Modules: <strong>${task.onlineModulesPercent || 0}%</strong> · Coursework: <strong>${total > 0 ? `${done}/${total}` : "—"}</strong></p>
     <h2 style="margin:0 0 8px 0;">Still to Complete</h2>
