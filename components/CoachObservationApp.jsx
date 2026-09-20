@@ -4933,6 +4933,15 @@ function buildOutstandingCandidateHtml(task, coach) {
     ${outstandingRows
       ? `<table style="width:100%;border-collapse:collapse;font-size:13px;">${outstandingRows}</table>`
       : '<p style="font-size:13px;color:#059669;font-weight:600;">Everything is complete.</p>'}
+    ${(() => {
+      const blockNoteEntries = Object.entries(task.blockNotes || {}).filter(([, note]) => (note || "").trim());
+      if (!blockNoteEntries.length) return "";
+      const rows = blockNoteEntries.map(([block, note]) => {
+        const status = (task.blockStatuses || {})[block];
+        return `<tr><td style="padding:6px 8px;border:1px solid #ddd;width:130px;font-weight:600;vertical-align:top;">${esc(block)}${status ? `<br/><span style="font-weight:400;color:#64748b;">${esc(status)}</span>` : ""}</td><td style="padding:6px 8px;border:1px solid #ddd;white-space:pre-wrap;">${esc(note)}</td></tr>`;
+      }).join("");
+      return `<h2 style="margin:20px 0 8px 0;">Progress Notes</h2><table style="width:100%;border-collapse:collapse;font-size:13px;">${rows}</table>`;
+    })()}
   </body></html>`;
 }
 
