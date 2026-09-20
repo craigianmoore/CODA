@@ -4922,9 +4922,10 @@ function buildOutstandingCandidateHtml(task, coach) {
   const { done, total } = courseworkProgress(task, coach?.topics);
   const items = total > 0 ? courseworkItems(task, coach?.topics, task.team) : [];
   const outstanding = items.filter(i => !i.done);
-  const outstandingRows = outstanding.map(i =>
-    `<tr><td style="padding:6px 8px;border:1px solid #ddd;">☐ ${esc(i.label)}${i.outcome === "Not Yet Competent" ? " (Not Yet Competent — needs a re-observation)" : ""}</td></tr>`
-  ).join("");
+  const outstandingRows = outstanding.map(i => {
+    const itemNote = (task.courseworkNotes || {})[i.label];
+    return `<tr><td style="padding:6px 8px;border:1px solid #ddd;">☐ ${esc(i.label)}${i.outcome === "Not Yet Competent" ? " (Not Yet Competent — needs a re-observation)" : ""}${itemNote ? `<br/><span style="font-style:italic;color:#94a3b8;font-size:12px;">${esc(itemNote)}</span>` : ""}</td></tr>`;
+  }).join("");
   return `<html><head><title>${esc(task.coachName)} - Outstanding Items</title></head><body style="margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1e293b;padding:28px;">
     <h1 style="margin:0 0 4px 0;">${esc(task.coachName)}</h1>
     <p style="color:#64748b;margin:0 0 4px 0;">${esc(task.courseTitle)}${task.courseNumber ? ` (#${esc(task.courseNumber)})` : ""}</p>
