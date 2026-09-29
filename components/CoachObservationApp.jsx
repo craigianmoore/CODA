@@ -1530,7 +1530,14 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     const nextObservations = existingIndex !== -1
       ? observations.map(o => o.id === obs.id ? obs : o)
       : [...observations, obs];
-    await saveObservations(nextObservations);
+    try {
+      await saveObservations(nextObservations);
+    } catch (err) {
+      console.error("Failed to save observation:", err);
+      setObservations(observations);
+      alert("This observation could not be saved — please check your internet connection and try again. Nothing on this screen has been lost; just press Save again once you're back online.");
+      return;
+    }
 
     if (obs.status === "submitted" && obs.coachId && obs.sessionType === "formal" && obs.formalCourseName) {
       const matchIdx = completedTasks.findIndex(t =>
