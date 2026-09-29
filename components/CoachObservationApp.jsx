@@ -1414,6 +1414,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [error, setError] = useState(null);
   const [reportId, setReportId] = useState(null);
   const [historyCoachId, setHistoryCoachId] = useState(null);
+  const [focusTaskId, setFocusTaskId] = useState(null);
   const [historyCetFilter, setHistoryCetFilter] = useState("");
   const [editingObservationId, setEditingObservationId] = useState(null);
   const [historyAdminAutoOpen, setHistoryAdminAutoOpen] = useState(false);
@@ -1735,6 +1736,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             closedCourseNumbers={closedCourseNumbers} saveClosedCourseNumbers={saveClosedCourseNumbers}
             goNewObs={() => { setEditingObservationId(null); setTab("newObs"); }}
             goHistory={(cid) => { setHistoryCoachId(cid); setTab("history"); }}
+            goToCompletedTask={(taskId) => { setFocusTaskId(taskId); setTab("tasks"); }}
             onEditDraft={handleEditDraft}
             onSubmitDraft={handleSubmitDraft}
             onViewDraft={(id) => { setReportId(id); setTab("report"); }}
@@ -1763,6 +1765,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             closedCourseNumbers={closedCourseNumbers} saveClosedCourseNumbers={saveClosedCourseNumbers}
             closedCourseBlocks={closedCourseBlocks} saveClosedCourseBlocks={saveClosedCourseBlocks}
             adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
+            focusTaskId={focusTaskId} onFocusHandled={() => setFocusTaskId(null)}
             session={codaSession}
           />
         )}
@@ -2074,7 +2077,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
   );
 }
 
-function Dashboard({ coaches, educators, observations, courses, drafts, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goNewObs, goHistory, onEditDraft, onSubmitDraft, onViewDraft, session }) {
+function Dashboard({ coaches, educators, observations, courses, drafts, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goNewObs, goHistory, goToCompletedTask, onEditDraft, onSubmitDraft, onViewDraft, session }) {
   const [draftsExpanded, setDraftsExpanded] = useState(false);
   const [draftsSortMode, setDraftsSortMode] = useState("name");
   useEffect(() => {
@@ -2555,7 +2558,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                         return (
                           <div key={t.id} className="px-5 py-3 border-t border-slate-100 flex items-center justify-between gap-3">
                             <div>
-                              <p className="text-sm font-medium text-slate-800">{t.coachName}</p>
+                              <button type="button" onClick={() => goToCompletedTask(t.id)} className="text-sm font-medium text-slate-800 hover:text-indigo-600 hover:underline text-left">{t.coachName}</button>
                               <p className="text-xs text-slate-400">
                                 Attendance {t.attendancePercent}%{t.total > 0 ? ` · Coursework ${t.done}/${t.total}` : ""}
                               </p>
@@ -6363,7 +6366,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
   );
 }
 
-function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, closedCourseNumbers, saveClosedCourseNumbers, closedCourseBlocks, saveClosedCourseBlocks, adminSettings, adminLockouts, recordAdminAttempt, session }) {
+function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, closedCourseNumbers, saveClosedCourseNumbers, closedCourseBlocks, saveClosedCourseBlocks, adminSettings, adminLockouts, recordAdminAttempt, focusTaskId, onFocusHandled, session }) {
   // Duplicate detection & merge for Completed Tasks — a different problem
   // from duplicate coach/CET profiles: this catches the same person, same
   // course, showing up as TWO separate attendance/checklist records (from
@@ -6478,6 +6481,27 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [idpExpandedTaskId, setIdpExpandedTaskId] = useState(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState(() => new Set());
+
+  // Jump-to-task: when the Dashboard's Outstanding Coaches list sends us a
+  // specific completed-task id (via focusTaskId), open the Member
+  // Federation and course groups it lives in, expand its own row, and
+  // scroll it into view — then clear the request so it only fires once.
+  useEffect(() => {
+    if (!focusTaskId) return;
+    const task = completedTasks.find(t2 => t2.id === focusTaskId);
+    if (!task) return;
+    const mfKey = (task.memberFederation || "") || "none";
+    const courseKey = (task.courseNumber || "").trim();
+    setExpandedMfs(prev => new Set(prev).add(mfKey));
+    setExpandedCourses(prev => new Set(prev).add(courseKey));
+    setExpandedTaskId(focusTaskId);
+    const timer = setTimeout(() => {
+      const rowEl = document.getElementById(`ct-task-${focusTaskId}`);
+      if (rowEl) rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (onFocusHandled) onFocusHandled();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [focusTaskId, completedTasks]);
 
   const [showCourseworkUpload, setShowCourseworkUpload] = useState(false);
   const [courseworkDiplomaType, setCourseworkDiplomaType] = useState("B");
@@ -8222,7 +8246,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                               .filter(o => o.status !== "draft" && o.coachId === t.coachId && (o.courseNumber || "").trim() === (t.courseNumber || "").trim() && t.courseNumber)
                               .sort((a, b) => new Date(b.date) - new Date(a.date));
                             return (
-                              <div key={t.id} className="bg-white rounded-xl border border-slate-200 p-4">
+                              <div key={t.id} id={`ct-task-${t.id}`} className="bg-white rounded-xl border border-slate-200 p-4">
                                 {editingId === t.id ? renderTaskForm() : (
                                   <>
                                     <div className="flex items-start justify-between gap-2">
