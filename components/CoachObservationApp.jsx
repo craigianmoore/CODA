@@ -2558,7 +2558,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                         return (
                           <div key={t.id} className="px-5 py-3 border-t border-slate-100 flex items-center justify-between gap-3">
                             <div>
-                              <button type="button" onClick={() => goToCompletedTask(t.id)} className="text-sm font-medium text-slate-800 hover:text-indigo-600 hover:underline text-left">{t.coachName}</button>
+                              <button type="button" onClick={function jumpToCompletedTask() { goToCompletedTask(t.id); }} className="text-sm font-medium text-slate-800 hover:text-indigo-600 hover:underline text-left">{t.coachName}</button>
                               <p className="text-xs text-slate-400">
                                 Attendance {t.attendancePercent}%{t.total > 0 ? ` · Coursework ${t.done}/${t.total}` : ""}
                               </p>
