@@ -2220,13 +2220,13 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
       <CourseTrackingSections
         coaches={coaches} completedTasks={completedTasks} saveCompletedTasks={saveCompletedTasks}
         closedCourseNumbers={closedCourseNumbers} saveClosedCourseNumbers={saveClosedCourseNumbers}
-        goHistory={goHistory} session={session}
+        goHistory={goHistory} openCompletedTaskFn={openCompletedTaskFn} session={session}
       />
     </div>
   );
 }
 
-function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goHistory, session }) {
+function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goHistory, openCompletedTaskFn, session }) {
   const [expandedCourse, setExpandedCourse] = useState(null);
   const [completedCoursesExpanded, setCompletedCoursesExpanded] = useState(false);
   const [expandedIncompleteCourse, setExpandedIncompleteCourse] = useState(null);
