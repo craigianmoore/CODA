@@ -462,10 +462,15 @@ function courseworkItems(record, coachTopics, team) {
   const onlineModulesItem = { label: "Online Modules", done: (record.onlineModulesPercent || 0) >= 100, outcome: "", percent: record.onlineModulesPercent || 0 };
   const formativeAssessmentItem = { label: "Formative Assessment", done: !!record.formativeAssessmentDone, outcome: "" };
   if (isCDiploma(record.courseTitle)) {
-    const practicalItem = { label: "Practical Session", done: !!record.practicalSessionDone, outcome: record.practicalSessionOutcome || "", team: team || "" };
+    const practicalOutcome = record.practicalSessionOutcome || "";
+    // Once Not Yet Competent, the item's own done flag is permanently
+    // false (and its checkbox disabled) — completion now flows through
+    // the Reassessment tickbox instead, so this item ticks off with it.
+    const practicalDone = practicalOutcome === "Not Yet Competent" ? !!record.practicalReassessmentDone : !!record.practicalSessionDone;
+    const practicalItem = { label: "Practical Session", done: practicalDone, outcome: practicalOutcome, team: team || "" };
     const items = [practicalItem];
-    if (practicalItem.outcome === "Not Yet Competent") {
-      items.push({ label: "Practical Session" + REASSESSMENT_SUFFIX, done: !!record.practicalReassessmentDone, outcome: "", isReassessment: true });
+    if (practicalOutcome === "Not Yet Competent") {
+      items.push({ label: "Practical Session" + REASSESSMENT_SUFFIX, done: practicalDone, outcome: "", isReassessment: true });
     }
     items.push(onlineModulesItem, formativeAssessmentItem);
     return items;
@@ -475,15 +480,18 @@ function courseworkItems(record, coachTopics, team) {
     const sessionItems = [];
     topics.forEach(t => {
       const outcome = (record.sessionPlansOutcomes && record.sessionPlansOutcomes[t]) || "";
-      sessionItems.push({
-        label: t,
-        done: !!(record.sessionPlansDone && record.sessionPlansDone[t]),
-        outcome,
-      });
-      if (outcome === "Not Yet Competent") {
+      const isNyc = outcome === "Not Yet Competent";
+      // Same as the practical item above: a Not Yet Competent topic's own
+      // done flag stays false, so once reassessed it ticks off via that
+      // flag instead — keeping the item and its Reassessment line in sync.
+      const done = isNyc
+        ? !!(record.sessionPlansReassessmentDone && record.sessionPlansReassessmentDone[t])
+        : !!(record.sessionPlansDone && record.sessionPlansDone[t]);
+      sessionItems.push({ label: t, done, outcome });
+      if (isNyc) {
         sessionItems.push({
           label: t + REASSESSMENT_SUFFIX,
-          done: !!(record.sessionPlansReassessmentDone && record.sessionPlansReassessmentDone[t]),
+          done,
           outcome: "",
           isReassessment: true,
         });
@@ -4646,12 +4654,24 @@ function courseworkProgress(record, coachTopics) {
   const onlineDone = (record.onlineModulesPercent || 0) >= 100 ? 1 : 0;
   const formativeDone = record.formativeAssessmentDone ? 1 : 0;
   if (isCDiploma(record.courseTitle)) {
-    return { done: (record.practicalSessionDone ? 1 : 0) + onlineDone + formativeDone, total: 3 };
+    // Once a Not Yet Competent practical is reassessed (ticked), it counts
+    // as done here too — otherwise done/total could never reach 100%.
+    const practicalDone = record.practicalSessionOutcome === "Not Yet Competent"
+      ? !!record.practicalReassessmentDone
+      : !!record.practicalSessionDone;
+    return { done: (practicalDone ? 1 : 0) + onlineDone + formativeDone, total: 3 };
   }
   if (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) {
     const isB = isBDiploma(record.courseTitle);
     const topics = (coachTopics || []).slice(0, 4);
-    const sessionDone = topics.filter(t => record.sessionPlansDone && record.sessionPlansDone[t]).length;
+    // Same logic per session topic: a Not Yet Competent topic only counts
+    // once its Reassessment tickbox is done, not its (permanently false)
+    // original done flag.
+    const sessionDone = topics.filter(t => {
+      const outcome = (record.sessionPlansOutcomes && record.sessionPlansOutcomes[t]) || "";
+      if (outcome === "Not Yet Competent") return !!(record.sessionPlansReassessmentDone && record.sessionPlansReassessmentDone[t]);
+      return !!(record.sessionPlansDone && record.sessionPlansDone[t]);
+    }).length;
     const fixedDone = [
       record.goalscoringPresentationDone,
       record.gamePlanDone,
