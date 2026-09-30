@@ -583,21 +583,37 @@ function computeSessionNumber(observations, coachId, courseNumber, currentId, cu
 // same approach as the FV logo already used in the bulk History PDF export
 // — rather than recreated graphics. If that page's images ever move, these
 // would need updating the same way.
+// `color` is each federation's own brand colour (sampled from their official
+// logo/wordmark) so course/record views can carry the colour of whichever
+// federation is actually running that course. `textColor` is a same-hue
+// variant dark enough for on-white text where `color` itself (e.g. FWest's
+// gold, FNSW's sky blue) wouldn't have enough contrast.
 const MEMBER_FEDERATIONS = [
-  { key: "Capital", label: "Capital Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-03/caplognpl.png?itok=72Yn6G9K" },
-  { key: "FA", label: "Football Australia", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_300x/public/2020-12/18128_FA_Website-Header-Logo_FA.png?itok=18GbS1cR" },
-  { key: "FNSW", label: "Football NSW", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-07/FNSW%20-%20500x500_0.png?itok=gZT5_9tI" },
-  { key: "FNT", label: "Football Northern Territory", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FFNT-500x500.png?itok=4jv-0bEU" },
-  { key: "FQ", label: "Football Queensland", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FQ-500x500.png?itok=1tFQhETo" },
-  { key: "FSA", label: "Football South Australia", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-11/FootballSA-520x520.png?itok=7701s1eg" },
-  { key: "FTas", label: "Football Tasmania", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FT-500x500.png?itok=ApnEG5Y_" },
-  { key: "FV", label: "Football Victoria", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2022-05/FFV-Memfed-BrandedCard.png?itok=XO8-QVPx" },
-  { key: "FWest", label: "Football West", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FW-500x500.png?itok=u-RYKimY" },
-  { key: "NNSWF", label: "Northern NSW Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-06/Untitled-14.jpg?itok=Df5mdHPr" },
+  { key: "Capital", label: "Capital Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-03/caplognpl.png?itok=72Yn6G9K", color: "#0039a6", textColor: "#0039a6" },
+  { key: "FA", label: "Football Australia", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_300x/public/2020-12/18128_FA_Website-Header-Logo_FA.png?itok=18GbS1cR", color: "#10523c", textColor: "#10523c" },
+  { key: "FNSW", label: "Football NSW", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-07/FNSW%20-%20500x500_0.png?itok=gZT5_9tI", color: "#6ab3e8", textColor: "#1c6fa8" },
+  { key: "FNT", label: "Football Northern Territory", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FFNT-500x500.png?itok=4jv-0bEU", color: "#dc4405", textColor: "#dc4405" },
+  { key: "FQ", label: "Football Queensland", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FQ-500x500.png?itok=1tFQhETo", color: "#88133d", textColor: "#88133d" },
+  { key: "FSA", label: "Football South Australia", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-11/FootballSA-520x520.png?itok=7701s1eg", color: "#ce192f", textColor: "#ce192f" },
+  { key: "FTas", label: "Football Tasmania", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FT-500x500.png?itok=ApnEG5Y_", color: "#009a44", textColor: "#009a44" },
+  { key: "FV", label: "Football Victoria", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2022-05/FFV-Memfed-BrandedCard.png?itok=XO8-QVPx", color: "#004890", textColor: "#004890" },
+  { key: "FWest", label: "Football West", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2019-06/FW-500x500.png?itok=u-RYKimY", color: "#f8b800", textColor: "#8a6d00" },
+  { key: "NNSWF", label: "Northern NSW Football", logoUrl: "https://footballaustralia.com.au/sites/default/files/styles/image_600x/public/2020-06/Untitled-14.jpg?itok=Df5mdHPr", color: "#e81820", textColor: "#e81820" },
 ];
 const DEFAULT_MEMBER_FEDERATION = "FV";
+const NEUTRAL_MF_COLOR = "#94a3b8";
+const NEUTRAL_MF_TEXT_COLOR = "#64748b";
 function memberFederationLogo(key) {
   return (MEMBER_FEDERATIONS.find(m => m.key === key) || MEMBER_FEDERATIONS.find(m => m.key === DEFAULT_MEMBER_FEDERATION)).logoUrl;
+}
+// Used to colour course/record views by whichever federation is running that
+// course — never for CET Observation or RAPA, which stay neutral regardless
+// of federation. Falls back to a neutral slate for records with no MF set.
+function memberFederationColor(key) {
+  return MEMBER_FEDERATIONS.find(m => m.key === key)?.color || NEUTRAL_MF_COLOR;
+}
+function memberFederationTextColor(key) {
+  return MEMBER_FEDERATIONS.find(m => m.key === key)?.textColor || NEUTRAL_MF_TEXT_COLOR;
 }
 
 // Shared <style> block for both the single-observation report and the
@@ -2437,7 +2453,12 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
       if (!map[t.courseNumber]) map[t.courseNumber] = { courseNumber: t.courseNumber, courseTitle: t.courseTitle, entries: [] };
       map[t.courseNumber].entries.push(t);
     });
-    Object.values(map).forEach(g => g.entries.sort((a, b) => (a.coachName || "").localeCompare(b.coachName || "")));
+    Object.values(map).forEach(g => {
+      g.entries.sort((a, b) => (a.coachName || "").localeCompare(b.coachName || ""));
+      const mfCounts = {};
+      g.entries.forEach(t => { const k = t.memberFederation || ""; mfCounts[k] = (mfCounts[k] || 0) + 1; });
+      g.memberFederation = Object.entries(mfCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+    });
     return Object.values(map).sort(courseNumericSort);
   })();
 
@@ -2461,13 +2482,14 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                       if (next.has(mfKey)) next.delete(mfKey); else next.add(mfKey);
                       return next;
                     })} type="button"
-                    className="w-full flex items-center gap-2 text-left px-5 py-2.5 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    style={{ borderLeftColor: memberFederationColor(mfKey) }}
+                    className="w-full flex items-center gap-2 text-left px-5 py-2.5 bg-slate-50 hover:bg-slate-100 transition-colors border-l-4">
                     <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${mfExpanded ? "rotate-90" : ""}`} />
-                    <div className="w-6 h-6 rounded-md bg-white border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden">
+                    <div className="w-6 h-6 rounded-md bg-white border-2 flex items-center justify-center shrink-0 overflow-hidden" style={{ borderColor: memberFederationColor(mfKey) }}>
                       <img src={memberFederationLogo(mfKey)} alt="" className="max-w-full max-h-full object-contain" />
                     </div>
                     <p className="text-sm font-semibold text-slate-700 flex-1">{mfLabel}</p>
-                    <span className="text-xs text-slate-400">{groupsForMf.length} course{groupsForMf.length === 1 ? "" : "s"}</span>
+                    <span className="text-xs font-semibold" style={{ color: memberFederationTextColor(mfKey) }}>{groupsForMf.length} course{groupsForMf.length === 1 ? "" : "s"}</span>
                   </button>
                   {mfExpanded && (
                     <div className="divide-y divide-slate-100">
@@ -2644,7 +2666,8 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
               return (
                 <div key={g.courseNumber}>
                   <button onClick={() => setExpandedIncompleteCourse(isExpanded ? null : g.courseNumber)} type="button"
-                    className="w-full flex items-center gap-2 text-left px-5 py-3 hover:bg-slate-50 transition-colors">
+                    style={{ borderLeftColor: memberFederationColor(g.memberFederation) }}
+                    className="w-full flex items-center gap-2 text-left px-5 py-3 hover:bg-slate-50 transition-colors border-l-4">
                     <ChevronRight className={`w-4 h-4 text-slate-300 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-slate-800 truncate">#{g.courseNumber} — {g.courseTitle}</p>
@@ -8251,10 +8274,11 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                         next.has(k) ? next.delete(k) : next.add(k);
                         return next;
                       })} type="button"
-                        className="w-full flex items-center gap-2 text-left bg-slate-100 hover:bg-slate-200 transition-colors rounded-lg px-4 py-2.5">
+                        style={{ borderLeftColor: memberFederationColor(mfg.mfKey) }}
+                        className="w-full flex items-center gap-2 text-left bg-slate-100 hover:bg-slate-200 transition-colors rounded-lg px-4 py-2.5 border-l-4">
                         <ChevronRight className={`w-4 h-4 text-slate-500 transition-transform shrink-0 ${mfCollapsed ? "" : "rotate-90"}`} />
                         <p className="text-sm font-bold text-slate-800 flex-1">{mfg.mfLabel}</p>
-                        <span className="text-xs font-medium text-slate-500">{mfg.recordCount} record{mfg.recordCount === 1 ? "" : "s"}</span>
+                        <span className="text-xs font-semibold" style={{ color: memberFederationTextColor(mfg.mfKey) }}>{mfg.recordCount} record{mfg.recordCount === 1 ? "" : "s"}</span>
                       </button>
                       {!mfCollapsed && (
                 <div className="space-y-3 pl-2">
@@ -8265,7 +8289,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                   const groupSomeSelected = groupIds.some(id => selectedTaskIds.has(id));
                   const groupSelectedCount = groupIds.filter(id => selectedTaskIds.has(id)).length;
                   return (
-                    <div key={g.courseNumber || "none"} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <div key={g.courseNumber || "none"} style={{ borderLeftColor: memberFederationColor(mfg.mfKey), borderLeftWidth: "4px" }} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                       <div className="w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-slate-50 transition-colors">
                         <button onClick={() => toggleCourseExpand(g.courseNumber)} type="button" className="flex-1 min-w-0 text-left flex items-center gap-2">
                           <ChevronRight className={`w-4 h-4 text-slate-300 transition-transform shrink-0 ${isCollapsed ? "" : "rotate-90"}`} />
