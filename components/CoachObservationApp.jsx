@@ -535,6 +535,8 @@ function applyCourseworkToggle(task, label, coachTopics) {
     updated.sessionPlansReassessmentDone = { ...(task.sessionPlansReassessmentDone || {}), [topic]: !(task.sessionPlansReassessmentDone || {})[topic] };
   } else if (isCDiploma(task.courseTitle) && label === "Practical Session") {
     updated.practicalSessionDone = !task.practicalSessionDone;
+  } else if (label === "Formative Assessment") {
+    updated.formativeAssessmentDone = !task.formativeAssessmentDone;
   } else if (isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) {
     if (topics.includes(label)) {
       updated.sessionPlansDone = { ...(task.sessionPlansDone || {}), [label]: !(task.sessionPlansDone || {})[label] };
@@ -2672,11 +2674,12 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                               <div className="mt-2 space-y-1">
                                 {outstandingItems.map((item, i) => {
                                   const isNyc = item.outcome === "Not Yet Competent";
+                                  const isPercentBased = item.label === "Online Modules";
                                   return (
-                                    <label key={i} className={`flex items-center gap-2 text-xs ${isNyc ? "text-red-500" : "text-slate-600 cursor-pointer"}`}>
-                                      <input type="checkbox" checked={false} disabled={isNyc} onChange={() => toggleOutstandingItem(t, item.label)}
+                                    <label key={i} className={`flex items-center gap-2 text-xs ${isNyc ? "text-red-500" : isPercentBased ? "text-slate-400" : "text-slate-600 cursor-pointer"}`}>
+                                      <input type="checkbox" checked={false} disabled={isNyc || isPercentBased} onChange={() => toggleOutstandingItem(t, item.label)}
                                         className="rounded border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed" />
-                                      {item.label}{isNyc ? " — Not Yet Competent, needs re-observation" : ""}
+                                      {item.label}{isNyc ? " — Not Yet Competent, needs re-observation" : isPercentBased ? ` — ${item.percent || 0}% (update % in Candidates Progress)` : ""}
                                     </label>
                                   );
                                 })}
