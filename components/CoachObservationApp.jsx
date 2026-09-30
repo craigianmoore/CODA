@@ -2437,6 +2437,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
       if (!map[t.courseNumber]) map[t.courseNumber] = { courseNumber: t.courseNumber, courseTitle: t.courseTitle, entries: [] };
       map[t.courseNumber].entries.push(t);
     });
+    Object.values(map).forEach(g => g.entries.sort((a, b) => (a.coachName || "").localeCompare(b.coachName || "")));
     return Object.values(map).sort(courseNumericSort);
   })();
 
