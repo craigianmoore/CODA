@@ -410,11 +410,25 @@ function courseNumericSort(a, b) {
   return a.courseNumber.localeCompare(b.courseNumber);
 }
 
+const REASSESSMENT_SUFFIX = " (Reassessment)";
+
+function isItemReassessed(record, item) {
+  if (item.label === "Practical Session") return !!record.practicalReassessmentDone;
+  return !!(record.sessionPlansReassessmentDone || {})[item.label];
+}
+
+// An item still blocks completion only while its outcome is Not Yet
+// Competent AND its separate Reassessment tickbox (see courseworkItems)
+// hasn't been signed off. The reassessment items themselves never count.
+function hasUnresolvedNyc(record, items) {
+  return items.some(i => !i.isReassessment && i.outcome === "Not Yet Competent" && !isItemReassessed(record, i));
+}
+
 function isCoachFullyComplete(record, coachTopics) {
   const { done, total } = courseworkProgress(record, coachTopics);
   if (total === 0) return false;
   const items = courseworkItems(record, coachTopics);
-  const hasNYC = items.some(i => i.outcome === "Not Yet Competent") || record.practicalSessionOutcome === "Not Yet Competent";
+  const hasNYC = hasUnresolvedNyc(record, items);
   return record.attendancePercent >= 100 && done === total && !hasNYC;
 }
 
@@ -424,11 +438,15 @@ function outstandingRequirements(t, coachTopics) {
   if ((t.onlineModulesPercent || 0) < 100) reqs.push("Online Modules");
   if (!t.formativeAssessmentDone) reqs.push("Formative Assessment");
   if (isCDiploma(t.courseTitle)) {
-    if (t.practicalSessionOutcome === "Not Yet Competent") reqs.push("redo Practical");
+    if (t.practicalSessionOutcome === "Not Yet Competent") {
+      reqs.push("redo Practical");
+      if (!t.practicalReassessmentDone) reqs.push("Reassessment sign-off");
+    }
     else if (!t.practicalSessionDone) reqs.push("Practical");
   } else if (isBDiploma(t.courseTitle) || isADiploma(t.courseTitle)) {
     const { done, total } = courseworkProgress(t, coachTopics);
     if (done < total) reqs.push("Coursework");
+    if (hasUnresolvedNyc(t, courseworkItems(t, coachTopics))) reqs.push("Reassessment sign-off");
   }
   return reqs;
 }
@@ -444,15 +462,33 @@ function courseworkItems(record, coachTopics, team) {
   const onlineModulesItem = { label: "Online Modules", done: (record.onlineModulesPercent || 0) >= 100, outcome: "", percent: record.onlineModulesPercent || 0 };
   const formativeAssessmentItem = { label: "Formative Assessment", done: !!record.formativeAssessmentDone, outcome: "" };
   if (isCDiploma(record.courseTitle)) {
-    return [{ label: "Practical Session", done: !!record.practicalSessionDone, outcome: record.practicalSessionOutcome || "", team: team || "" }, onlineModulesItem, formativeAssessmentItem];
+    const practicalItem = { label: "Practical Session", done: !!record.practicalSessionDone, outcome: record.practicalSessionOutcome || "", team: team || "" };
+    const items = [practicalItem];
+    if (practicalItem.outcome === "Not Yet Competent") {
+      items.push({ label: "Practical Session" + REASSESSMENT_SUFFIX, done: !!record.practicalReassessmentDone, outcome: "", isReassessment: true });
+    }
+    items.push(onlineModulesItem, formativeAssessmentItem);
+    return items;
   }
   if (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) {
     const topics = (coachTopics || []).slice(0, 4);
-    const sessionItems = topics.map(t => ({
-      label: t,
-      done: !!(record.sessionPlansDone && record.sessionPlansDone[t]),
-      outcome: (record.sessionPlansOutcomes && record.sessionPlansOutcomes[t]) || "",
-    }));
+    const sessionItems = [];
+    topics.forEach(t => {
+      const outcome = (record.sessionPlansOutcomes && record.sessionPlansOutcomes[t]) || "";
+      sessionItems.push({
+        label: t,
+        done: !!(record.sessionPlansDone && record.sessionPlansDone[t]),
+        outcome,
+      });
+      if (outcome === "Not Yet Competent") {
+        sessionItems.push({
+          label: t + REASSESSMENT_SUFFIX,
+          done: !!(record.sessionPlansReassessmentDone && record.sessionPlansReassessmentDone[t]),
+          outcome: "",
+          isReassessment: true,
+        });
+      }
+    });
     const fixedItems = [
       { label: "Goalscoring Presentation", done: !!record.goalscoringPresentationDone, outcome: "", team: team || "" },
       { label: "Game Plan", done: !!record.gamePlanDone, outcome: "" },
@@ -1581,6 +1617,8 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             fcDetailsDone: false,
             practicalSessionDone: false,
             practicalSessionOutcome: "",
+            practicalReassessmentDone: false,
+            sessionPlansReassessmentDone: {},
             courseworkNotes: {},
             recommendNextLevel: false,
             recommendNextLevelNotes: "",
@@ -4596,6 +4634,8 @@ function emptyCompletedTaskForm() {
     fcDetailsDone: false,
     practicalSessionDone: false,
     practicalSessionOutcome: "",
+    practicalReassessmentDone: false,
+    sessionPlansReassessmentDone: {},
     courseworkNotes: {},
     recommendNextLevel: false,
     recommendNextLevelNotes: "",
@@ -6536,6 +6576,13 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     }));
   }
 
+  function toggleSessionPlanReassessment(topic) {
+    setForm(prev => ({
+      ...prev,
+      sessionPlansReassessmentDone: { ...prev.sessionPlansReassessmentDone, [topic]: !prev.sessionPlansReassessmentDone?.[topic] },
+    }));
+  }
+
   function setCourseworkNote(label, text) {
     setForm(prev => ({ ...prev, courseworkNotes: { ...prev.courseworkNotes, [label]: text } }));
   }
@@ -6671,6 +6718,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       fcDetailsDone: task.fcDetailsDone != null ? !!task.fcDetailsDone : !!task.sixWeekCycleFcDone,
       practicalSessionDone: !!task.practicalSessionDone,
       practicalSessionOutcome: task.practicalSessionOutcome || "",
+      practicalReassessmentDone: !!task.practicalReassessmentDone,
+      sessionPlansReassessmentDone: task.sessionPlansReassessmentDone || {},
       courseworkNotes: task.courseworkNotes || {},
     });
     const matchedCoach = coaches.find(c => c.id === task.coachId);
@@ -6719,6 +6768,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       fcDetailsDone: form.sixWeekCycleDone ? form.fcDetailsDone : false,
       practicalSessionDone: form.practicalSessionDone,
       practicalSessionOutcome: form.practicalSessionOutcome || "",
+      practicalReassessmentDone: form.practicalReassessmentDone,
+      sessionPlansReassessmentDone: form.sessionPlansReassessmentDone || {},
       courseworkNotes: form.courseworkNotes || {},
       updatedAt: new Date().toISOString(),
     };
@@ -7209,6 +7260,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           fcDetailsDone: false,
           practicalSessionDone: false,
           practicalSessionOutcome: "",
+          practicalReassessmentDone: false,
+          sessionPlansReassessmentDone: {},
           updatedAt: new Date().toISOString(),
         });
       }
@@ -7274,7 +7327,12 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     if (isCDiploma(task.courseTitle) && label === "Practical Session" && task.practicalSessionOutcome === "Not Yet Competent") return;
     if (coachTopics.includes(label) && (task.sessionPlansOutcomes || {})[label] === "Not Yet Competent") return;
     let updated = { ...task };
-    if (isCDiploma(task.courseTitle) && label === "Practical Session") {
+    if (label === "Practical Session" + REASSESSMENT_SUFFIX) {
+      updated.practicalReassessmentDone = !task.practicalReassessmentDone;
+    } else if (label.endsWith(REASSESSMENT_SUFFIX) && coachTopics.includes(label.slice(0, -REASSESSMENT_SUFFIX.length))) {
+      const topic = label.slice(0, -REASSESSMENT_SUFFIX.length);
+      updated.sessionPlansReassessmentDone = { ...(task.sessionPlansReassessmentDone || {}), [topic]: !(task.sessionPlansReassessmentDone || {})[topic] };
+    } else if (isCDiploma(task.courseTitle) && label === "Practical Session") {
       updated.practicalSessionDone = !task.practicalSessionDone;
     } else if (isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) {
       if (coachTopics.includes(label)) {
@@ -7585,7 +7643,15 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               </span>
             </label>
             {form.practicalSessionOutcome === "Not Yet Competent" && (
-              <p className="text-[10px] text-red-500 -mt-1">Not Yet Competent — needs a re-observation before this can be marked done.</p>
+              <>
+                <p className="text-[10px] text-red-500 -mt-1">Not Yet Competent — needs a re-observation before this can be marked done.</p>
+                <label className="flex items-center justify-between gap-2 text-xs text-slate-700 cursor-pointer">
+                  <span>Practical Session (Reassessment)</span>
+                  <input type="checkbox" checked={!!form.practicalReassessmentDone}
+                    onChange={() => setField("practicalReassessmentDone", !form.practicalReassessmentDone)}
+                    className="rounded border-slate-300" />
+                </label>
+              </>
             )}
             {!form.practicalSessionDone && (
               <input value={form.courseworkNotes?.["Practical Session"] || ""} onChange={e => setCourseworkNote("Practical Session", e.target.value)}
@@ -7621,7 +7687,15 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                         </span>
                       </label>
                       {isNyc && (
-                        <p className="text-[10px] text-red-500 mt-0.5">Not Yet Competent — needs a re-observation before this can be marked done.</p>
+                        <>
+                          <p className="text-[10px] text-red-500 mt-0.5">Not Yet Competent — needs a re-observation before this can be marked done.</p>
+                          <label className="flex items-center justify-between gap-2 text-xs text-slate-700 cursor-pointer">
+                            <span>{topic} (Reassessment)</span>
+                            <input type="checkbox" checked={!!form.sessionPlansReassessmentDone?.[topic]}
+                              onChange={() => toggleSessionPlanReassessment(topic)}
+                              className="rounded border-slate-300" />
+                          </label>
+                        </>
                       )}
                       {!form.sessionPlansDone?.[topic] && (
                         <input value={form.courseworkNotes?.[topic] || ""} onChange={e => setCourseworkNote(topic, e.target.value)}
@@ -8238,7 +8312,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                             const items = total > 0 ? courseworkItems(t, cardCoach?.topics, t.team) : [];
                             const suggestedTopics = (cardCoach?.topics || []).filter(top => isTopicSuggestedByGap(top, cardCoach?.idp?.performanceGap));
                             const unfinishedLabels = items.filter(i => !i.done).map(i => i.label);
-                            const hasNotYetCompetent = items.some(i => i.outcome === "Not Yet Competent") || t.practicalSessionOutcome === "Not Yet Competent";
+                            const hasNotYetCompetent = hasUnresolvedNyc(t, items);
                             const attendanceComplete = t.attendancePercent >= 100 && total > 0;
                             const isDetailsExpanded = expandedTaskId === t.id;
                             const isIdpExpanded = idpExpandedTaskId === t.id;
