@@ -458,19 +458,24 @@ function outcomeBadgeClass(outcome) {
   return "bg-slate-100 text-slate-500";
 }
 
+// Checklist items carry a `group` tag so the UI can show them under
+// subheaders instead of one long flat list. "topics" = the individually
+// assessed items (Practical Session for C Diploma, each session topic for
+// B/A Diploma) plus their Reassessment lines; "fixed" = the standard B/A
+// coursework artefacts; "modules" = Online Modules / Formative Assessment.
 function courseworkItems(record, coachTopics, team) {
-  const onlineModulesItem = { label: "Online Modules", done: (record.onlineModulesPercent || 0) >= 100, outcome: "", percent: record.onlineModulesPercent || 0 };
-  const formativeAssessmentItem = { label: "Formative Assessment", done: !!record.formativeAssessmentDone, outcome: "" };
+  const onlineModulesItem = { label: "Online Modules", done: (record.onlineModulesPercent || 0) >= 100, outcome: "", percent: record.onlineModulesPercent || 0, group: "modules" };
+  const formativeAssessmentItem = { label: "Formative Assessment", done: !!record.formativeAssessmentDone, outcome: "", group: "modules" };
   if (isCDiploma(record.courseTitle)) {
     const practicalOutcome = record.practicalSessionOutcome || "";
     // Once Not Yet Competent, the item's own done flag is permanently
     // false (and its checkbox disabled) — completion now flows through
     // the Reassessment tickbox instead, so this item ticks off with it.
     const practicalDone = practicalOutcome === "Not Yet Competent" ? !!record.practicalReassessmentDone : !!record.practicalSessionDone;
-    const practicalItem = { label: "Practical Session", done: practicalDone, outcome: practicalOutcome, team: team || "" };
+    const practicalItem = { label: "Practical Session", done: practicalDone, outcome: practicalOutcome, team: team || "", group: "topics" };
     const items = [practicalItem];
     if (practicalOutcome === "Not Yet Competent") {
-      items.push({ label: "Practical Session" + REASSESSMENT_SUFFIX, done: practicalDone, outcome: "", isReassessment: true });
+      items.push({ label: "Practical Session" + REASSESSMENT_SUFFIX, done: practicalDone, outcome: "", isReassessment: true, group: "topics" });
     }
     items.push(onlineModulesItem, formativeAssessmentItem);
     return items;
@@ -487,28 +492,66 @@ function courseworkItems(record, coachTopics, team) {
       const done = isNyc
         ? !!(record.sessionPlansReassessmentDone && record.sessionPlansReassessmentDone[t])
         : !!(record.sessionPlansDone && record.sessionPlansDone[t]);
-      sessionItems.push({ label: t, done, outcome });
+      sessionItems.push({ label: t, done, outcome, group: "topics" });
       if (isNyc) {
         sessionItems.push({
           label: t + REASSESSMENT_SUFFIX,
           done,
           outcome: "",
           isReassessment: true,
+          group: "topics",
         });
       }
     });
     const fixedItems = [
-      { label: "Goalscoring Presentation", done: !!record.goalscoringPresentationDone, outcome: "", team: team || "" },
-      { label: "Game Plan", done: !!record.gamePlanDone, outcome: "" },
-      { label: "Analysis Session Plan", done: !!record.analysisSessionPlanDone, outcome: "" },
-      { label: "Annual (Yearly) Plan", done: !!record.annualPlanDone, outcome: "" },
-      ...(isBDiploma(record.courseTitle) ? [{ label: "25 Min Coaching Session (Candidate Folder, Block 2→3)", done: !!record.coachingSession25MinDone, outcome: "" }] : []),
-      { label: "6WC (6 Week Cycle)", done: !!record.sixWeekCycleDone, outcome: "" },
-      { label: "with FC (football conditioning) details", done: !!record.fcDetailsDone, outcome: "" },
+      { label: "Goalscoring Presentation", done: !!record.goalscoringPresentationDone, outcome: "", team: team || "", group: "fixed" },
+      { label: "Game Plan", done: !!record.gamePlanDone, outcome: "", group: "fixed" },
+      { label: "Analysis Session Plan", done: !!record.analysisSessionPlanDone, outcome: "", group: "fixed" },
+      { label: "Annual (Yearly) Plan", done: !!record.annualPlanDone, outcome: "", group: "fixed" },
+      ...(isBDiploma(record.courseTitle) ? [{ label: "25 Min Coaching Session (Candidate Folder, Block 2→3)", done: !!record.coachingSession25MinDone, outcome: "", group: "fixed" }] : []),
+      { label: "6WC (6 Week Cycle)", done: !!record.sixWeekCycleDone, outcome: "", group: "fixed" },
+      { label: "with FC (football conditioning) details", done: !!record.fcDetailsDone, outcome: "", group: "fixed" },
     ];
     return [...sessionItems, ...fixedItems, onlineModulesItem, formativeAssessmentItem];
   }
   return [];
+}
+
+// Pure state-update for ticking a single coursework checklist item on/off —
+// shared by the Course Report modal's per-coach checklist (Candidates
+// Progress) and the Dashboard's Outstanding Coaches list, so ticking an item
+// in either place updates the exact same record and both stay in sync.
+// Callers are responsible for any access-gating and for actually saving the
+// returned record via saveCompletedTasks.
+function applyCourseworkToggle(task, label, coachTopics) {
+  const topics = (coachTopics || []).slice(0, 4);
+  if (isCDiploma(task.courseTitle) && label === "Practical Session" && task.practicalSessionOutcome === "Not Yet Competent") return task;
+  if (topics.includes(label) && (task.sessionPlansOutcomes || {})[label] === "Not Yet Competent") return task;
+  let updated = { ...task };
+  if (label === "Practical Session" + REASSESSMENT_SUFFIX) {
+    updated.practicalReassessmentDone = !task.practicalReassessmentDone;
+  } else if (label.endsWith(REASSESSMENT_SUFFIX) && topics.includes(label.slice(0, -REASSESSMENT_SUFFIX.length))) {
+    const topic = label.slice(0, -REASSESSMENT_SUFFIX.length);
+    updated.sessionPlansReassessmentDone = { ...(task.sessionPlansReassessmentDone || {}), [topic]: !(task.sessionPlansReassessmentDone || {})[topic] };
+  } else if (isCDiploma(task.courseTitle) && label === "Practical Session") {
+    updated.practicalSessionDone = !task.practicalSessionDone;
+  } else if (isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) {
+    if (topics.includes(label)) {
+      updated.sessionPlansDone = { ...(task.sessionPlansDone || {}), [label]: !(task.sessionPlansDone || {})[label] };
+    } else if (label === "Goalscoring Presentation") updated.goalscoringPresentationDone = !task.goalscoringPresentationDone;
+    else if (label === "Game Plan") updated.gamePlanDone = !task.gamePlanDone;
+    else if (label === "Analysis Session Plan") updated.analysisSessionPlanDone = !task.analysisSessionPlanDone;
+    else if (label === "Annual (Yearly) Plan") updated.annualPlanDone = !task.annualPlanDone;
+    else if (label === "25 Min Coaching Session (Candidate Folder, Block 2→3)") updated.coachingSession25MinDone = !task.coachingSession25MinDone;
+    else if (label === "6WC (6 Week Cycle)") {
+      const next = !task.sixWeekCycleDone;
+      updated.sixWeekCycleDone = next;
+      if (!next) updated.fcDetailsDone = false;
+    } else if (label === "with FC (football conditioning) details" && task.sixWeekCycleDone) {
+      updated.fcDetailsDone = !task.fcDetailsDone;
+    }
+  }
+  return { ...updated, updatedAt: new Date().toISOString() };
 }
 
 function computeSessionNumber(observations, coachId, courseNumber, currentId, currentDate) {
@@ -2022,7 +2065,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
   const items = [
     { id: "dashboard", label: "Dashboard", icon: TrendingUp },
     { id: "newObs", label: "New Observation", icon: ClipboardList },
-    { id: "tasks", label: "Completed Tasks", icon: ListChecks },
+    { id: "tasks", label: "Candidates Progress", icon: ListChecks },
     { id: "logistics", label: "Logistics", icon: Settings },
     { id: "history", label: "History", icon: FileText },
     { id: "cetAssessment", label: "CET Observation", icon: Award },
@@ -2370,6 +2413,14 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
     return coaches.find(c => c.id === coachId)?.topics;
   }
 
+  // Lets an outstanding checklist item be ticked directly from the
+  // Outstanding Coaches list — writes to the exact same completedTasks
+  // record Candidates Progress reads, so both views stay in sync.
+  function toggleOutstandingItem(task, label) {
+    const updated = applyCourseworkToggle(task, label, coachTopicsFor(task.coachId));
+    saveCompletedTasks(completedTasks.map(t => t.id === task.id ? updated : t));
+  }
+
   const incompleteEntries = completedGroups.flatMap(g =>
     g.records
       .filter(t => !isCoachFullyComplete(t, coachTopicsFor(t.coachId)))
@@ -2394,7 +2445,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
           <h3 className="font-semibold text-slate-800 text-sm">Open Courses</h3>
         </div>
         {openGroups.length === 0 ? (
-          <div className="p-6 text-center text-slate-400 text-sm">No open courses yet — these appear once a Completed Tasks record has a Course Number set.</div>
+          <div className="p-6 text-center text-slate-400 text-sm">No open courses yet — these appear once a Candidates Progress record has a Course Number set.</div>
         ) : (
           <div className="divide-y divide-slate-100">
             {openGroupsByMf.map(([mfKey, groupsForMf]) => {
@@ -2600,19 +2651,37 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                   {isExpanded && (
                     <div className="pb-1">
                       {g.entries.map(t => {
-                        const reqs = outstandingRequirements(t, coachTopicsFor(t.coachId));
+                        const cardCoach = coaches.find(c => c.id === t.coachId);
+                        const items = t.total > 0 ? courseworkItems(t, cardCoach?.topics, t.team) : [];
+                        const outstandingItems = items.filter(i => !i.done);
                         return (
-                          <div key={t.id} className="px-5 py-3 border-t border-slate-100 flex items-center justify-between gap-3">
-                            <div>
-                              <button type="button" onClick={function handleOpenCompletedTaskClick() { openCompletedTaskFn(t.id); }} className="text-sm font-medium text-slate-800 hover:text-indigo-600 hover:underline text-left">{t.coachName}</button>
-                              <p className="text-xs text-slate-400">
-                                Attendance {t.attendancePercent}%{t.total > 0 ? ` · Coursework ${t.done}/${t.total}` : ""}
-                              </p>
-                              {reqs.length > 0 && (
-                                <p className="text-xs font-semibold text-red-600 mt-0.5">Still needed: {reqs.join(", ")}</p>
-                              )}
+                          <div key={t.id} className="px-5 py-3 border-t border-slate-100">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <button type="button" onClick={function handleOpenCompletedTaskClick() { openCompletedTaskFn(t.id); }} className="text-sm font-medium text-slate-800 hover:text-indigo-600 hover:underline text-left">{t.coachName}</button>
+                                <p className="text-xs text-slate-400">
+                                  Attendance {t.attendancePercent}%{t.total > 0 ? ` · Coursework ${t.done}/${t.total}` : ""}
+                                </p>
+                                {t.attendancePercent < 100 && (
+                                  <p className="text-xs font-semibold text-red-600 mt-0.5">Attendance not yet 100%</p>
+                                )}
+                              </div>
+                              <button onClick={() => goHistory(t.coachId)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap shrink-0">History</button>
                             </div>
-                            <button onClick={() => goHistory(t.coachId)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">History</button>
+                            {outstandingItems.length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                {outstandingItems.map((item, i) => {
+                                  const isNyc = item.outcome === "Not Yet Competent";
+                                  return (
+                                    <label key={i} className={`flex items-center gap-2 text-xs ${isNyc ? "text-red-500" : "text-slate-600 cursor-pointer"}`}>
+                                      <input type="checkbox" checked={false} disabled={isNyc} onChange={() => toggleOutstandingItem(t, item.label)}
+                                        className="rounded border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed" />
+                                      {item.label}{isNyc ? " — Not Yet Competent, needs re-observation" : ""}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -2863,7 +2932,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
       return { ...c, memberFederations: [...derived] };
     });
     saveCoaches(nextCoaches);
-    setBulkCoachMfMsg(`Assigned Member Federation(s) to ${updatedCount} coach${updatedCount === 1 ? "" : "es"} from their course history. ${coachesBackfillableCount - updatedCount} coach${(coachesBackfillableCount - updatedCount) === 1 ? "" : "es"} had no Completed Tasks or observation record to derive a federation from.`);
+    setBulkCoachMfMsg(`Assigned Member Federation(s) to ${updatedCount} coach${updatedCount === 1 ? "" : "es"} from their course history. ${coachesBackfillableCount - updatedCount} coach${(coachesBackfillableCount - updatedCount) === 1 ? "" : "es"} had no Candidates Progress or observation record to derive a federation from.`);
   }
 
   function handleBackfillAuth() {
@@ -3210,7 +3279,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
         <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
           <p className="text-sm font-semibold text-indigo-900">Assign Member Federation from Course History</p>
           <p className="text-xs text-indigo-700">
-            For the {coachesBackfillableCount} coach{coachesBackfillableCount === 1 ? "" : "es"} with no Member Federation set, this looks at their existing Completed Tasks and observation records
+            For the {coachesBackfillableCount} coach{coachesBackfillableCount === 1 ? "" : "es"} with no Member Federation set, this looks at their existing Candidates Progress and observation records
             and assigns whichever federation(s) those show — i.e. wherever they actually did the course. Coaches with no record at all to derive from are left unchanged. MA Admin only.
           </p>
           {bulkCoachMfMsg && <p className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{bulkCoachMfMsg}</p>}
@@ -5080,12 +5149,12 @@ function buildCandidateHtml(task, coach, observations) {
             <h1>${esc(task.coachName)}</h1>
             <p class="subtitle">${esc(task.courseTitle)}${task.courseNumber ? ` (#${esc(task.courseNumber)})` : ""}</p>
           </div>
-          <span class="type-badge">Completed Tasks &amp; Observation History</span>
+          <span class="type-badge">Candidates Progress &amp; Observation History</span>
           ${task.memberFederation !== "FA" ? `<div class="header-icon"><img src="${(MEMBER_FEDERATIONS.find(m => m.key === "FA") || {}).logoUrl || ""}" alt="Football Australia logo" /></div>` : ""}
         </div>
 
         <div class="section">
-          <p class="section-title">Completed Tasks Checklist</p>
+          <p class="section-title">Candidates Progress Checklist</p>
           <p style="font-size:13px;margin:0 0 10px;">Attendance: <strong>${task.attendancePercent}%</strong> · Online Modules: <strong>${task.onlineModulesPercent || 0}%</strong> · Coursework: <strong>${total > 0 ? `${done}/${total}` : "—"}</strong></p>
           ${checklistRows ? `<table style="width:100%;border-collapse:collapse;font-size:13px;">${checklistRows}</table>` : ""}
         </div>
@@ -6471,7 +6540,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     if (!isMasterAdmin(match)) {
       recordAdminAttempt(dupTaskAuthName, true);
       setDupTaskAuthError(false);
-      setDupTaskScopeError("Only a MA Admin can merge Completed Tasks records — they aren't tagged to a Member Federation.");
+      setDupTaskScopeError("Only a MA Admin can merge Candidates Progress records — they aren't tagged to a Member Federation.");
       return;
     }
     recordAdminAttempt(dupTaskAuthName, true);
@@ -6535,6 +6604,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [coachSearchQuery, setCoachSearchQuery] = useState("");
   const [coachDropdownOpen, setCoachDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [expandedCourses, setExpandedCourses] = useState(() => new Set());
   const [expandedMfs, setExpandedMfs] = useState(() => new Set());
@@ -7343,34 +7413,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       return;
     }
     const cardCoach = coaches.find(c => c.id === task.coachId);
-    const coachTopics = (cardCoach?.topics || []).slice(0, 4);
-    if (isCDiploma(task.courseTitle) && label === "Practical Session" && task.practicalSessionOutcome === "Not Yet Competent") return;
-    if (coachTopics.includes(label) && (task.sessionPlansOutcomes || {})[label] === "Not Yet Competent") return;
-    let updated = { ...task };
-    if (label === "Practical Session" + REASSESSMENT_SUFFIX) {
-      updated.practicalReassessmentDone = !task.practicalReassessmentDone;
-    } else if (label.endsWith(REASSESSMENT_SUFFIX) && coachTopics.includes(label.slice(0, -REASSESSMENT_SUFFIX.length))) {
-      const topic = label.slice(0, -REASSESSMENT_SUFFIX.length);
-      updated.sessionPlansReassessmentDone = { ...(task.sessionPlansReassessmentDone || {}), [topic]: !(task.sessionPlansReassessmentDone || {})[topic] };
-    } else if (isCDiploma(task.courseTitle) && label === "Practical Session") {
-      updated.practicalSessionDone = !task.practicalSessionDone;
-    } else if (isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) {
-      if (coachTopics.includes(label)) {
-        updated.sessionPlansDone = { ...(task.sessionPlansDone || {}), [label]: !(task.sessionPlansDone || {})[label] };
-      } else if (label === "Goalscoring Presentation") updated.goalscoringPresentationDone = !task.goalscoringPresentationDone;
-      else if (label === "Game Plan") updated.gamePlanDone = !task.gamePlanDone;
-      else if (label === "Analysis Session Plan") updated.analysisSessionPlanDone = !task.analysisSessionPlanDone;
-      else if (label === "Annual (Yearly) Plan") updated.annualPlanDone = !task.annualPlanDone;
-      else if (label === "25 Min Coaching Session (Candidate Folder, Block 2→3)") updated.coachingSession25MinDone = !task.coachingSession25MinDone;
-      else if (label === "6WC (6 Week Cycle)") {
-        const next = !task.sixWeekCycleDone;
-        updated.sixWeekCycleDone = next;
-        if (!next) updated.fcDetailsDone = false;
-      } else if (label === "with FC (football conditioning) details" && task.sixWeekCycleDone) {
-        updated.fcDetailsDone = !task.fcDetailsDone;
-      }
-    }
-    saveCompletedTasks(completedTasks.map(t => t.id === task.id ? { ...updated, updatedAt: new Date().toISOString() } : t));
+    const updated = applyCourseworkToggle(task, label, cardCoach?.topics);
+    saveCompletedTasks(completedTasks.map(t => t.id === task.id ? updated : t));
   }
 
   function renderCourseReport() {
@@ -7420,7 +7464,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               </div>
             );
           })()}
-          <p className="text-xs text-slate-400">Outstanding checklist items can be ticked off directly here. Progress Tracking is shown per block — open the candidate's own card in Completed Tasks to change it.</p>
+          <p className="text-xs text-slate-400">Outstanding checklist items can be ticked off directly here. Progress Tracking is shown per block — open the candidate's own card in Candidates Progress to change it.</p>
           <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
             {[...group.records].sort((a, b) => (a.coachName || "").localeCompare(b.coachName || "")).map(t => {
               const cardCoach = coaches.find(c => c.id === t.coachId);
@@ -7811,7 +7855,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       {courseReportNumber && renderCourseReport()}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">Completed Tasks</h2>
+          <h2 className="text-xl font-bold text-slate-900">Candidates Progress</h2>
           <p className="text-sm text-slate-500">Track attendance and coursework completion per coach, per course.</p>
         </div>
         <div className="flex gap-2">
@@ -7890,7 +7934,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
 
       {showDupTasks && duplicateTaskGroups.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-          <p className="text-sm font-semibold text-amber-900">Duplicate Completed Tasks Records</p>
+          <p className="text-sm font-semibold text-amber-900">Duplicate Candidates Progress Records</p>
           <p className="text-xs text-amber-700">Same coach, same course number, showing up as more than one record — usually from importing the same roster twice. Merging keeps the higher attendance/online modules %, and combines every completed checklist item across the duplicates.</p>
 
           {!dupTaskAuthed ? (
@@ -8142,21 +8186,28 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
         <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">No records yet. Add attendance and coursework tracking for a coach above.</div>
       ) : (
         <>
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search by coach name..."
-              className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-sm" />
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-[220px]">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search by coach name..."
+                className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-sm" />
+            </div>
+            <label className="flex items-center gap-1.5 text-sm font-medium text-slate-600 cursor-pointer shrink-0">
+              <input type="checkbox" checked={incompleteOnly} onChange={() => setIncompleteOnly(v => !v)} className="rounded border-slate-300" />
+              Show me just the incomplete ones
+            </label>
           </div>
           {(() => {
             const q = searchQuery.trim().toLowerCase();
             const groups = groupTasksForDisplay(completedTasks).map(g => ({
               ...g,
               records: [...g.records].sort((a, b) => (a.coachName || "").localeCompare(b.coachName || ""))
-                .filter(t => !q || (t.coachName || "").toLowerCase().split(/\s+/).some(part => part.includes(q))),
+                .filter(t => !q || (t.coachName || "").toLowerCase().split(/\s+/).some(part => part.includes(q)))
+                .filter(t => !incompleteOnly || !isCoachFullyComplete(t, (coaches.find(c => c.id === t.coachId) || {}).topics)),
             })).filter(g => g.records.length > 0)
               .filter(g => sessionCanSeeRecord(session, g.courseNumber, dominantMfForGroup(g)));
             if (groups.length === 0) {
-              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">{q ? `No records match "${searchQuery}".` : "No records yet."}</div>;
+              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">{q ? `No records match "${searchQuery}".` : incompleteOnly ? "No incomplete records — everyone's done!" : "No records yet."}</div>;
             }
             // Course groups are nested under a Member Federation header — the
             // MF is read off whichever value is most common among a course
@@ -8187,7 +8238,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             return (
               <div className="space-y-4">
                 {mfGroups.map(mfg => {
-                  const mfCollapsed = !q && !expandedMfs.has(mfg.mfKey || "none");
+                  const mfCollapsed = !q && !incompleteOnly && !expandedMfs.has(mfg.mfKey || "none");
                   return (
                     <div key={mfg.mfKey || "none"} className="space-y-3">
                       <button onClick={() => setExpandedMfs(prev => {
@@ -8204,7 +8255,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                       {!mfCollapsed && (
                 <div className="space-y-3 pl-2">
                 {mfg.courseGroups.map(g => {
-                  const isCollapsed = !q && !expandedCourses.has(g.courseNumber);
+                  const isCollapsed = !q && !incompleteOnly && !expandedCourses.has(g.courseNumber);
                   const groupIds = g.records.map(t => t.id);
                   const groupAllSelected = groupIds.length > 0 && groupIds.every(id => selectedTaskIds.has(id));
                   const groupSomeSelected = groupIds.some(id => selectedTaskIds.has(id));
@@ -8432,39 +8483,57 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                               <p className="text-[10px] font-bold uppercase tracking-wide text-indigo-600">Full Checklist</p>
                                               <p className="text-xs font-bold text-slate-700">{done} of {total} completed</p>
                                             </div>
-                                            <div className="space-y-1">
-                                              {items.map((item, i) => {
-                                                const itemReport = item.done && (t.courseNumber || "").trim()
-                                                  ? (observations || [])
-                                                      .filter(o => o.status !== "draft" && o.coachId === t.coachId && (o.courseNumber || "").trim() === (t.courseNumber || "").trim() &&
-                                                        (((isBDiploma(t.courseTitle) || isADiploma(t.courseTitle)) && o.sessionTopic === item.label) || (isCDiploma(t.courseTitle) && item.label === "Practical Session")))
-                                                      .sort((a, b) => new Date(b.date) - new Date(a.date))[0]
-                                                  : null;
-                                                return (
-                                                  <div key={i}>
-                                                  <div className="flex items-center justify-between gap-2 text-xs">
-                                                    <span className={`flex items-center gap-1.5 ${item.done ? "text-slate-700" : "text-slate-400"}`}>
-                                                      {item.done ? <Check className="w-3 h-3 text-emerald-600 shrink-0" /> : <span className="w-3 h-3 rounded-full border border-slate-300 inline-block shrink-0" />}
-                                                      {itemReport && onViewReport ? (
-                                                        <button type="button" onClick={() => onViewReport(itemReport.id)} className="underline decoration-dotted hover:text-indigo-600">{item.label}</button>
-                                                      ) : (
-                                                        <span>{item.label}</span>
-                                                      )}
-                                                      {suggestedTopics.includes(item.label) && <span className="text-amber-500" title="Suggested focus from IDP Performance Gap">★</span>}
-                                                    </span>
-                                                    <span className="flex items-center gap-1.5 shrink-0">
-                                                      {item.team && <span className="text-slate-400">({item.team})</span>}
-                                                      {item.outcome && (
-                                                        <span className={`font-semibold px-1.5 py-0.5 rounded-full ${outcomeBadgeClass(item.outcome)}`}>{item.outcome}</span>
-                                                      )}
-                                                    </span>
+                                            <div className="space-y-2">
+                                              {(() => {
+                                                // Grouped subheaders instead of one flat list — the "group" tag on
+                                                // each item comes from courseworkItems().
+                                                const GROUP_ORDER = ["topics", "fixed", "modules"];
+                                                const GROUP_LABELS = {
+                                                  topics: isCDiploma(t.courseTitle) ? "Practical Assessment" : "Session Topics",
+                                                  fixed: "Fixed Items",
+                                                  modules: "Modules & Assessment",
+                                                };
+                                                const grouped = GROUP_ORDER
+                                                  .map(g => ({ key: g, label: GROUP_LABELS[g], list: items.filter(it => (it.group || "modules") === g) }))
+                                                  .filter(g => g.list.length > 0);
+                                                return grouped.map(gr => (
+                                                  <div key={gr.key} className="space-y-1">
+                                                    <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400 pt-1">{gr.label}</p>
+                                                    {gr.list.map((item, i) => {
+                                                      const itemReport = item.done && (t.courseNumber || "").trim()
+                                                        ? (observations || [])
+                                                            .filter(o => o.status !== "draft" && o.coachId === t.coachId && (o.courseNumber || "").trim() === (t.courseNumber || "").trim() &&
+                                                              (((isBDiploma(t.courseTitle) || isADiploma(t.courseTitle)) && o.sessionTopic === item.label) || (isCDiploma(t.courseTitle) && item.label === "Practical Session")))
+                                                            .sort((a, b) => new Date(b.date) - new Date(a.date))[0]
+                                                        : null;
+                                                      return (
+                                                        <div key={i}>
+                                                        <div className="flex items-center justify-between gap-2 text-xs">
+                                                          <span className={`flex items-center gap-1.5 ${item.done ? "text-slate-700" : "text-slate-400"}`}>
+                                                            {item.done ? <Check className="w-3 h-3 text-emerald-600 shrink-0" /> : <span className="w-3 h-3 rounded-full border border-slate-300 inline-block shrink-0" />}
+                                                            {itemReport && onViewReport ? (
+                                                              <button type="button" onClick={() => onViewReport(itemReport.id)} className="underline decoration-dotted hover:text-indigo-600">{item.label}</button>
+                                                            ) : (
+                                                              <span>{item.label}</span>
+                                                            )}
+                                                            {suggestedTopics.includes(item.label) && <span className="text-amber-500" title="Suggested focus from IDP Performance Gap">★</span>}
+                                                          </span>
+                                                          <span className="flex items-center gap-1.5 shrink-0">
+                                                            {item.team && <span className="text-slate-400">({item.team})</span>}
+                                                            {item.outcome && (
+                                                              <span className={`font-semibold px-1.5 py-0.5 rounded-full ${outcomeBadgeClass(item.outcome)}`}>{item.outcome}</span>
+                                                            )}
+                                                          </span>
+                                                        </div>
+                                                        {!item.done && t.courseworkNotes?.[item.label] && item.label !== "Online Modules" && item.label !== "Formative Assessment" && (
+                                                          <p className="text-[11px] text-slate-400 italic pl-4.5 ml-0.5">{t.courseworkNotes[item.label]}</p>
+                                                        )}
+                                                        </div>
+                                                      );
+                                                    })}
                                                   </div>
-                                                  {!item.done && t.courseworkNotes?.[item.label] && item.label !== "Online Modules" && item.label !== "Formative Assessment" && (
-                                                    <p className="text-[11px] text-slate-400 italic pl-4.5 ml-0.5">{t.courseworkNotes[item.label]}</p>
-                                                  )}
-                                                  </div>
-                                                );
-                                              })}
+                                                ));
+                                              })()}
                                             </div>
                                             {attendanceComplete && (
                                               <div className="pt-1 space-y-2">
@@ -11024,7 +11093,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     { table: "coaches", label: "Coaches", masterOnly: false, nameOf: (i) => i.name },
     { table: "cets", label: "CETs", masterOnly: false, nameOf: (i) => i.name },
     { table: "observations", label: "Observations", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
-    { table: "completed_tasks", label: "Completed Tasks", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"}${i.courseNumber ? ` — #${i.courseNumber}` : ""}` },
+    { table: "completed_tasks", label: "Candidates Progress", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"}${i.courseNumber ? ` — #${i.courseNumber}` : ""}` },
     { table: "cet_assessments", label: "CET Observations", masterOnly: false, nameOf: (i) => `${i.cetName || "Unknown CET"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
     { table: "rapa_assessments", label: "RAPA Risk Assessments", masterOnly: false, nameOf: (i) => `${i.session || "Untitled session"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
     { table: "rapa_incidents", label: "RAPA Incident Reports", masterOnly: false, nameOf: (i) => `${i.course || "Untitled course"} — ${i.incDate ? new Date(i.incDate).toLocaleDateString("en-GB") : "no date"}` },
@@ -11238,7 +11307,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     }).join("");
     const completedTasksSections = filteredCompletedTasks.length > 0 ? `
       <div style="page-break-after: always; font-family: -apple-system, Helvetica, Arial, sans-serif; padding: 28px; color: #1e293b;">
-        <h2 style="margin:0 0 12px 0;">Completed Tasks Summary</h2>
+        <h2 style="margin:0 0 12px 0;">Candidates Progress Summary</h2>
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
           <thead>
             <tr>
@@ -11783,8 +11852,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                 <p className="text-sm font-semibold text-slate-800 mb-1">Export Observation History</p>
                 <p className="text-xs text-slate-500 mb-2">
                   {iAmMaster
-                    ? "Downloads one HTML file with a Completed Tasks summary table for every coach, followed by every finished (submitted) observation report (including pitch maps). Open the downloaded file in a browser tab and use Print → Save as PDF."
-                    : "Downloads one HTML file covering just your Member Federation's submitted observation reports (including pitch maps), plus a best-effort Completed Tasks summary for the same coaches. Open the downloaded file in a browser tab and use Print → Save as PDF."}
+                    ? "Downloads one HTML file with a Candidates Progress summary table for every coach, followed by every finished (submitted) observation report (including pitch maps). Open the downloaded file in a browser tab and use Print → Save as PDF."
+                    : "Downloads one HTML file covering just your Member Federation's submitted observation reports (including pitch maps), plus a best-effort Candidates Progress summary for the same coaches. Open the downloaded file in a browser tab and use Print → Save as PDF."}
                 </p>
                 <button onClick={handleExportPdf}
                   disabled={observations.length === 0}
@@ -11980,7 +12049,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         <div key={mfKey}>
                           <p className="text-[11px] font-medium text-violet-700 mb-1">{mfLabel} course number(s)</p>
                           {options.length === 0 ? (
-                            <p className="text-xs text-slate-400">No courses tagged to this federation yet in Completed Tasks.</p>
+                            <p className="text-xs text-slate-400">No courses tagged to this federation yet in Candidates Progress.</p>
                           ) : (
                             <div className="flex gap-1.5 flex-wrap">
                               {options.map(num => (
@@ -12135,7 +12204,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                                 {mfLabel} course number(s) — {adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mfKey)).length}/4 Course Admins already set for this federation
                               </p>
                               {options.length === 0 ? (
-                                <p className="text-xs text-slate-400">No courses tagged to this federation yet in Completed Tasks.</p>
+                                <p className="text-xs text-slate-400">No courses tagged to this federation yet in Candidates Progress.</p>
                               ) : (
                                 <div className="flex gap-1.5 flex-wrap">
                                   {options.map(num => (
@@ -12310,7 +12379,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   {confirmDeleteObsId === o.id && (
                     <div className="mt-3 flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg p-2.5">
                       <p className="text-xs text-red-700 flex-1">
-                        Delete this observation for {o.coachName}? Any linked Completed Tasks record will revert to no record for this item (unless another observation still covers it).
+                        Delete this observation for {o.coachName}? Any linked Candidates Progress record will revert to no record for this item (unless another observation still covers it).
                       </p>
                       <button onClick={(e) => { e.stopPropagation(); onDeleteObservation(o.id); setConfirmDeleteObsId(null); }}
                         className="text-xs font-semibold text-red-700 hover:text-red-800 whitespace-nowrap">Delete</button>
