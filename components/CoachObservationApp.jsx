@@ -1414,7 +1414,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [error, setError] = useState(null);
   const [reportId, setReportId] = useState(null);
   const [historyCoachId, setHistoryCoachId] = useState(null);
-  const [focusTaskId, setFocusTaskId] = useState(null);
+  const [jumpTaskRef, setFocusTaskId] = useState(null);
   const [historyCetFilter, setHistoryCetFilter] = useState("");
   const [editingObservationId, setEditingObservationId] = useState(null);
   const [historyAdminAutoOpen, setHistoryAdminAutoOpen] = useState(false);
@@ -1736,7 +1736,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             closedCourseNumbers={closedCourseNumbers} saveClosedCourseNumbers={saveClosedCourseNumbers}
             goNewObs={() => { setEditingObservationId(null); setTab("newObs"); }}
             goHistory={(cid) => { setHistoryCoachId(cid); setTab("history"); }}
-            goToCompletedTask={(taskId) => { setFocusTaskId(taskId); setTab("tasks"); }}
+            openCompletedTaskFn={(taskId) => { setFocusTaskId(taskId); setTab("tasks"); }}
             onEditDraft={handleEditDraft}
             onSubmitDraft={handleSubmitDraft}
             onViewDraft={(id) => { setReportId(id); setTab("report"); }}
@@ -1765,7 +1765,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             closedCourseNumbers={closedCourseNumbers} saveClosedCourseNumbers={saveClosedCourseNumbers}
             closedCourseBlocks={closedCourseBlocks} saveClosedCourseBlocks={saveClosedCourseBlocks}
             adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
-            focusTaskId={focusTaskId} onFocusHandled={() => setFocusTaskId(null)}
+            jumpTaskRef={jumpTaskRef} onJumpHandledCb={() => setFocusTaskId(null)}
             session={codaSession}
           />
         )}
@@ -2077,7 +2077,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
   );
 }
 
-function Dashboard({ coaches, educators, observations, courses, drafts, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goNewObs, goHistory, goToCompletedTask, onEditDraft, onSubmitDraft, onViewDraft, session }) {
+function Dashboard({ coaches, educators, observations, courses, drafts, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goNewObs, goHistory, openCompletedTaskFn, onEditDraft, onSubmitDraft, onViewDraft, session }) {
   const [draftsExpanded, setDraftsExpanded] = useState(false);
   const [draftsSortMode, setDraftsSortMode] = useState("name");
   useEffect(() => {
@@ -2558,7 +2558,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                         return (
                           <div key={t.id} className="px-5 py-3 border-t border-slate-100 flex items-center justify-between gap-3">
                             <div>
-                              <button type="button" onClick={function jumpToCompletedTask() { goToCompletedTask(t.id); }} className="text-sm font-medium text-slate-800 hover:text-indigo-600 hover:underline text-left">{t.coachName}</button>
+                              <button type="button" onClick={function handleOpenCompletedTaskClick() { openCompletedTaskFn(t.id); }} className="text-sm font-medium text-slate-800 hover:text-indigo-600 hover:underline text-left">{t.coachName}</button>
                               <p className="text-xs text-slate-400">
                                 Attendance {t.attendancePercent}%{t.total > 0 ? ` · Coursework ${t.done}/${t.total}` : ""}
                               </p>
@@ -6366,7 +6366,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
   );
 }
 
-function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, closedCourseNumbers, saveClosedCourseNumbers, closedCourseBlocks, saveClosedCourseBlocks, adminSettings, adminLockouts, recordAdminAttempt, focusTaskId, onFocusHandled, session }) {
+function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, closedCourseNumbers, saveClosedCourseNumbers, closedCourseBlocks, saveClosedCourseBlocks, adminSettings, adminLockouts, recordAdminAttempt, jumpTaskRef, onJumpHandledCb, session }) {
   // Duplicate detection & merge for Completed Tasks — a different problem
   // from duplicate coach/CET profiles: this catches the same person, same
   // course, showing up as TWO separate attendance/checklist records (from
@@ -6483,25 +6483,25 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [selectedTaskIds, setSelectedTaskIds] = useState(() => new Set());
 
   // Jump-to-task: when the Dashboard's Outstanding Coaches list sends us a
-  // specific completed-task id (via focusTaskId), open the Member
+  // specific completed-task id (via jumpTaskRef), open the Member
   // Federation and course groups it lives in, expand its own row, and
   // scroll it into view — then clear the request so it only fires once.
   useEffect(() => {
-    if (!focusTaskId) return;
-    const task = completedTasks.find(t2 => t2.id === focusTaskId);
+    if (!jumpTaskRef) return;
+    const task = completedTasks.find(t2 => t2.id === jumpTaskRef);
     if (!task) return;
     const mfKey = (task.memberFederation || "") || "none";
     const courseKey = (task.courseNumber || "").trim();
     setExpandedMfs(prev => new Set(prev).add(mfKey));
     setExpandedCourses(prev => new Set(prev).add(courseKey));
-    setExpandedTaskId(focusTaskId);
+    setExpandedTaskId(jumpTaskRef);
     const timer = setTimeout(() => {
-      const rowEl = document.getElementById(`ct-task-${focusTaskId}`);
+      const rowEl = document.getElementById(`ct-task-${jumpTaskRef}`);
       if (rowEl) rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
-      if (onFocusHandled) onFocusHandled();
+      if (onJumpHandledCb) onJumpHandledCb();
     }, 150);
     return () => clearTimeout(timer);
-  }, [focusTaskId, completedTasks]);
+  }, [jumpTaskRef, completedTasks]);
 
   const [showCourseworkUpload, setShowCourseworkUpload] = useState(false);
   const [courseworkDiplomaType, setCourseworkDiplomaType] = useState("B");
