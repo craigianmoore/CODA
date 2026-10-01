@@ -1900,7 +1900,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
                 className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700 border border-emerald-300 px-3 py-2 rounded-lg hover:bg-emerald-50">
                 <FileText className="w-4 h-4" /> Course Coach Sheet Template
               </a>
-              <a href="/CODA_How_To_Use.docx" download
+              <a href="/CODA_How_To_Use.pdf" download
                 className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 border border-indigo-200 px-3 py-2 rounded-lg hover:bg-indigo-50">
                 <FileText className="w-4 h-4" /> How to Use CODA
               </a>
