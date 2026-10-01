@@ -6635,6 +6635,10 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [expandedCourses, setExpandedCourses] = useState(() => new Set());
   const [expandedMfs, setExpandedMfs] = useState(() => new Set());
+  // While a search or "incomplete only" filter is active every group is open
+  // by default; these sets record groups the user has manually closed.
+  const [collapsedCourses, setCollapsedCourses] = useState(() => new Set());
+  const [collapsedMfs, setCollapsedMfs] = useState(() => new Set());
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [idpExpandedTaskId, setIdpExpandedTaskId] = useState(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState(() => new Set());
@@ -6651,6 +6655,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     const courseKey = (task.courseNumber || "").trim();
     setExpandedMfs(prev => new Set(prev).add(mfKey));
     setExpandedCourses(prev => new Set(prev).add(courseKey));
+    setCollapsedMfs(prev => { const n = new Set(prev); n.delete(mfKey); return n; });
+    setCollapsedCourses(prev => { const n = new Set(prev); n.delete(courseKey); return n; });
     setExpandedTaskId(jumpTaskRef);
     const timer = setTimeout(() => {
       const rowEl = document.getElementById(`ct-task-${jumpTaskRef}`);
@@ -6806,6 +6812,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       next.add(key);
       return next;
     });
+    setCollapsedCourses(prev => { const n = new Set(prev); n.delete(key); return n; });
   }
 
   function startEdit(task) {
@@ -7409,7 +7416,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   }
 
   function toggleCourseExpand(courseNumber) {
-    setExpandedCourses(prev => {
+    const setter = (searchQuery.trim() || incompleteOnly) ? setCollapsedCourses : setExpandedCourses;
+    setter(prev => {
       const next = new Set(prev);
       if (next.has(courseNumber)) next.delete(courseNumber); else next.add(courseNumber);
       return next;
@@ -8265,10 +8273,11 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             return (
               <div className="space-y-4">
                 {mfGroups.map(mfg => {
-                  const mfCollapsed = !q && !incompleteOnly && !expandedMfs.has(mfg.mfKey || "none");
+                  const forcedOpen = !!q || incompleteOnly;
+                  const mfCollapsed = forcedOpen ? collapsedMfs.has(mfg.mfKey || "none") : !expandedMfs.has(mfg.mfKey || "none");
                   return (
                     <div key={mfg.mfKey || "none"} className="space-y-3">
-                      <button onClick={() => setExpandedMfs(prev => {
+                      <button onClick={() => (forcedOpen ? setCollapsedMfs : setExpandedMfs)(prev => {
                         const next = new Set(prev);
                         const k = mfg.mfKey || "none";
                         next.has(k) ? next.delete(k) : next.add(k);
@@ -8283,7 +8292,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                       {!mfCollapsed && (
                 <div className="space-y-3 pl-2">
                 {mfg.courseGroups.map(g => {
-                  const isCollapsed = !q && !incompleteOnly && !expandedCourses.has(g.courseNumber);
+                  const isCollapsed = forcedOpen ? collapsedCourses.has(g.courseNumber) : !expandedCourses.has(g.courseNumber);
                   const groupIds = g.records.map(t => t.id);
                   const groupAllSelected = groupIds.length > 0 && groupIds.every(id => selectedTaskIds.has(id));
                   const groupSomeSelected = groupIds.some(id => selectedTaskIds.has(id));
