@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { Users, BookOpen, ClipboardList, FileText, Plus, ChevronLeft, ChevronRight, Check, X, Calendar, Award, TrendingUp, ArrowRight, Loader2, ListChecks, Pencil, Upload, AlertCircle, PenLine, Search, Trash2, Settings, Clock, Smartphone, Tablet, Laptop, Lock, LogOut, Mic, ShieldAlert } from "lucide-react";
 import Papa from "papaparse";
 import * as mammoth from "mammoth";
@@ -2158,16 +2158,19 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
             const Icon = it.icon;
             const active = tab === it.id || (tab === "report" && it.id === "history");
             return (
-              <button
-                key={it.id}
-                onClick={() => setTab(it.id)}
-                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-t-lg whitespace-nowrap border-b-2 transition-colors ${
-                  active ? "border-slate-900 text-slate-900" : "border-transparent text-slate-400 hover:text-slate-600"
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {it.label}
-              </button>
+              <Fragment key={it.id}>
+                {/* Divider: CET Observation and RAPA are a separate operational area from the course tabs */}
+                {it.id === "cetAssessment" && <span aria-hidden="true" className="self-center h-5 w-px bg-slate-400 mx-1 shrink-0" />}
+                <button
+                  onClick={() => setTab(it.id)}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-t-lg whitespace-nowrap border-b-2 transition-colors ${
+                    active ? "border-slate-900 text-slate-900" : "border-transparent text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {it.label}
+                </button>
+              </Fragment>
             );
           })}
           {onAdminClick && (
