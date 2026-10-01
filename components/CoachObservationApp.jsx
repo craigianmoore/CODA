@@ -2082,8 +2082,8 @@ function SignInGate({ educators, adminSettings, adminLockouts, recordAdminAttemp
 function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScaleChange, onAdminClick, session, onSignOut }) {
   const items = [
     { id: "dashboard", label: "Dashboard", icon: TrendingUp },
-    { id: "newObs", label: "New Observation", icon: ClipboardList },
-    { id: "tasks", label: "Candidates Progress", icon: ListChecks },
+    { id: "newObs", label: "New Obs.", fullLabel: "New Observation", icon: ClipboardList },
+    { id: "tasks", label: "Cand. Progress", fullLabel: "Candidates Progress", icon: ListChecks },
     { id: "logistics", label: "Logistics", icon: Settings },
     { id: "history", label: "History", icon: FileText },
     { id: "cetAssessment", label: "CET Observation", icon: Award },
@@ -2164,7 +2164,8 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
                 {it.id === "cetAssessment" && <span aria-hidden="true" className="self-center h-6 w-0.5 bg-slate-500 mx-1.5 shrink-0" />}
                 <button
                   onClick={() => setTab(it.id)}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-t-lg whitespace-nowrap border-b-2 transition-colors ${
+                  title={it.fullLabel || it.label}
+                  className={`flex items-center gap-1.5 px-2.5 py-2 text-sm font-medium rounded-t-lg whitespace-nowrap border-b-2 transition-colors ${
                     active ? "border-slate-900 text-slate-900" : "border-transparent text-slate-400 hover:text-slate-600"
                   }`}
                 >
