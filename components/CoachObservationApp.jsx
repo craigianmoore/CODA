@@ -2153,14 +2153,15 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
             </div>
           )}
         </div>
-        <nav className="flex items-center gap-1 overflow-x-auto pb-2 pr-2 -mb-px">
+        <nav className="flex items-center gap-2 pb-2 -mb-px">
+          <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">
           {items.map(it => {
             const Icon = it.icon;
             const active = tab === it.id || (tab === "report" && it.id === "history");
             return (
               <Fragment key={it.id}>
                 {/* Divider: CET Observation and RAPA are a separate operational area from the course tabs */}
-                {it.id === "cetAssessment" && <span aria-hidden="true" className="self-center h-5 w-px bg-slate-400 mx-1 shrink-0" />}
+                {it.id === "cetAssessment" && <span aria-hidden="true" className="self-center h-6 w-0.5 bg-slate-500 mx-1.5 shrink-0" />}
                 <button
                   onClick={() => setTab(it.id)}
                   className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-t-lg whitespace-nowrap border-b-2 transition-colors ${
@@ -2173,6 +2174,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
               </Fragment>
             );
           })}
+          </div>
           {onAdminClick && (
             <button
               onClick={onAdminClick}
