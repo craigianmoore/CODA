@@ -211,7 +211,7 @@ const DIPLOMA_BLOCK_OPTIONS_A = ["Block 1", "Block 2", "Block 3", "Block 4"];
 // and session-design practice, distinct from the coach observation rubric.
 const GRIP_ITEMS = [
   { key: "goals", label: "Goals", hint: "Clarity on what the session/conversation is working towards", img: "/images/grip-goals.png" },
-  { key: "reflect", label: "Reflect/Review", hint: "Prompting the candidate to reflect on their own practice", img: "/images/grip-reflect.png" },
+  { key: "reflect", label: "Reflect/Review", hint: "Prompting the coach to reflect on their own practice", img: "/images/grip-reflect.png" },
   { key: "input", label: "Input", hint: "Options, research or outside perspective brought in", img: "/images/grip-input.png" },
   { key: "plan", label: "Plan", hint: "Clear, agreed next steps", img: "/images/grip-plan.png" },
 ];
@@ -1898,7 +1898,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             <div className="flex justify-end gap-2">
               <a href="/CODA_Course_Candidate_Sheet_Template.xlsx" download
                 className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700 border border-emerald-300 px-3 py-2 rounded-lg hover:bg-emerald-50">
-                <FileText className="w-4 h-4" /> Course Candidate Sheet Template
+                <FileText className="w-4 h-4" /> Course Coach Sheet Template
               </a>
               <a href="/CODA_How_To_Use.docx" download
                 className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 border border-indigo-200 px-3 py-2 rounded-lg hover:bg-indigo-50">
@@ -2083,7 +2083,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
   const items = [
     { id: "dashboard", label: "Dashboard", icon: TrendingUp },
     { id: "newObs", label: "New Obs.", fullLabel: "New Observation", icon: ClipboardList },
-    { id: "tasks", label: "Cand. Progress", fullLabel: "Candidates Progress", icon: ListChecks },
+    { id: "tasks", label: "Coaches Progress", icon: ListChecks },
     { id: "logistics", label: "Logistics", icon: Settings },
     { id: "history", label: "History", icon: FileText },
     { id: "cetAssessment", label: "CET Observation", icon: Award },
@@ -2439,7 +2439,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
 
   // Lets an outstanding checklist item be ticked directly from the
   // Outstanding Coaches list — writes to the exact same completedTasks
-  // record Candidates Progress reads, so both views stay in sync.
+  // record Coaches Progress reads, so both views stay in sync.
   function toggleOutstandingItem(task, label) {
     const updated = applyCourseworkToggle(task, label, coachTopicsFor(task.coachId));
     saveCompletedTasks(completedTasks.map(t => t.id === task.id ? updated : t));
@@ -2475,7 +2475,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
           <h3 className="font-semibold text-slate-800 text-sm">Open Courses</h3>
         </div>
         {openGroups.length === 0 ? (
-          <div className="p-6 text-center text-slate-400 text-sm">No open courses yet — these appear once a Candidates Progress record has a Course Number set.</div>
+          <div className="p-6 text-center text-slate-400 text-sm">No open courses yet — these appear once a Coaches Progress record has a Course Number set.</div>
         ) : (
           <div className="divide-y divide-slate-100">
             {openGroupsByMf.map(([mfKey, groupsForMf]) => {
@@ -2709,7 +2709,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                                     <label key={i} className={`flex items-center gap-2 text-xs ${isNyc ? "text-red-500" : isPercentBased ? "text-slate-400" : "text-slate-600 cursor-pointer"}`}>
                                       <input type="checkbox" checked={false} disabled={isNyc || isPercentBased} onChange={() => toggleOutstandingItem(t, item.label)}
                                         className="rounded border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed" />
-                                      {item.label}{isNyc ? " — Not Yet Competent, needs re-observation" : isPercentBased ? ` — ${item.percent || 0}% (update % in Candidates Progress)` : ""}
+                                      {item.label}{isNyc ? " — Not Yet Competent, needs re-observation" : isPercentBased ? ` — ${item.percent || 0}% (update % in Coaches Progress)` : ""}
                                     </label>
                                   );
                                 })}
@@ -2965,7 +2965,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
       return { ...c, memberFederations: [...derived] };
     });
     saveCoaches(nextCoaches);
-    setBulkCoachMfMsg(`Assigned Member Federation(s) to ${updatedCount} coach${updatedCount === 1 ? "" : "es"} from their course history. ${coachesBackfillableCount - updatedCount} coach${(coachesBackfillableCount - updatedCount) === 1 ? "" : "es"} had no Candidates Progress or observation record to derive a federation from.`);
+    setBulkCoachMfMsg(`Assigned Member Federation(s) to ${updatedCount} coach${updatedCount === 1 ? "" : "es"} from their course history. ${coachesBackfillableCount - updatedCount} coach${(coachesBackfillableCount - updatedCount) === 1 ? "" : "es"} had no Coaches Progress or observation record to derive a federation from.`);
   }
 
   function handleBackfillAuth() {
@@ -3312,7 +3312,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
         <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
           <p className="text-sm font-semibold text-indigo-900">Assign Member Federation from Course History</p>
           <p className="text-xs text-indigo-700">
-            For the {coachesBackfillableCount} coach{coachesBackfillableCount === 1 ? "" : "es"} with no Member Federation set, this looks at their existing Candidates Progress and observation records
+            For the {coachesBackfillableCount} coach{coachesBackfillableCount === 1 ? "" : "es"} with no Member Federation set, this looks at their existing Coaches Progress and observation records
             and assigns whichever federation(s) those show — i.e. wherever they actually did the course. Coaches with no record at all to derive from are left unchanged. MA Admin only.
           </p>
           {bulkCoachMfMsg && <p className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{bulkCoachMfMsg}</p>}
@@ -5077,10 +5077,10 @@ function buildCourseReportHtml(group, coaches, incompleteOnly) {
             <h1>Course Report — #${esc(group.courseNumber)}</h1>
             <p class="subtitle">${esc(group.courseTitle)}</p>
           </div>
-          <span class="type-badge">${incompleteOnly ? `Outstanding (${rows.length} of ${group.records.length})` : `All Candidates (${rows.length})`}</span>
+          <span class="type-badge">${incompleteOnly ? `Outstanding (${rows.length} of ${group.records.length})` : `All Coaches (${rows.length})`}</span>
         </div>
         <p style="color:#64748b;margin:-6px 0 16px;font-size:12.5px;">Generated ${new Date().toLocaleDateString("en-GB")}</p>
-        ${candidateSections || '<p style="font-size:13px;color:#64748b;">No candidates to show.</p>'}
+        ${candidateSections || '<p style="font-size:13px;color:#64748b;">No coaches to show.</p>'}
       </div>
     </body>
   </html>`;
@@ -5182,12 +5182,12 @@ function buildCandidateHtml(task, coach, observations) {
             <h1>${esc(task.coachName)}</h1>
             <p class="subtitle">${esc(task.courseTitle)}${task.courseNumber ? ` (#${esc(task.courseNumber)})` : ""}</p>
           </div>
-          <span class="type-badge">Candidates Progress &amp; Observation History</span>
+          <span class="type-badge">Coaches Progress &amp; Observation History</span>
           ${task.memberFederation !== "FA" ? `<div class="header-icon"><img src="${(MEMBER_FEDERATIONS.find(m => m.key === "FA") || {}).logoUrl || ""}" alt="Football Australia logo" /></div>` : ""}
         </div>
 
         <div class="section">
-          <p class="section-title">Candidates Progress Checklist</p>
+          <p class="section-title">Coaches Progress Checklist</p>
           <p style="font-size:13px;margin:0 0 10px;">Attendance: <strong>${task.attendancePercent}%</strong> · Online Modules: <strong>${task.onlineModulesPercent || 0}%</strong> · Coursework: <strong>${total > 0 ? `${done}/${total}` : "—"}</strong></p>
           ${checklistRows ? `<table style="width:100%;border-collapse:collapse;font-size:13px;">${checklistRows}</table>` : ""}
         </div>
@@ -6135,7 +6135,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
       "WWW (What Went Well)": a.feedback?.www || a.feedback?.strengths || "", "EBI (Even Better If)": a.feedback?.ebi || a.feedback?.development || "", "General comments": a.feedback?.general || "",
       "GRIP - Goals": a.grip?.goals?.rating || "", "GRIP - Reflect/Review": a.grip?.reflect?.rating || "",
       "GRIP - Input": a.grip?.input?.rating || "", "GRIP - Plan": a.grip?.plan?.rating || "",
-      "SO CHANGE IT (referenced to candidates)": a.sochangeit?.rating || "",
+      "SO CHANGE IT (referenced to coaches)": a.sochangeit?.rating || "",
       "Coaching Process": a.coachingProcess?.process?.rating || "", "Session Design": a.coachingProcess?.fiveRs?.rating || "",
       "Sign-off assessor": a.signAssessor || "", "Sign-off date": a.signDate || "", "Ack discussed": a.ackDiscussed ? "Yes" : "No",
     }));
@@ -6279,7 +6279,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
         <div>
           <p className="text-sm font-semibold text-slate-800">GRIP — Coaching Conversation</p>
-          <p className="text-xs text-slate-400">Rate how effectively the CET used GRIP to structure feedback/coaching conversations with candidates.</p>
+          <p className="text-xs text-slate-400">Rate how effectively the CET used GRIP to structure feedback/coaching conversations with coaches.</p>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {GRIP_ITEMS.map(item => (
@@ -6322,7 +6322,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
           ))}
         </div>
         <div>
-          <p className="text-xs font-medium text-slate-500 mb-1.5">Referenced to candidates</p>
+          <p className="text-xs font-medium text-slate-500 mb-1.5">Referenced to coaches</p>
           <div className="flex gap-2 flex-wrap mb-1.5">
             {rateOptions3.map(opt => (
               <button key={opt} type="button" onClick={() => setForm(prev => ({ ...prev, sochangeit: { ...prev.sochangeit, rating: opt } }))}
@@ -6573,7 +6573,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     if (!isMasterAdmin(match)) {
       recordAdminAttempt(dupTaskAuthName, true);
       setDupTaskAuthError(false);
-      setDupTaskScopeError("Only a MA Admin can merge Candidates Progress records — they aren't tagged to a Member Federation.");
+      setDupTaskScopeError("Only a MA Admin can merge Coaches Progress records — they aren't tagged to a Member Federation.");
       return;
     }
     recordAdminAttempt(dupTaskAuthName, true);
@@ -7467,7 +7467,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="text-lg font-bold text-slate-900">Course Report — #{group.courseNumber}</h3>
-              <p className="text-sm text-slate-500">{group.courseTitle} · {group.records.length} candidate{group.records.length === 1 ? "" : "s"}</p>
+              <p className="text-sm text-slate-500">{group.courseTitle} · {group.records.length} coach{group.records.length === 1 ? "" : "es"}</p>
             </div>
             <button onClick={() => setCourseReportNumber(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
           </div>
@@ -7505,7 +7505,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               </div>
             );
           })()}
-          <p className="text-xs text-slate-400">Outstanding checklist items can be ticked off directly here. Progress Tracking is shown per block — open the candidate's own card in Candidates Progress to change it.</p>
+          <p className="text-xs text-slate-400">Outstanding checklist items can be ticked off directly here. Progress Tracking is shown per block — open the coach's own card in Coaches Progress to change it.</p>
           <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
             {[...group.records].sort((a, b) => (a.coachName || "").localeCompare(b.coachName || "")).map(t => {
               const cardCoach = coaches.find(c => c.id === t.coachId);
@@ -7896,7 +7896,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       {courseReportNumber && renderCourseReport()}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">Candidates Progress</h2>
+          <h2 className="text-xl font-bold text-slate-900">Coaches Progress</h2>
           <p className="text-sm text-slate-500">Track attendance and coursework completion per coach, per course.</p>
         </div>
         <div className="flex gap-2">
@@ -7934,7 +7934,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             <p className="text-sm font-semibold text-red-900">Not Yet Competent Items Marked Done</p>
             <p className="text-xs text-red-700">
               An older bug (now fixed) could leave a checklist item ticked as done even when its observation outcome was Not Yet Competent. These items are now locked from being ticked further, but
-              their existing "done" state was never corrected. This repairs it — each item below will be unticked, matching its actual outcome, and won't count toward that candidate's completion total anymore.
+              their existing "done" state was never corrected. This repairs it — each item below will be unticked, matching its actual outcome, and won't count toward that coach's completion total anymore.
             </p>
             <div className="space-y-1">
               {Object.values(byCoach).map((c, i) => (
@@ -7975,7 +7975,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
 
       {showDupTasks && duplicateTaskGroups.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-          <p className="text-sm font-semibold text-amber-900">Duplicate Candidates Progress Records</p>
+          <p className="text-sm font-semibold text-amber-900">Duplicate Coaches Progress Records</p>
           <p className="text-xs text-amber-700">Same coach, same course number, showing up as more than one record — usually from importing the same roster twice. Merging keeps the higher attendance/online modules %, and combines every completed checklist item across the duplicates.</p>
 
           {!dupTaskAuthed ? (
@@ -11136,7 +11136,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     { table: "coaches", label: "Coaches", masterOnly: false, nameOf: (i) => i.name },
     { table: "cets", label: "CETs", masterOnly: false, nameOf: (i) => i.name },
     { table: "observations", label: "Observations", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
-    { table: "completed_tasks", label: "Candidates Progress", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"}${i.courseNumber ? ` — #${i.courseNumber}` : ""}` },
+    { table: "completed_tasks", label: "Coaches Progress", masterOnly: false, nameOf: (i) => `${i.coachName || "Unknown coach"}${i.courseNumber ? ` — #${i.courseNumber}` : ""}` },
     { table: "cet_assessments", label: "CET Observations", masterOnly: false, nameOf: (i) => `${i.cetName || "Unknown CET"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
     { table: "rapa_assessments", label: "RAPA Risk Assessments", masterOnly: false, nameOf: (i) => `${i.session || "Untitled session"} — ${i.date ? new Date(i.date).toLocaleDateString("en-GB") : "no date"}` },
     { table: "rapa_incidents", label: "RAPA Incident Reports", masterOnly: false, nameOf: (i) => `${i.course || "Untitled course"} — ${i.incDate ? new Date(i.incDate).toLocaleDateString("en-GB") : "no date"}` },
@@ -11350,7 +11350,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     }).join("");
     const completedTasksSections = filteredCompletedTasks.length > 0 ? `
       <div style="page-break-after: always; font-family: -apple-system, Helvetica, Arial, sans-serif; padding: 28px; color: #1e293b;">
-        <h2 style="margin:0 0 12px 0;">Candidates Progress Summary</h2>
+        <h2 style="margin:0 0 12px 0;">Coaches Progress Summary</h2>
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
           <thead>
             <tr>
@@ -11895,8 +11895,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                 <p className="text-sm font-semibold text-slate-800 mb-1">Export Observation History</p>
                 <p className="text-xs text-slate-500 mb-2">
                   {iAmMaster
-                    ? "Downloads one HTML file with a Candidates Progress summary table for every coach, followed by every finished (submitted) observation report (including pitch maps). Open the downloaded file in a browser tab and use Print → Save as PDF."
-                    : "Downloads one HTML file covering just your Member Federation's submitted observation reports (including pitch maps), plus a best-effort Candidates Progress summary for the same coaches. Open the downloaded file in a browser tab and use Print → Save as PDF."}
+                    ? "Downloads one HTML file with a Coaches Progress summary table for every coach, followed by every finished (submitted) observation report (including pitch maps). Open the downloaded file in a browser tab and use Print → Save as PDF."
+                    : "Downloads one HTML file covering just your Member Federation's submitted observation reports (including pitch maps), plus a best-effort Coaches Progress summary for the same coaches. Open the downloaded file in a browser tab and use Print → Save as PDF."}
                 </p>
                 <button onClick={handleExportPdf}
                   disabled={observations.length === 0}
@@ -12092,7 +12092,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         <div key={mfKey}>
                           <p className="text-[11px] font-medium text-violet-700 mb-1">{mfLabel} course number(s)</p>
                           {options.length === 0 ? (
-                            <p className="text-xs text-slate-400">No courses tagged to this federation yet in Candidates Progress.</p>
+                            <p className="text-xs text-slate-400">No courses tagged to this federation yet in Coaches Progress.</p>
                           ) : (
                             <div className="flex gap-1.5 flex-wrap">
                               {options.map(num => (
@@ -12247,7 +12247,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                                 {mfLabel} course number(s) — {adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mfKey)).length}/4 Course Admins already set for this federation
                               </p>
                               {options.length === 0 ? (
-                                <p className="text-xs text-slate-400">No courses tagged to this federation yet in Candidates Progress.</p>
+                                <p className="text-xs text-slate-400">No courses tagged to this federation yet in Coaches Progress.</p>
                               ) : (
                                 <div className="flex gap-1.5 flex-wrap">
                                   {options.map(num => (
@@ -12422,7 +12422,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   {confirmDeleteObsId === o.id && (
                     <div className="mt-3 flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg p-2.5">
                       <p className="text-xs text-red-700 flex-1">
-                        Delete this observation for {o.coachName}? Any linked Candidates Progress record will revert to no record for this item (unless another observation still covers it).
+                        Delete this observation for {o.coachName}? Any linked Coaches Progress record will revert to no record for this item (unless another observation still covers it).
                       </p>
                       <button onClick={(e) => { e.stopPropagation(); onDeleteObservation(o.id); setConfirmDeleteObsId(null); }}
                         className="text-xs font-semibold text-red-700 hover:text-red-800 whitespace-nowrap">Delete</button>
