@@ -24,6 +24,74 @@ async function extractPdfText(arrayBuffer) {
   return pageTexts.join("\n\n").trim();
 }
 
+// --- IDP document clean-up -------------------------------------------------
+// People often attach the blank FA assessment rubric (with the coach's own
+// notes added at the end) as their IDP. The rubric is boilerplate, so it is
+// dropped and only the coach's own notes are kept. A block (a PDF page, or a
+// paragraph / table of a Word file) counts as rubric when it carries the
+// rubric's "Not Yet Competent" and "Highly Competent" level headings together,
+// or an "Assessment Rubric" title.
+function isAssessmentRubricText(t) {
+  const s = t || "";
+  return /assessment\s+rubric/i.test(s) || (/not\s+yet\s+competent/i.test(s) && /highly\s+competent/i.test(s));
+}
+
+function stripAssessmentRubric(text) {
+  const blocks = (text || "").split(/\n{2,}/);
+  return blocks.filter(b => !isAssessmentRubricText(b)).join("\n\n").trim();
+}
+
+// Word files: read the document as HTML so whole rubric tables can be dropped,
+// then flatten what's left back to plain lines.
+async function extractDocxText(arrayBuffer) {
+  const html = (await mammoth.convertToHtml({ arrayBuffer }))?.value || "";
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll("table").forEach(t => { if (isAssessmentRubricText(t.textContent)) t.remove(); });
+  const lines = [];
+  doc.body.querySelectorAll("p,h1,h2,h3,h4,h5,h6,li").forEach(el => {
+    const t = (el.textContent || "").trim();
+    if (t) lines.push(t);
+  });
+  return stripAssessmentRubric(lines.join("\n\n"));
+}
+
+// Splits uploaded-document notes into chunks and picks out a short leading
+// heading ("Session Design / Organisation – ...") so it can be shown bold and
+// underlined. Chunks are separated by bullets or line breaks.
+function splitIdpNotes(text) {
+  const cleaned = stripAssessmentRubric(text);
+  return cleaned.split(/\s*[•●]\s*|\n+/).map(c => c.trim()).filter(Boolean).map(c => {
+    const m = c.match(/^([^–—:\n]{2,70}?)\s+[–—]\s+([\s\S]+)$/) || c.match(/^([^–—:\n]{2,70}?):\s+([\s\S]+)$/);
+    if (m) {
+      const h = m[1].trim();
+      const words = h.split(/\s+/).length;
+      if (words <= 8 && !/[.!?]$/.test(h) && (h.match(/,/g) || []).length < 2) return { heading: h, rest: m[2].trim() };
+    }
+    return { heading: "", rest: c };
+  });
+}
+
+function IdpNotes({ text, limit }) {
+  let t = stripAssessmentRubric(text);
+  if (limit && t.length > limit) t = t.slice(0, limit) + "…";
+  const chunks = splitIdpNotes(t);
+  return (
+    <>
+      {chunks.map((c, i) => (
+        <span key={i} className="block mt-1">
+          {c.heading ? <><strong className="underline">{c.heading}</strong> {"–"} {c.rest}</> : c.rest}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function idpNotesHtml(text, esc) {
+  return splitIdpNotes(text).map(c =>
+    `<p style="font-size:12px; margin:4px 0; color:#475569;">${c.heading ? `<strong style="text-decoration:underline;">${esc(c.heading)}</strong> – ${esc(c.rest)}` : esc(c.rest)}</p>`
+  ).join("");
+}
+
 const ASSESSMENT_AREAS = [
   {
     key: "objective",
@@ -927,7 +995,7 @@ function emptyIdp() {
 
 function idpHasContent(idp) {
   if (!idp) return false;
-  return !!(idp.strengths || idp.performanceGap || idp.goalsPlan || idp.fileText);
+  return !!(idp.strengths || idp.performanceGap || idp.goalsPlan || stripAssessmentRubric(idp.fileText));
 }
 
 // Best-effort heuristic for pre-filling the IDP fields from an uploaded
@@ -3115,8 +3183,8 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
       try {
         const arrayBuffer = ev.target.result;
         const text = isPdf
-          ? await extractPdfText(arrayBuffer)
-          : (await mammoth.extractRawText({ arrayBuffer }))?.value || "";
+          ? stripAssessmentRubric(await extractPdfText(arrayBuffer))
+          : await extractDocxText(arrayBuffer);
         const trimmedText = text.trim();
         // Best-effort auto-fill: only touches fields the CET hasn’t already
         // typed into, so a manually-entered value is never overwritten by
@@ -3169,20 +3237,20 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
               <td style="padding:4px 0;"><strong>Team:</strong> ${esc(coach.club) || "—"}</td>
             </tr>
             <tr>
-              <td style="padding:4px 0;"><strong>Years Coaching:</strong> ${esc(idp.yearsCoaching) || "—"}</td>
-              <td style="padding:4px 0;"><strong>Qualifications:</strong> ${esc(idp.qualifications) || esc(coach.level) || "—"}</td>
+              <td style="padding:4px 0;"><strong style="text-decoration:underline;">Years Coaching:</strong> ${esc(idp.yearsCoaching) || "—"}</td>
+              <td style="padding:4px 0;"><strong style="text-decoration:underline;">Qualifications:</strong> ${esc(idp.qualifications) || esc(coach.level) || "—"}</td>
             </tr>
             <tr>
-              <td style="padding:4px 0;" colspan="2"><strong>Mentor:</strong> ${esc(idp.mentor) || "—"}</td>
+              <td style="padding:4px 0;" colspan="2"><strong style="text-decoration:underline;">Mentor:</strong> ${esc(idp.mentor) || "—"}</td>
             </tr>
           </table>
-          <h3 style="margin-bottom:4px;">Strengths</h3>
+          <h3 style="margin-bottom:4px; text-decoration:underline;">Strengths</h3>
           <p style="font-size:13px; margin-top:0; white-space:pre-wrap;">${esc(idp.strengths) || "—"}</p>
-          <h3 style="margin-bottom:4px;">Performance Gap</h3>
+          <h3 style="margin-bottom:4px; text-decoration:underline;">Performance Gap</h3>
           <p style="font-size:13px; margin-top:0; white-space:pre-wrap;">${esc(idp.performanceGap) || "—"}</p>
-          <h3 style="margin-bottom:4px;">Goals / Plan</h3>
+          <h3 style="margin-bottom:4px; text-decoration:underline;">Goals / Plan</h3>
           <p style="font-size:13px; margin-top:0; white-space:pre-wrap;">${esc(idp.goalsPlan) || "—"}</p>
-          ${idp.fileText ? `<h3 style="margin-bottom:4px;">Uploaded Document Notes</h3><p style="font-size:12px; margin-top:0; white-space:pre-wrap; color:#475569;">${esc(idp.fileText)}</p>` : ""}
+          ${stripAssessmentRubric(idp.fileText) ? `<h3 style="margin-bottom:4px; text-decoration:underline;">Uploaded Document Notes</h3>${idpNotesHtml(idp.fileText, esc)}` : ""}
           <script>window.onload = function(){ window.print(); };</script>
         </body>
       </html>
@@ -7646,9 +7714,9 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
         {idpHasContent(selectedCoach?.idp) && (
           <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
             <p className="text-xs font-semibold text-sky-800 mb-1.5">IDP Snapshot — {selectedCoach.name}</p>
-            {selectedCoach.idp.strengths && <p className="text-xs text-slate-600 whitespace-pre-wrap mb-1"><strong>Strengths:</strong> {selectedCoach.idp.strengths}</p>}
-            {selectedCoach.idp.performanceGap && <p className="text-xs text-slate-600 whitespace-pre-wrap mb-1"><strong>Performance Gap:</strong> {selectedCoach.idp.performanceGap}</p>}
-            {selectedCoach.idp.goalsPlan && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong>Goals/Plan:</strong> {selectedCoach.idp.goalsPlan}</p>}
+            {selectedCoach.idp.strengths && <p className="text-xs text-slate-600 whitespace-pre-wrap mb-1"><strong className="underline">Strengths:</strong> {selectedCoach.idp.strengths}</p>}
+            {selectedCoach.idp.performanceGap && <p className="text-xs text-slate-600 whitespace-pre-wrap mb-1"><strong className="underline">Performance Gap:</strong> {selectedCoach.idp.performanceGap}</p>}
+            {selectedCoach.idp.goalsPlan && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong className="underline">Goals/Plan:</strong> {selectedCoach.idp.goalsPlan}</p>}
           </div>
         )}
 
@@ -8465,13 +8533,13 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                     {isIdpExpanded && cardCoach && (
                                       <div className="mt-3 border border-sky-200 bg-sky-50 rounded-lg p-3 space-y-1.5">
                                         <p className="text-xs font-semibold text-sky-900">Individual Development Plan — {cardCoach.name}</p>
-                                        {cardCoach.idp.yearsCoaching && <p className="text-xs text-slate-600"><strong>Years Coaching:</strong> {cardCoach.idp.yearsCoaching}</p>}
-                                        {cardCoach.idp.qualifications && <p className="text-xs text-slate-600"><strong>Qualifications:</strong> {cardCoach.idp.qualifications}</p>}
-                                        {cardCoach.idp.mentor && <p className="text-xs text-slate-600"><strong>Mentor:</strong> {cardCoach.idp.mentor}</p>}
-                                        {cardCoach.idp.strengths && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong>Strengths:</strong> {cardCoach.idp.strengths}</p>}
-                                        {cardCoach.idp.performanceGap && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong>Performance Gap:</strong> {cardCoach.idp.performanceGap}</p>}
-                                        {cardCoach.idp.goalsPlan && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong>Goals/Plan:</strong> {cardCoach.idp.goalsPlan}</p>}
-                                        {cardCoach.idp.fileText && <p className="text-xs text-slate-500 whitespace-pre-wrap mt-1 pt-1 border-t border-sky-100"><strong>Uploaded Document Notes:</strong> {cardCoach.idp.fileText}</p>}
+                                        {cardCoach.idp.yearsCoaching && <p className="text-xs text-slate-600"><strong className="underline">Years Coaching:</strong> {cardCoach.idp.yearsCoaching}</p>}
+                                        {cardCoach.idp.qualifications && <p className="text-xs text-slate-600"><strong className="underline">Qualifications:</strong> {cardCoach.idp.qualifications}</p>}
+                                        {cardCoach.idp.mentor && <p className="text-xs text-slate-600"><strong className="underline">Mentor:</strong> {cardCoach.idp.mentor}</p>}
+                                        {cardCoach.idp.strengths && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong className="underline">Strengths:</strong> {cardCoach.idp.strengths}</p>}
+                                        {cardCoach.idp.performanceGap && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong className="underline">Performance Gap:</strong> {cardCoach.idp.performanceGap}</p>}
+                                        {cardCoach.idp.goalsPlan && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong className="underline">Goals/Plan:</strong> {cardCoach.idp.goalsPlan}</p>}
+                                        {stripAssessmentRubric(cardCoach.idp.fileText) && <div className="text-xs text-slate-500 mt-1 pt-1 border-t border-sky-100"><strong className="underline">Uploaded Document Notes:</strong><IdpNotes text={cardCoach.idp.fileText} /></div>}
                                       </div>
                                     )}
 
@@ -9216,8 +9284,8 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
       try {
         const arrayBuffer = ev.target.result;
         const text = isPdf
-          ? await extractPdfText(arrayBuffer)
-          : (await mammoth.extractRawText({ arrayBuffer }))?.value || "";
+          ? stripAssessmentRubric(await extractPdfText(arrayBuffer))
+          : await extractDocxText(arrayBuffer);
         const trimmedText = text.trim();
         // Best-effort auto-fill: only touches fields the CET hasn’t already
         // typed into, so a manually-entered value is never overwritten by
@@ -9831,11 +9899,11 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                       <button onClick={pullGoalsPlanFromIdp} className="text-xs font-semibold text-sky-700 hover:text-sky-800">Use Goals/Plan →</button>
                     )}
                   </div>
-                  {selectedCoach.idp.goalsPlan && <p className="text-xs text-slate-600 whitespace-pre-wrap mb-1"><strong>Goals/Plan:</strong> {selectedCoach.idp.goalsPlan}</p>}
-                  {selectedCoach.idp.performanceGap && <p className="text-xs text-slate-600 whitespace-pre-wrap mb-1"><strong>Performance Gap:</strong> {selectedCoach.idp.performanceGap}</p>}
-                  {selectedCoach.idp.strengths && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong>Strengths:</strong> {selectedCoach.idp.strengths}</p>}
-                  {!selectedCoach.idp.goalsPlan && !selectedCoach.idp.performanceGap && !selectedCoach.idp.strengths && selectedCoach.idp.fileText && (
-                    <p className="text-xs text-slate-600 whitespace-pre-wrap">{selectedCoach.idp.fileText.slice(0, 300)}{selectedCoach.idp.fileText.length > 300 ? "…" : ""}</p>
+                  {selectedCoach.idp.goalsPlan && <p className="text-xs text-slate-600 whitespace-pre-wrap mb-1"><strong className="underline">Goals/Plan:</strong> {selectedCoach.idp.goalsPlan}</p>}
+                  {selectedCoach.idp.performanceGap && <p className="text-xs text-slate-600 whitespace-pre-wrap mb-1"><strong className="underline">Performance Gap:</strong> {selectedCoach.idp.performanceGap}</p>}
+                  {selectedCoach.idp.strengths && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong className="underline">Strengths:</strong> {selectedCoach.idp.strengths}</p>}
+                  {!selectedCoach.idp.goalsPlan && !selectedCoach.idp.performanceGap && !selectedCoach.idp.strengths && stripAssessmentRubric(selectedCoach.idp.fileText) && (
+                    <div className="text-xs text-slate-600"><IdpNotes text={selectedCoach.idp.fileText} limit={300} /></div>
                   )}
                   {selectedCoach.idp.goalsPlan && (
                     <p className="text-xs text-sky-600 mt-1.5 italic">Goals/Plan auto-fills the field below whenever it's empty.</p>
