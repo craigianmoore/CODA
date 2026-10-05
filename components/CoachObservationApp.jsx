@@ -2100,7 +2100,11 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
         )}
         {tab === "logistics" && (
           <div className="space-y-8">
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
+              <a href="/Football_Australia_Coach_IDP_Template.docx" download
+                className="flex items-center gap-1.5 text-sm font-semibold text-emerald-800 border border-emerald-300 px-3 py-2 rounded-lg hover:bg-emerald-50">
+                <FileText className="w-4 h-4" /> Coach IDP Template
+              </a>
               <a href="/CODA_Course_Candidate_Sheet_Template.xlsx" download
                 className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700 border border-emerald-300 px-3 py-2 rounded-lg hover:bg-emerald-50">
                 <FileText className="w-4 h-4" /> Course Coach Sheet Template
