@@ -2076,6 +2076,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             onBulkDelete={handleBulkDeleteCompletedTasks}
             observations={observations}
             onViewReport={(id) => { setReportId(id); setTab("report"); }}
+            onEditDraft={handleEditDraft}
             closedCourseNumbers={closedCourseNumbers} saveClosedCourseNumbers={saveClosedCourseNumbers}
             closedCourseBlocks={closedCourseBlocks} saveClosedCourseBlocks={saveClosedCourseBlocks}
             adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
@@ -6740,7 +6741,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
   );
 }
 
-function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, closedCourseNumbers, saveClosedCourseNumbers, closedCourseBlocks, saveClosedCourseBlocks, adminSettings, adminLockouts, recordAdminAttempt, jumpTaskRef, onJumpHandledCb, session }) {
+function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, onEditDraft, closedCourseNumbers, saveClosedCourseNumbers, closedCourseBlocks, saveClosedCourseBlocks, adminSettings, adminLockouts, recordAdminAttempt, jumpTaskRef, onJumpHandledCb, session }) {
   // Duplicate detection & merge for Completed Tasks — a different problem
   // from duplicate coach/CET profiles: this catches the same person, same
   // course, showing up as TWO separate attendance/checklist records (from
@@ -8790,6 +8791,38 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                 ));
                                               })()}
                                             </div>
+                                            {(() => {
+                                              const cn = (t.courseNumber || "").trim();
+                                              const obsList = (observations || [])
+                                                .filter(o => o.coachId === t.coachId && (cn
+                                                  ? (o.courseNumber || "").trim() === cn
+                                                  : (o.formalCourseName || "") === t.courseTitle))
+                                                .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                                              if (obsList.length === 0) return null;
+                                              return (
+                                                <div className="space-y-1 pt-1">
+                                                  <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Observations</p>
+                                                  {obsList.map(o => {
+                                                    const isDraft = o.status === "draft";
+                                                    const label = [o.sessionTopic || o.formalCourseName || "Observation", o.date].filter(Boolean).join(" · ");
+                                                    return (
+                                                      <div key={o.id} className="flex items-center justify-between gap-2 text-xs">
+                                                        {isDraft ? (
+                                                          <button type="button" onClick={() => onEditDraft && onEditDraft(o)} className="underline decoration-dotted text-left hover:text-indigo-600 text-slate-700">{label}</button>
+                                                        ) : (
+                                                          <button type="button" onClick={() => onViewReport && onViewReport(o.id)} className="underline decoration-dotted text-left hover:text-indigo-600 text-slate-700">{label}</button>
+                                                        )}
+                                                        {isDraft ? (
+                                                          <span className="font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">(incomplete)</span>
+                                                        ) : o.assessmentOutcome ? (
+                                                          <span className={`font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${outcomeBadgeClass(o.assessmentOutcome)}`}>Assessed: {o.assessmentOutcome}</span>
+                                                        ) : null}
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+                                              );
+                                            })()}
                                             {attendanceComplete && (
                                               <div className="pt-1 space-y-2">
                                                 {done < total ? (
