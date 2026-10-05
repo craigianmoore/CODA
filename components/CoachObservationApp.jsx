@@ -36,14 +36,45 @@ function isAssessmentRubricText(t) {
   return /assessment\s+rubric/i.test(s) || (/not\s+yet\s+competent/i.test(s) && /highly\s+competent/i.test(s));
 }
 
-function stripAssessmentRubric(text) {
+// Rubric and the coach's own notes often land in the same block (e.g. on one
+// PDF page), so a rubric block is trimmed rather than dropped: the notes are
+// found either by the coach's name appearing after the rubric's last level
+// heading, or by the first "Heading – text" chunk after it. If neither is
+// found, a long tail after the rubric is kept as-is so notes never vanish.
+function trimRubricBlock(block, coachName) {
+  if (!isAssessmentRubricText(block)) return block;
+  let lastLevel = -1;
+  const re = /highly\s+competent/gi;
+  let m;
+  while ((m = re.exec(block))) lastLevel = m.index + m[0].length;
+  if (lastLevel < 0) lastLevel = 0;
+  const tail = block.slice(lastLevel);
+  const name = (coachName || "").trim();
+  if (name) {
+    const nameRe = new RegExp(name.split(/\s+/).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"), "i");
+    const nm = tail.match(nameRe);
+    if (nm) return tail.slice(nm.index).trim();
+  }
+  const parts = tail.split(/(\s*[•●]\s*)/);
+  let pos = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (!/^\s*[•●]\s*$/.test(part) && /^[^–—:\n]{2,70}?\s+[–—]\s+\S/.test(part.trim())) {
+      return tail.slice(pos).trim();
+    }
+    pos += part.length;
+  }
+  return tail.trim().length > 700 ? tail.trim() : "";
+}
+
+function stripAssessmentRubric(text, coachName) {
   const blocks = (text || "").split(/\n{2,}/);
-  return blocks.filter(b => !isAssessmentRubricText(b)).join("\n\n").trim();
+  return blocks.map(b => trimRubricBlock(b, coachName)).filter(Boolean).join("\n\n").trim();
 }
 
 // Word files: read the document as HTML so whole rubric tables can be dropped,
 // then flatten what's left back to plain lines.
-async function extractDocxText(arrayBuffer) {
+async function extractDocxText(arrayBuffer, coachName) {
   const html = (await mammoth.convertToHtml({ arrayBuffer }))?.value || "";
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("table").forEach(t => { if (isAssessmentRubricText(t.textContent)) t.remove(); });
@@ -52,14 +83,14 @@ async function extractDocxText(arrayBuffer) {
     const t = (el.textContent || "").trim();
     if (t) lines.push(t);
   });
-  return stripAssessmentRubric(lines.join("\n\n"));
+  return stripAssessmentRubric(lines.join("\n\n"), coachName);
 }
 
 // Splits uploaded-document notes into chunks and picks out a short leading
 // heading ("Session Design / Organisation – ...") so it can be shown bold and
 // underlined. Chunks are separated by bullets or line breaks.
-function splitIdpNotes(text) {
-  const cleaned = stripAssessmentRubric(text);
+function splitIdpNotes(text, coachName) {
+  const cleaned = stripAssessmentRubric(text, coachName);
   return cleaned.split(/\s*[•●]\s*|\n+/).map(c => c.trim()).filter(Boolean).map(c => {
     const m = c.match(/^([^–—:\n]{2,70}?)\s+[–—]\s+([\s\S]+)$/) || c.match(/^([^–—:\n]{2,70}?):\s+([\s\S]+)$/);
     if (m) {
@@ -71,8 +102,8 @@ function splitIdpNotes(text) {
   });
 }
 
-function IdpNotes({ text, limit }) {
-  let t = stripAssessmentRubric(text);
+function IdpNotes({ text, limit, coachName }) {
+  let t = stripAssessmentRubric(text, coachName);
   if (limit && t.length > limit) t = t.slice(0, limit) + "…";
   const chunks = splitIdpNotes(t);
   return (
@@ -86,8 +117,8 @@ function IdpNotes({ text, limit }) {
   );
 }
 
-function idpNotesHtml(text, esc) {
-  return splitIdpNotes(text).map(c =>
+function idpNotesHtml(text, esc, coachName) {
+  return splitIdpNotes(text, coachName).map(c =>
     `<p style="font-size:12px; margin:4px 0; color:#475569;">${c.heading ? `<strong style="text-decoration:underline;">${esc(c.heading)}</strong> – ${esc(c.rest)}` : esc(c.rest)}</p>`
   ).join("");
 }
@@ -995,7 +1026,7 @@ function emptyIdp() {
 
 function idpHasContent(idp) {
   if (!idp) return false;
-  return !!(idp.strengths || idp.performanceGap || idp.goalsPlan || stripAssessmentRubric(idp.fileText));
+  return !!(idp.strengths || idp.performanceGap || idp.goalsPlan || idp.fileText);
 }
 
 // Best-effort heuristic for pre-filling the IDP fields from an uploaded
@@ -3183,8 +3214,8 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
       try {
         const arrayBuffer = ev.target.result;
         const text = isPdf
-          ? stripAssessmentRubric(await extractPdfText(arrayBuffer))
-          : await extractDocxText(arrayBuffer);
+          ? stripAssessmentRubric(await extractPdfText(arrayBuffer), (coaches.find(c => c.id === idpEditingId) || {}).name)
+          : await extractDocxText(arrayBuffer, (coaches.find(c => c.id === idpEditingId) || {}).name);
         const trimmedText = text.trim();
         // Best-effort auto-fill: only touches fields the CET hasn’t already
         // typed into, so a manually-entered value is never overwritten by
@@ -3250,7 +3281,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
           <p style="font-size:13px; margin-top:0; white-space:pre-wrap;">${esc(idp.performanceGap) || "—"}</p>
           <h3 style="margin-bottom:4px; text-decoration:underline;">Goals / Plan</h3>
           <p style="font-size:13px; margin-top:0; white-space:pre-wrap;">${esc(idp.goalsPlan) || "—"}</p>
-          ${stripAssessmentRubric(idp.fileText) ? `<h3 style="margin-bottom:4px; text-decoration:underline;">Uploaded Document Notes</h3>${idpNotesHtml(idp.fileText, esc)}` : ""}
+          ${stripAssessmentRubric(idp.fileText, coach.name) ? `<h3 style="margin-bottom:4px; text-decoration:underline;">Uploaded Document Notes</h3>${idpNotesHtml(idp.fileText, esc, coach.name)}` : ""}
           <script>window.onload = function(){ window.print(); };</script>
         </body>
       </html>
@@ -8539,7 +8570,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                         {cardCoach.idp.strengths && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong className="underline">Strengths:</strong> {cardCoach.idp.strengths}</p>}
                                         {cardCoach.idp.performanceGap && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong className="underline">Performance Gap:</strong> {cardCoach.idp.performanceGap}</p>}
                                         {cardCoach.idp.goalsPlan && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong className="underline">Goals/Plan:</strong> {cardCoach.idp.goalsPlan}</p>}
-                                        {stripAssessmentRubric(cardCoach.idp.fileText) && <div className="text-xs text-slate-500 mt-1 pt-1 border-t border-sky-100"><strong className="underline">Uploaded Document Notes:</strong><IdpNotes text={cardCoach.idp.fileText} /></div>}
+                                        {stripAssessmentRubric(cardCoach.idp.fileText, cardCoach.name) && <div className="text-xs text-slate-500 mt-1 pt-1 border-t border-sky-100"><strong className="underline">Uploaded Document Notes:</strong><IdpNotes text={cardCoach.idp.fileText} coachName={cardCoach.name} /></div>}
                                       </div>
                                     )}
 
@@ -9284,8 +9315,8 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
       try {
         const arrayBuffer = ev.target.result;
         const text = isPdf
-          ? stripAssessmentRubric(await extractPdfText(arrayBuffer))
-          : await extractDocxText(arrayBuffer);
+          ? stripAssessmentRubric(await extractPdfText(arrayBuffer), selectedCoach?.name)
+          : await extractDocxText(arrayBuffer, selectedCoach?.name);
         const trimmedText = text.trim();
         // Best-effort auto-fill: only touches fields the CET hasn’t already
         // typed into, so a manually-entered value is never overwritten by
@@ -9902,8 +9933,8 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                   {selectedCoach.idp.goalsPlan && <p className="text-xs text-slate-600 whitespace-pre-wrap mb-1"><strong className="underline">Goals/Plan:</strong> {selectedCoach.idp.goalsPlan}</p>}
                   {selectedCoach.idp.performanceGap && <p className="text-xs text-slate-600 whitespace-pre-wrap mb-1"><strong className="underline">Performance Gap:</strong> {selectedCoach.idp.performanceGap}</p>}
                   {selectedCoach.idp.strengths && <p className="text-xs text-slate-600 whitespace-pre-wrap"><strong className="underline">Strengths:</strong> {selectedCoach.idp.strengths}</p>}
-                  {!selectedCoach.idp.goalsPlan && !selectedCoach.idp.performanceGap && !selectedCoach.idp.strengths && stripAssessmentRubric(selectedCoach.idp.fileText) && (
-                    <div className="text-xs text-slate-600"><IdpNotes text={selectedCoach.idp.fileText} limit={300} /></div>
+                  {!selectedCoach.idp.goalsPlan && !selectedCoach.idp.performanceGap && !selectedCoach.idp.strengths && stripAssessmentRubric(selectedCoach.idp.fileText, selectedCoach.name) && (
+                    <div className="text-xs text-slate-600"><IdpNotes text={selectedCoach.idp.fileText} limit={300} coachName={selectedCoach.name} /></div>
                   )}
                   {selectedCoach.idp.goalsPlan && (
                     <p className="text-xs text-sky-600 mt-1.5 italic">Goals/Plan auto-fills the field below whenever it's empty.</p>
