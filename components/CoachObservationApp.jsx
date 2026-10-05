@@ -582,6 +582,40 @@ function isCDiploma(name) {
   return /\bc diploma\b/i.test(name || "");
 }
 
+// Finds the submitted + draft observations behind one coursework checklist
+// item (e.g. "34. Stop the counterattack") for a coach's course record.
+function findItemObservations(observations, record, label) {
+  const base = String(label || "").replace(REASSESSMENT_SUFFIX, "");
+  const cn = (record.courseNumber || "").trim();
+  const matches = (observations || []).filter(o => {
+    if (o.coachId !== record.coachId) return false;
+    if (cn ? (o.courseNumber || "").trim() !== cn : (o.formalCourseName || "") !== record.courseTitle) return false;
+    if (isCDiploma(record.courseTitle)) return base === "Practical Session";
+    return (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) && o.sessionTopic === base;
+  }).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+  return {
+    submitted: matches.find(o => o.status !== "draft") || null,
+    draft: matches.find(o => o.status === "draft") || null,
+  };
+}
+
+// Label that links to the item's observation report, plus an "(incomplete)"
+// link when an unsubmitted draft exists so a CET can resume it.
+function ItemObsLink({ observations, record, label, text, onViewReport, onEditDraft, className = "" }) {
+  const { submitted, draft } = findItemObservations(observations, record, label);
+  const shown = text || label;
+  return (
+    <>
+      {submitted && onViewReport
+        ? <button type="button" onClick={e => { e.preventDefault(); e.stopPropagation(); onViewReport(submitted.id); }} className={`underline decoration-dotted text-left hover:text-indigo-600 ${className}`}>{shown}</button>
+        : <span>{shown}</span>}
+      {draft && onEditDraft && (
+        <button type="button" onClick={e => { e.preventDefault(); e.stopPropagation(); onEditDraft(draft); }} className="ml-1 underline decoration-dotted font-semibold text-amber-700 hover:text-amber-800">(incomplete)</button>
+      )}
+    </>
+  );
+}
+
 function groupCoursesByNumber(completedTasks) {
   const map = {};
   completedTasks.forEach(t => {
@@ -2546,12 +2580,13 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
         coaches={coaches} completedTasks={completedTasks} saveCompletedTasks={saveCompletedTasks}
         closedCourseNumbers={closedCourseNumbers} saveClosedCourseNumbers={saveClosedCourseNumbers}
         goHistory={goHistory} openCompletedTaskFn={openCompletedTaskFn} session={session}
+        observations={[...(observations || []), ...(drafts || [])]} onViewReport={onViewDraft} onEditDraft={onEditDraft}
       />
     </div>
   );
 }
 
-function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goHistory, openCompletedTaskFn, session }) {
+function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goHistory, openCompletedTaskFn, session, observations, onViewReport, onEditDraft }) {
   const [expandedCourse, setExpandedCourse] = useState(null);
   const [completedCoursesExpanded, setCompletedCoursesExpanded] = useState(false);
   const [expandedIncompleteCourse, setExpandedIncompleteCourse] = useState(null);
@@ -2921,7 +2956,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                                     <label key={i} className={`flex items-center gap-2 text-xs ${isNyc ? "text-red-500" : isPercentBased ? "text-slate-400" : "text-slate-600 cursor-pointer"}`}>
                                       <input type="checkbox" checked={false} disabled={isNyc || isPercentBased} onChange={() => toggleOutstandingItem(t, item.label)}
                                         className="rounded border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed" />
-                                      {item.label}{isNyc ? " — Not Yet Competent, needs re-observation" : isPercentBased ? ` — ${item.percent || 0}% (update % in Coaches Progress)` : ""}
+                                      <span><ItemObsLink observations={observations} record={t} label={item.label} onViewReport={onViewReport} onEditDraft={onEditDraft} />{isNyc ? " — Not Yet Competent, needs re-observation" : isPercentBased ? ` — ${item.percent || 0}% (update % in Coaches Progress)` : ""}</span>
                                     </label>
                                   );
                                 })}
@@ -7751,7 +7786,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                           <label key={i} className={`flex items-center gap-2 text-xs ${isNyc ? "text-red-500" : "text-slate-600 cursor-pointer"}`}>
                             <input type="checkbox" checked={false} disabled={isNyc} onChange={() => toggleCourseworkItemForTask(t, item.label)}
                               className="rounded border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed" />
-                            {item.label}{isNyc ? " — Not Yet Competent, needs re-observation" : ""}
+                            <span><ItemObsLink observations={observations} record={t} label={item.label} onViewReport={onViewReport} onEditDraft={onEditDraft} />{isNyc ? " — Not Yet Competent, needs re-observation" : ""}</span>
                           </label>
                         );
                       })}
@@ -7991,7 +8026,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                     <div key={topic}>
                       <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
                         <span className="flex items-center gap-1.5 flex-wrap">
-                          {topic}
+                          <ItemObsLink observations={observations} record={form} label={topic} onViewReport={onViewReport} onEditDraft={onEditDraft} />
                           {isTopicSuggestedByGap(topic, selectedCoach?.idp?.performanceGap) && (
                             <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Suggested focus</span>
                           )}
@@ -8756,22 +8791,14 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                   <div key={gr.key} className="space-y-1">
                                                     <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400 pt-1">{gr.label}</p>
                                                     {gr.list.map((item, i) => {
-                                                      const itemReport = item.done && (t.courseNumber || "").trim()
-                                                        ? (observations || [])
-                                                            .filter(o => o.status !== "draft" && o.coachId === t.coachId && (o.courseNumber || "").trim() === (t.courseNumber || "").trim() &&
-                                                              (((isBDiploma(t.courseTitle) || isADiploma(t.courseTitle)) && o.sessionTopic === item.label) || (isCDiploma(t.courseTitle) && item.label === "Practical Session")))
-                                                            .sort((a, b) => new Date(b.date) - new Date(a.date))[0]
-                                                        : null;
+                                                      const itemObs = findItemObservations(observations, t, item.label);
+                                                      const itemReport = itemObs.submitted;
                                                       return (
                                                         <div key={i}>
                                                         <div className="flex items-center justify-between gap-2 text-xs">
                                                           <span className={`flex items-center gap-1.5 ${item.done ? "text-slate-700" : "text-slate-400"}`}>
                                                             {item.done ? <Check className="w-3 h-3 text-emerald-600 shrink-0" /> : <span className="w-3 h-3 rounded-full border border-slate-300 inline-block shrink-0" />}
-                                                            {itemReport && onViewReport ? (
-                                                              <button type="button" onClick={() => onViewReport(itemReport.id)} className="underline decoration-dotted hover:text-indigo-600">{item.label}</button>
-                                                            ) : (
-                                                              <span>{item.label}</span>
-                                                            )}
+                                                            <ItemObsLink observations={observations} record={t} label={item.label} onViewReport={onViewReport} onEditDraft={onEditDraft} />
                                                             {suggestedTopics.includes(item.label) && <span className="text-amber-500" title="Suggested focus from IDP Performance Gap">★</span>}
                                                           </span>
                                                           <span className="flex items-center gap-1.5 shrink-0">
