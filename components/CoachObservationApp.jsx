@@ -6,6 +6,83 @@ import Papa from "papaparse";
 import * as mammoth from "mammoth";
 import { supabase } from "../lib/supabase";
 
+// Turns one PDF page's text items ({str,x,y,w,h}) into text that follows the
+// page's visual layout. Items sharing a baseline form a line; wide gaps inside
+// a line split it into cells. A row of short headings with aligned content
+// beneath it (STRENGTHS | PERFORMANCE GAP | GOALS/PLAN) is read column by
+// column so each heading keeps its own content; "Label: value" rows are read
+// straight across, so labels stay beside their values.
+function pdfItemsToText(items) {
+  const its = items.filter(i => i.str && i.str.trim());
+  if (!its.length) return "";
+  const hs = its.map(i => i.h || 10).sort((x, y) => x - y);
+  const medH = hs[Math.floor(hs.length / 2)] || 10;
+  const gap = Math.max(9, medH * 1.2);
+  its.sort((p, q) => (q.y - p.y) || (p.x - q.x));
+  const rows = [];
+  its.forEach(it => {
+    const last = rows[rows.length - 1];
+    if (last && Math.abs(last.y - it.y) <= Math.max(2.5, medH * 0.35)) last.items.push(it);
+    else rows.push({ y: it.y, items: [it] });
+  });
+  const lineItems = [];
+  const lines = rows.map(r => {
+    r.items.sort((p, q) => p.x - q.x);
+    lineItems.push(r.items);
+    const cells = [];
+    r.items.forEach(it => {
+      const c = cells[cells.length - 1];
+      if (c && it.x - c.x1 <= gap) { c.text += (it.x - c.x1 > 1 ? " " : "") + it.str.trim(); c.x1 = it.x + (it.w || 0); }
+      else cells.push({ x0: it.x, x1: it.x + (it.w || 0), text: it.str.trim() });
+    });
+    return cells;
+  });
+  const BUL = /^[-•●–—*]/;
+  const isCaps = t => /[A-Z]/.test(t) && t === t.toUpperCase();
+  const shortWords = (t, n) => t.split(/\s+/).length <= n;
+  const isHeaderRow = cells => cells.length >= 2
+    && cells.every(c => !/:\s*$/.test(c.text) && !BUL.test(c.text) && shortWords(c.text, 5));
+  const out = [];
+  const TOL = 8;
+  let i = 0;
+  while (i < lines.length) {
+    const cells = lines[i];
+    if (!isHeaderRow(cells)) { out.push(cells.map(c => c.text).join(" ")); i++; continue; }
+    const cols = cells.map(c => c.x0);
+    const colOf = c => { let k = -1; cols.forEach((x, idx) => { if (x - TOL <= c.x0) k = idx; }); return k; };
+    const spans = (c, k) => k < cols.length - 1 && c.x1 > cols[k + 1] + TOL;
+    const body = cols.map(() => []);
+    let j = i + 1;
+    let sawBullet = false;
+    while (j < lines.length) {
+      const L = lines[j];
+      // Assign each text run to a column by its position, so neighbouring
+      // columns that sit close together are still kept apart.
+      const runs = lineItems[j].map(it => ({ x0: it.x, x1: it.x + (it.w || 0), text: it.str.trim() })).filter(r => r.text);
+      const ks = runs.map(colOf);
+      if (ks.some((k, idx) => k < 0 || spans(runs[idx], k))) break;
+      if (L.length === 1 && isCaps(L[0].text) && !BUL.test(L[0].text) && shortWords(L[0].text, 6) && sawBullet) break;
+      if (isHeaderRow(L) && L.length >= 2 && L.every(c => isCaps(c.text)) && sawBullet) break;
+      const perCol = cols.map(() => []);
+      runs.forEach((r, idx) => perCol[ks[idx]].push(r.text));
+      perCol.forEach((arr, k) => { if (arr.length) { const t = arr.join(" "); body[k].push(t); if (BUL.test(t)) sawBullet = true; } });
+      j++;
+    }
+    cells.forEach((c, k) => {
+      out.push(c.text);
+      const merged = [];
+      const bulleted = body[k].some(t => BUL.test(t));
+      body[k].forEach(t => {
+        if (merged.length && (bulleted ? !BUL.test(t) : /^[a-z]/.test(t))) merged[merged.length - 1] += " " + t;
+        else merged.push(t);
+      });
+      merged.forEach(t => out.push(t));
+    });
+    i = j;
+  }
+  return out.join("\n");
+}
+
 // Extracts plain text from an uploaded PDF (IDP uploads). Dynamically
 // imported so pdfjs-dist doesn't bloat the initial bundle, matching how
 // html2pdf.js is loaded elsewhere. Uses a CDN-hosted worker matching the
@@ -19,7 +96,10 @@ async function extractPdfText(arrayBuffer) {
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
-    pageTexts.push(content.items.map(item => item.str).join(" "));
+    const items = content.items
+      .filter(item => typeof item.str === "string")
+      .map(item => ({ str: item.str, x: item.transform[4], y: item.transform[5], w: item.width, h: item.height }));
+    pageTexts.push(pdfItemsToText(items));
   }
   return pageTexts.join("\n\n").trim();
 }
@@ -55,11 +135,11 @@ function trimRubricBlock(block, coachName) {
     const nm = tail.match(nameRe);
     if (nm) return tail.slice(nm.index).trim();
   }
-  const parts = tail.split(/(\s*[•●]\s*)/);
+  const parts = tail.split(/(\s*[•●]\s*|\n)/);
   let pos = 0;
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
-    if (!/^\s*[•●]\s*$/.test(part) && /^[^–—:\n]{2,70}?\s+[–—]\s+\S/.test(part.trim())) {
+    if (!/^\s*[•●\n]\s*$/.test(part) && /^[^–—:\n]{2,70}?\s+[–—]\s+\S/.test(part.trim())) {
       return tail.slice(pos).trim();
     }
     pos += part.length;
@@ -91,26 +171,45 @@ async function extractDocxText(arrayBuffer, coachName) {
 // underlined. Chunks are separated by bullets or line breaks.
 function splitIdpNotes(text, coachName) {
   const cleaned = stripAssessmentRubric(text, coachName);
-  return cleaned.split(/\s*[•●]\s*|\n+/).map(c => c.trim()).filter(Boolean).map(c => {
-    const m = c.match(/^([^–—:\n]{2,70}?)\s+[–—]\s+([\s\S]+)$/) || c.match(/^([^–—:\n]{2,70}?):\s+([\s\S]+)$/);
+  const lines = cleaned.split(/\s*[•●]\s*|\n+/).map(c => c.trim()).filter(Boolean);
+  const sections = [];
+  let cur = null;
+  lines.forEach(line => {
+    const m = line.match(/^([^–—:\n]{2,70}?)\s+([–—])\s+([\s\S]+)$/) || line.match(/^([^–—:\n]{2,70}?)(:)\s+([\s\S]+)$/);
     if (m) {
       const h = m[1].trim();
-      const words = h.split(/\s+/).length;
-      if (words <= 8 && !/[.!?]$/.test(h) && (h.match(/,/g) || []).length < 2) return { heading: h, rest: m[2].trim() };
+      if (h.split(/\s+/).length <= 8 && !/[.!?]$/.test(h) && (h.match(/,/g) || []).length < 2) {
+        cur = { heading: h, sep: m[2], rest: m[3].trim(), body: [] };
+        sections.push(cur);
+        return;
+      }
     }
-    return { heading: "", rest: c };
+    const bare = line.replace(/:$/, "").trim();
+    const isHeadingLine = bare.split(/\s+/).length <= 6 && !/^[-–—*]/.test(bare) && !/[.!?,;]$/.test(bare)
+      && ((/[A-Z]/.test(bare) && bare === bare.toUpperCase()) || /:$/.test(line));
+    if (isHeadingLine) {
+      cur = { heading: bare, sep: "", rest: "", body: [] };
+      sections.push(cur);
+      return;
+    }
+    if (cur) cur.body.push(line);
+    else sections.push({ heading: "", sep: "", rest: line, body: [] });
   });
+  return sections;
 }
 
 function IdpNotes({ text, limit, coachName }) {
   let t = stripAssessmentRubric(text, coachName);
   if (limit && t.length > limit) t = t.slice(0, limit) + "…";
-  const chunks = splitIdpNotes(t);
+  const sections = splitIdpNotes(t);
   return (
     <>
-      {chunks.map((c, i) => (
+      {sections.map((c, i) => (
         <span key={i} className="block mt-1">
-          {c.heading ? <><strong className="underline">{c.heading}</strong> {"–"} {c.rest}</> : c.rest}
+          {c.heading
+            ? <><strong className="underline">{c.heading}</strong>{c.rest ? (c.sep === ":" ? ": " : ` ${c.sep || "–"} `) + c.rest : ""}</>
+            : c.rest}
+          {c.body.map((b, k) => <span key={k} className="block">{b}</span>)}
         </span>
       ))}
     </>
@@ -119,7 +218,7 @@ function IdpNotes({ text, limit, coachName }) {
 
 function idpNotesHtml(text, esc, coachName) {
   return splitIdpNotes(text, coachName).map(c =>
-    `<p style="font-size:12px; margin:4px 0; color:#475569;">${c.heading ? `<strong style="text-decoration:underline;">${esc(c.heading)}</strong> – ${esc(c.rest)}` : esc(c.rest)}</p>`
+    `<div style="font-size:12px; margin:4px 0; color:#475569;">${c.heading ? `<strong style="text-decoration:underline;">${esc(c.heading)}</strong>${c.rest ? (c.sep === ":" ? ": " : ` ${c.sep || "–"} `) + esc(c.rest) : ""}` : esc(c.rest)}${c.body.map(b => `<div>${esc(b)}</div>`).join("")}</div>`
   ).join("");
 }
 
@@ -1070,10 +1169,15 @@ function parseIdpText(text) {
   const result = {};
   matches.forEach((m, idx) => {
     const nextIdx = idx + 1 < matches.length ? matches[idx + 1].lineIndex : lines.length;
-    const bodyLines = lines.slice(m.lineIndex + 1, nextIdx).map(l => l.trim()).filter(Boolean);
+    let bodyLines = lines.slice(m.lineIndex + 1, nextIdx).map(l => l.trim()).filter(Boolean);
+    // An unrecognised ALL-CAPS heading line (e.g. "FA COACHING COURSE
+    // COMPETENCIES") starts a different section, so stop there.
+    const brk = bodyLines.findIndex(l => /[A-Z]/.test(l) && l === l.toUpperCase() && l.split(/\s+/).length <= 6 && !/^[-\u2013\u2014*\u2022\u25cf]/.test(l));
+    if (brk >= 0) bodyLines = bodyLines.slice(0, brk);
     const parts = [m.inline, ...bodyLines].filter(Boolean);
     if (parts.length) {
-      result[m.key] = (result[m.key] ? result[m.key] + " " : "") + parts.join(" ");
+      const joiner = bodyLines.some(l => /^[-\u2013\u2014*\u2022\u25cf]/.test(l)) ? "\n" : " ";
+      result[m.key] = (result[m.key] ? result[m.key] + joiner : "") + parts.join(joiner);
     }
   });
   Object.keys(result).forEach(k => { result[k] = result[k].trim().slice(0, 2000); });
