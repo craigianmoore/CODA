@@ -1169,7 +1169,9 @@ function parseIdpText(text) {
   const result = {};
   matches.forEach((m, idx) => {
     const nextIdx = idx + 1 < matches.length ? matches[idx + 1].lineIndex : lines.length;
-    let bodyLines = lines.slice(m.lineIndex + 1, nextIdx).map(l => l.trim()).filter(Boolean);
+    // Ignore the FV IDP template's own instruction / example lines if a coach left them in.
+    let bodyLines = lines.slice(m.lineIndex + 1, nextIdx).map(l => l.trim()).filter(Boolean)
+      .filter(l => !/one point per line\.?$/i.test(l) && !/^[-\u2022\s]*example:/i.test(l));
     // An unrecognised ALL-CAPS heading line (e.g. "FA COACHING COURSE
     // COMPETENCIES") starts a different section, so stop there.
     const brk = bodyLines.findIndex(l => /[A-Z]/.test(l) && l === l.toUpperCase() && l.split(/\s+/).length <= 6 && !/^[-\u2013\u2014*\u2022\u25cf]/.test(l));
@@ -3847,6 +3849,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
                               <input type="file" accept=".docx,.pdf" onChange={handleIdpFile}
                                 className="block w-full text-xs text-slate-600 border border-slate-300 rounded-lg px-2.5 py-1.5 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 file:text-xs" />
                             )}
+                            <p className="text-xs text-slate-400 mt-1">Upload a Word file or a text-based PDF (not a scan or photo). Please don't attach the assessment rubric — only the coach's own notes are kept.</p>
                             {idpParsing && <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Reading document...</p>}
                             {idpError && <p className="text-xs text-red-600 mt-1">{idpError}</p>}
                             {idpForm.fileText && (
@@ -10082,6 +10085,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                       <input type="file" accept=".docx,.pdf" onChange={handleIdpFile}
                         className="block w-full text-xs text-slate-600 border border-slate-300 rounded-lg px-2.5 py-1.5 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 file:text-xs" />
                     )}
+                    <p className="text-xs text-slate-400 mt-1">Upload a Word file or a text-based PDF (not a scan or photo). Please don't attach the assessment rubric — only the coach's own notes are kept.</p>
                     {idpParsing && <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Reading document...</p>}
                     {idpError && <p className="text-xs text-red-600 mt-1">{idpError}</p>}
                   </div>
