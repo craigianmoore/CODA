@@ -1665,6 +1665,8 @@ async function kvDelete(key) {
 
 export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [tab, setTab] = useState(initialMemberFederation ? "newObs" : "dashboard");
+  // Every tab opens at the top of the page, not wherever the previous tab was scrolled to.
+  useEffect(() => { try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {} }, [tab]);
   const [codaSession, setCodaSession] = useState(() => loadCodaSession());
   function handleSignedIn(session) {
     setCodaSession(session);
@@ -2103,11 +2105,11 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             <div className="flex flex-wrap justify-end gap-2">
               <a href="/Football_Australia_Coach_IDP_Template.docx" download
                 className="flex items-center gap-1.5 text-sm font-semibold text-emerald-800 border border-emerald-300 px-3 py-2 rounded-lg hover:bg-emerald-50">
-                <FileText className="w-4 h-4" /> Coach IDP Template
+                <FileText className="w-4 h-4" /> Coach IDP (template)
               </a>
               <a href="/CODA_Course_Candidate_Sheet_Template.xlsx" download
                 className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700 border border-emerald-300 px-3 py-2 rounded-lg hover:bg-emerald-50">
-                <FileText className="w-4 h-4" /> Course Coach Sheet Template
+                <FileText className="w-4 h-4" /> Course Coach Sheet (template)
               </a>
               <a href="/CODA_How_To_Use.pdf" download
                 className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 border border-indigo-200 px-3 py-2 rounded-lg hover:bg-indigo-50">
