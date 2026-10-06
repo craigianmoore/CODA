@@ -695,7 +695,34 @@ function outcomeBadgeClass(outcome) {
 // assessed items (Practical Session for C Diploma, each session topic for
 // B/A Diploma) plus their Reassessment lines; "fixed" = the standard B/A
 // coursework artefacts; "modules" = Online Modules / Formative Assessment.
+// Per-course (by course number) switch for the newer checklist names:
+// "Goalscoring Presentation" -> "Presentation" and numbered "Session N – topic".
+// Off by default so existing courses are untouched; set from Coaches Progress.
+let NEW_LABEL_COURSES = {};
+function setNewLabelCourses(v) { NEW_LABEL_COURSES = v || {}; }
+function usesNewLabels(record) {
+  const n = ((record && record.courseNumber) || "").trim();
+  return !!(n && NEW_LABEL_COURSES[n]);
+}
+// Display name for a checklist label; the stored label (used as a data key) never changes.
+function newLabelDisplay(record, label, topicsList) {
+  if (!usesNewLabels(record)) return label;
+  if (label === "Goalscoring Presentation") return "Presentation";
+  const base = String(label || "").replace(REASSESSMENT_SUFFIX, "");
+  const idx = (topicsList || []).indexOf(base);
+  if (idx === -1) return label;
+  return `Session ${idx + 1} – ${base}` + (base !== label ? REASSESSMENT_SUFFIX : "");
+}
 function courseworkItems(record, coachTopics, team) {
+  const items = courseworkItemsRaw(record, coachTopics, team);
+  if (!usesNewLabels(record)) return items;
+  const topics = (coachTopics || []).slice(0, 4);
+  return items.map(it => {
+    const d = newLabelDisplay(record, it.label, topics);
+    return d === it.label ? it : { ...it, display: d };
+  });
+}
+function courseworkItemsRaw(record, coachTopics, team) {
   const onlineModulesItem = { label: "Online Modules", done: (record.onlineModulesPercent || 0) >= 100, outcome: "", percent: record.onlineModulesPercent || 0, group: "modules" };
   const formativeAssessmentItem = { label: "Formative Assessment", done: !!record.formativeAssessmentDone, outcome: "", group: "modules" };
   if (isCDiploma(record.courseTitle)) {
@@ -1754,6 +1781,8 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [rapaCatalogue, setRapaCatalogue] = useState(null);
   const [closedCourseNumbers, setClosedCourseNumbers] = useState([]);
   const [closedCourseBlocks, setClosedCourseBlocks] = useState({});
+  const [newLabelCourses, setNewLabelCoursesState] = useState({});
+  setNewLabelCourses(newLabelCourses);
   const [adminLockouts, setAdminLockouts] = useState({});
   const [adminSettings, setAdminSettings] = useState(DEFAULT_ADMIN_SETTINGS);
   const [loading, setLoading] = useState(true);
@@ -1772,7 +1801,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     setLoading(true);
     setError(null);
     try {
-      const [c, co, ed, ob, ct, ca, ra, ri, rp, rcat, cc, cb, al, adm] = await Promise.all([
+      const [c, co, ed, ob, ct, ca, ra, ri, rp, rcat, cc, cb, nlc, al, adm] = await Promise.all([
         loadCollectionSb("coaches"),
         loadCollectionSb("courses"),
         loadCollectionSb("cets"),
@@ -1785,6 +1814,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
         kvGet("rapaHazardCatalogue"),
         kvGet("closedCourseNumbers"),
         kvGet("closedCourseBlocks"),
+        kvGet("newLabelCourses"),
         kvGet("adminLockouts"),
         kvGet("adminSettings"),
       ]);
@@ -1800,6 +1830,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
       setRapaCatalogue(rcat || null);
       setClosedCourseNumbers(cc || []);
       setClosedCourseBlocks(cb || {});
+      setNewLabelCoursesState(nlc || {});
       setAdminLockouts(al || {});
       try {
         setAdminSettings(migrateAdminSettings(adm));
@@ -1846,6 +1877,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const saveObservations = async (v) => { setObservations(v); await syncCollectionSb("observations", observations, v); };
   const saveCompletedTasks = async (v) => { setCompletedTasks(v); await syncCollectionSb("completed_tasks", completedTasks, v); };
   const saveClosedCourseNumbers = async (v) => { setClosedCourseNumbers(v); await kvSet("closedCourseNumbers", v); };
+  const saveNewLabelCourses = async (v) => { setNewLabelCoursesState(v); await kvSet("newLabelCourses", v); };
   const saveClosedCourseBlocks = async (v) => { setClosedCourseBlocks(v); await kvSet("closedCourseBlocks", v); };
   const saveAdminLockouts = async (v) => { setAdminLockouts(v); await kvSet("adminLockouts", v); };
   const saveAdminSettings = async (v) => { setAdminSettings(v); await kvSet("adminSettings", v); };
@@ -2113,6 +2145,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             onEditDraft={handleEditDraft}
             closedCourseNumbers={closedCourseNumbers} saveClosedCourseNumbers={saveClosedCourseNumbers}
             closedCourseBlocks={closedCourseBlocks} saveClosedCourseBlocks={saveClosedCourseBlocks}
+            newLabelCourses={newLabelCourses} saveNewLabelCourses={saveNewLabelCourses}
             adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
             jumpTaskRef={jumpTaskRef} onJumpHandledCb={() => setFocusTaskId(null)}
             session={codaSession}
@@ -2956,7 +2989,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                                     <label key={i} className={`flex items-center gap-2 text-xs ${isNyc ? "text-red-500" : isPercentBased ? "text-slate-400" : "text-slate-600 cursor-pointer"}`}>
                                       <input type="checkbox" checked={false} disabled={isNyc || isPercentBased} onChange={() => toggleOutstandingItem(t, item.label)}
                                         className="rounded border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed" />
-                                      <span><ItemObsLink observations={observations} record={t} label={item.label} onViewReport={onViewReport} onEditDraft={onEditDraft} />{isNyc ? " — Not Yet Competent, needs re-observation" : isPercentBased ? ` — ${item.percent || 0}% (update % in Coaches Progress)` : ""}</span>
+                                      <span><ItemObsLink observations={observations} record={t} label={item.label} text={item.display} onViewReport={onViewReport} onEditDraft={onEditDraft} />{isNyc ? " — Not Yet Competent, needs re-observation" : isPercentBased ? ` — ${item.percent || 0}% (update % in Coaches Progress)` : ""}</span>
                                     </label>
                                   );
                                 })}
@@ -6776,7 +6809,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
   );
 }
 
-function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, onEditDraft, closedCourseNumbers, saveClosedCourseNumbers, closedCourseBlocks, saveClosedCourseBlocks, adminSettings, adminLockouts, recordAdminAttempt, jumpTaskRef, onJumpHandledCb, session }) {
+function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, saveCompletedTasks, onBulkDelete, observations, onViewReport, onEditDraft, closedCourseNumbers, saveClosedCourseNumbers, closedCourseBlocks, saveClosedCourseBlocks, newLabelCourses, saveNewLabelCourses, adminSettings, adminLockouts, recordAdminAttempt, jumpTaskRef, onJumpHandledCb, session }) {
   // Duplicate detection & merge for Completed Tasks — a different problem
   // from duplicate coach/CET profiles: this catches the same person, same
   // course, showing up as TWO separate attendance/checklist records (from
@@ -7786,7 +7819,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                           <label key={i} className={`flex items-center gap-2 text-xs ${isNyc ? "text-red-500" : "text-slate-600 cursor-pointer"}`}>
                             <input type="checkbox" checked={false} disabled={isNyc} onChange={() => toggleCourseworkItemForTask(t, item.label)}
                               className="rounded border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed" />
-                            <span><ItemObsLink observations={observations} record={t} label={item.label} onViewReport={onViewReport} onEditDraft={onEditDraft} />{isNyc ? " — Not Yet Competent, needs re-observation" : ""}</span>
+                            <span><ItemObsLink observations={observations} record={t} label={item.label} text={item.display} onViewReport={onViewReport} onEditDraft={onEditDraft} />{isNyc ? " — Not Yet Competent, needs re-observation" : ""}</span>
                           </label>
                         );
                       })}
@@ -8015,7 +8048,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
         ) : (isBDiploma(form.courseTitle) || isADiploma(form.courseTitle)) ? (
           <>
             <div className="border-t border-slate-100 pt-3">
-              <p className="text-sm font-semibold text-slate-800 mb-2">Session Plans</p>
+              <p className="text-sm font-semibold text-slate-800 mb-2">{usesNewLabels(form) ? "Sessions" : "Session Plans"}</p>
               {!selectedCoach || !(selectedCoach.topics && selectedCoach.topics.length) ? (
                 <p className="text-xs text-slate-400">No session topics on file for this coach — add them via Coaches &amp; CETs (Add Coach or Bulk Upload → Topics column), or import a coursework CSV with topic columns mapped.</p>
               ) : (
@@ -8026,7 +8059,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                     <div key={topic}>
                       <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
                         <span className="flex items-center gap-1.5 flex-wrap">
-                          <ItemObsLink observations={observations} record={form} label={topic} onViewReport={onViewReport} onEditDraft={onEditDraft} />
+                          <ItemObsLink observations={observations} record={form} label={topic} text={newLabelDisplay(form, topic, (selectedCoach?.topics || []).slice(0, 4))} onViewReport={onViewReport} onEditDraft={onEditDraft} />
                           {isTopicSuggestedByGap(topic, selectedCoach?.idp?.performanceGap) && (
                             <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Suggested focus</span>
                           )}
@@ -8043,7 +8076,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                         <>
                           <p className="text-[10px] text-red-500 mt-0.5">Not Yet Competent — needs a re-observation before this can be marked done.</p>
                           <label className="flex items-center justify-between gap-2 text-xs text-slate-700 cursor-pointer">
-                            <span>{topic} (Reassessment)</span>
+                            <span>{newLabelDisplay(form, topic + REASSESSMENT_SUFFIX, (selectedCoach?.topics || []).slice(0, 4))}</span>
                             <input type="checkbox" checked={!!form.sessionPlansReassessmentDone?.[topic]}
                               onChange={() => toggleSessionPlanReassessment(topic)}
                               className="rounded border-slate-300" />
@@ -8073,7 +8106,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               ].map(item => (
                 <div key={item.key}>
                   <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
-                    <span>{item.label}</span>
+                    <span>{newLabelDisplay(form, item.label, [])}</span>
                     <span className="flex items-center gap-2">
                       {item.extra}
                       <input type="checkbox" checked={form[item.key]} onChange={() => setField(item.key, !form[item.key])} className="rounded border-slate-300" />
@@ -8570,6 +8603,14 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                               <Trash2 className="w-3.5 h-3.5" /> Delete Selected ({groupSelectedCount})
                             </button>
                           )}
+                          {g.courseNumber && !isCDiploma(g.courseTitle) && (
+                            <label onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap cursor-pointer" title="Show 'Presentation' and numbered 'Session 1, 2, 3…' names for this course">
+                              <input type="checkbox" checked={!!(newLabelCourses || {})[g.courseNumber]}
+                                onChange={() => saveNewLabelCourses({ ...(newLabelCourses || {}), [g.courseNumber]: !(newLabelCourses || {})[g.courseNumber] })}
+                                className="rounded border-slate-300" />
+                              New names
+                            </label>
+                          )}
                           {(() => {
                             if (!g.courseNumber) return null;
                             const isCDip = isCDiploma(g.courseTitle);
@@ -8780,7 +8821,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                 // each item comes from courseworkItems().
                                                 const GROUP_ORDER = ["topics", "fixed", "modules"];
                                                 const GROUP_LABELS = {
-                                                  topics: isCDiploma(t.courseTitle) ? "Practical Assessment" : "Session Topics",
+                                                  topics: isCDiploma(t.courseTitle) ? "Practical Assessment" : usesNewLabels(t) ? "Sessions" : "Session Topics",
                                                   fixed: "Fixed Items",
                                                   modules: "Modules & Assessment",
                                                 };
@@ -8798,7 +8839,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                         <div className="flex items-center justify-between gap-2 text-xs">
                                                           <span className={`flex items-center gap-1.5 ${item.done ? "text-slate-700" : "text-slate-400"}`}>
                                                             {item.done ? <Check className="w-3 h-3 text-emerald-600 shrink-0" /> : <span className="w-3 h-3 rounded-full border border-slate-300 inline-block shrink-0" />}
-                                                            <ItemObsLink observations={observations} record={t} label={item.label} onViewReport={onViewReport} onEditDraft={onEditDraft} />
+                                                            <ItemObsLink observations={observations} record={t} label={item.label} text={item.display} onViewReport={onViewReport} onEditDraft={onEditDraft} />
                                                             {suggestedTopics.includes(item.label) && <span className="text-amber-500" title="Suggested focus from IDP Performance Gap">★</span>}
                                                           </span>
                                                           <span className="flex items-center gap-1.5 shrink-0">
@@ -10196,7 +10237,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
               </div>
             ) : (
               <div>
-                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Session Topic <span className="text-red-500">*</span></label>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">{usesNewLabels(matchedCompletedTask || {}) ? "Session" : "Session Topic"} <span className="text-red-500">*</span></label>
                 <select value={sessionTopicOption} onChange={e => handleSessionTopicOptionChange(e.target.value)}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
                   <option value="">
