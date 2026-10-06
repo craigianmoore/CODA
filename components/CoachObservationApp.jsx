@@ -702,7 +702,7 @@ let NEW_LABEL_COURSES = {};
 function setNewLabelCourses(v) { NEW_LABEL_COURSES = v || {}; }
 function usesNewLabels(record) {
   const n = ((record && record.courseNumber) || "").trim();
-  return !!(n && NEW_LABEL_COURSES[n]);
+  return !!(n && NEW_LABEL_COURSES[n] && (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)));
 }
 // Display name for a checklist label; the stored label (used as a data key) never changes.
 function newLabelDisplay(record, label, topicsList) {
@@ -8603,7 +8603,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                               <Trash2 className="w-3.5 h-3.5" /> Delete Selected ({groupSelectedCount})
                             </button>
                           )}
-                          {g.courseNumber && !isCDiploma(g.courseTitle) && (
+                          {g.courseNumber && (isBDiploma(g.courseTitle) || isADiploma(g.courseTitle)) && (
                             <label onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap cursor-pointer" title="Show 'Presentation' and numbered 'Session 1, 2, 3…' names for this course">
                               <input type="checkbox" checked={!!(newLabelCourses || {})[g.courseNumber]}
                                 onChange={() => saveNewLabelCourses({ ...(newLabelCourses || {}), [g.courseNumber]: !(newLabelCourses || {})[g.courseNumber] })}
