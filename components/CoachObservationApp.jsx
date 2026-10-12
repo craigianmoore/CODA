@@ -1977,6 +1977,16 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             courseworkNotes: {},
             recommendNextLevel: false,
             recommendNextLevelNotes: "",
+            // Join the course's checklist format: if the other coaches on this
+            // course are sheet-driven, this auto-created record is too (same
+            // custom items, all unticked) so the course stays consistent.
+            ...((() => {
+              const siblings = obs.courseNumber ? completedTasks.filter(t => (t.courseNumber || "").trim() === obs.courseNumber.trim() && t.sheetDriven) : [];
+              if (!siblings.length) return {};
+              const labels = [];
+              siblings.forEach(t => (t.customItems || []).forEach(ci => { if (!labels.includes(ci.label)) labels.push(ci.label); }));
+              return { sheetDriven: true, customItems: labels.map(label => ({ label, done: false })) };
+            })()),
           }
         : completedTasks[matchIdx];
 
@@ -6937,6 +6947,28 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
         sessionPlansDone, sessionPlansOutcomes,
         updatedAt: new Date().toISOString(),
       };
+
+      // Sheet-driven custom items: if any record in the group is sheet-driven
+      // the merged record is too. Items are united by label and a tick on any
+      // copy wins. A legacy copy's ticked fixed items (Game Plan etc.) come
+      // across as custom items so no tick is lost in a mixed merge.
+      if (all.some(t => t.sheetDriven)) {
+        let items = [];
+        const LEGACY_FIXED = [
+          ["Goalscoring Presentation", "goalscoringPresentationDone"], ["Game Plan", "gamePlanDone"],
+          ["Analysis Session Plan", "analysisSessionPlanDone"], ["Annual (Yearly) Plan", "annualPlanDone"],
+          ["25 Min Coaching Session (Candidate Folder, Block 2→3)", "coachingSession25MinDone"],
+          ["6WC (6 Week Cycle)", "sixWeekCycleDone"], ["with FC (football conditioning) details", "fcDetailsDone"],
+        ];
+        all.forEach(t => {
+          const own = t.sheetDriven
+            ? (t.customItems || [])
+            : LEGACY_FIXED.filter(([, k]) => t[k]).map(([label]) => ({ label, done: true }));
+          items = mergeCustomItems(items, own);
+        });
+        merged.sheetDriven = true;
+        merged.customItems = items;
+      }
 
       const nextTasks = completedTasks.filter(t => !duplicateIds.has(t.id)).map(t => t.id === canonical.id ? merged : t);
       await saveCompletedTasks(nextTasks);
