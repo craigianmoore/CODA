@@ -713,8 +713,18 @@ function newLabelDisplay(record, label, topicsList) {
   if (idx === -1) return label;
   return `Session ${idx + 1} – ${base}` + (base !== label ? REASSESSMENT_SUFFIX : "");
 }
+// Sheet-driven records (created by the newer coursework import) drop the old
+// fixed items (Game Plan, Annual Plan, 6WC...) and instead carry whatever
+// extra columns the coach sheet had as record.customItems = [{label, done}].
+// Legacy records have no sheetDriven flag and are completely unaffected.
 function courseworkItems(record, coachTopics, team) {
-  const items = courseworkItemsRaw(record, coachTopics, team);
+  let items = courseworkItemsRaw(record, coachTopics, team);
+  if (record.sheetDriven) {
+    const custom = (record.customItems || []).map(ci => ({ label: ci.label, done: !!ci.done, outcome: "", group: "custom" }));
+    items = items.filter(i => i.group !== "fixed");
+    const modIdx = items.findIndex(i => i.group === "modules");
+    items.splice(modIdx === -1 ? items.length : modIdx, 0, ...custom);
+  }
   if (!usesNewLabels(record)) return items;
   const topics = (coachTopics || []).slice(0, 4);
   return items.map(it => {
@@ -784,6 +794,9 @@ function courseworkItemsRaw(record, coachTopics, team) {
 // returned record via saveCompletedTasks.
 function applyCourseworkToggle(task, label, coachTopics) {
   const topics = (coachTopics || []).slice(0, 4);
+  if (task.sheetDriven && (task.customItems || []).some(ci => ci.label === label)) {
+    return { ...task, customItems: task.customItems.map(ci => ci.label === label ? { ...ci, done: !ci.done } : ci), updatedAt: new Date().toISOString() };
+  }
   if (isCDiploma(task.courseTitle) && label === "Practical Session" && task.practicalSessionOutcome === "Not Yet Competent") return task;
   if (topics.includes(label) && (task.sessionPlansOutcomes || {})[label] === "Not Yet Competent") return task;
   let updated = { ...task };
@@ -5034,6 +5047,10 @@ function emptyCompletedTaskForm() {
 }
 
 function courseworkProgress(record, coachTopics) {
+  if (record.sheetDriven) {
+    const its = courseworkItems(record, coachTopics).filter(i => !i.isReassessment);
+    return { done: its.filter(i => i.done).length, total: its.length };
+  }
   const onlineDone = (record.onlineModulesPercent || 0) >= 100 ? 1 : 0;
   const formativeDone = record.formativeAssessmentDone ? 1 : 0;
   if (isCDiploma(record.courseTitle)) {
@@ -5067,6 +5084,24 @@ function courseworkProgress(record, coachTopics) {
     return { done: sessionDone + fixedDone + onlineDone + formativeDone, total: topics.length + (isB ? 7 : 6) + 2 };
   }
   return { done: 0, total: 0 };
+}
+
+// Whether a coach-sheet cell counts as "done" for a custom checklist column.
+function isTickedCell(raw) {
+  const v = (raw == null ? "" : raw).toString().trim().toLowerCase();
+  if (!v) return false;
+  return /^(y|yes|true|x|\u2713|\u2714|1|done|complete|completed|submitted|received|100%?)$/.test(v);
+}
+
+// Merge freshly imported custom items into an existing sheet-driven record
+// without ever clearing something already ticked.
+function mergeCustomItems(existing, incoming) {
+  const out = (existing || []).map(e => {
+    const inc = (incoming || []).find(i => i.label === e.label);
+    return inc ? { ...e, done: !!(e.done || inc.done) } : e;
+  });
+  (incoming || []).forEach(i => { if (!out.some(e => e.label === i.label)) out.push({ label: i.label, done: !!i.done }); });
+  return out;
 }
 
 function isAttendedCell(raw, diplomaType) {
@@ -6969,6 +7004,10 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [courseworkGoalscoringHeader, setCourseworkGoalscoringHeader] = useState("");
   const [courseworkOnlineModulesHeader, setCourseworkOnlineModulesHeader] = useState("");
   const [courseworkTopicHeaders, setCourseworkTopicHeaders] = useState(["", "", "", ""]);
+  // Sheet-driven checklist (new format): required columns + every other column
+  // becomes a tick item. Off = the original fixed-item import.
+  const [courseworkSheetDriven, setCourseworkSheetDriven] = useState(true);
+  const [courseworkSkipHeaders, setCourseworkSkipHeaders] = useState([]);
   const [courseworkDetectedAttendanceHeaders, setCourseworkDetectedAttendanceHeaders] = useState([]);
   const [courseworkPreview, setCourseworkPreview] = useState(null);
   const [courseworkError, setCourseworkError] = useState("");
@@ -7132,6 +7171,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       practicalReassessmentDone: !!task.practicalReassessmentDone,
       sessionPlansReassessmentDone: task.sessionPlansReassessmentDone || {},
       courseworkNotes: task.courseworkNotes || {},
+      sheetDriven: !!task.sheetDriven,
+      customItems: task.customItems || [],
     });
     const matchedCoach = coaches.find(c => c.id === task.coachId);
     setCoachSearchQuery(matchedCoach ? matchedCoach.name : "");
@@ -7182,6 +7223,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       practicalReassessmentDone: form.practicalReassessmentDone,
       sessionPlansReassessmentDone: form.sessionPlansReassessmentDone || {},
       courseworkNotes: form.courseworkNotes || {},
+      ...(original.sheetDriven ? { customItems: form.customItems || original.customItems || [] } : {}),
       updatedAt: new Date().toISOString(),
     };
     if (editingId) {
@@ -7558,6 +7600,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             : headers.find(h => /goalscoring/i.test(h)) || ""
         );
         setCourseworkTopicHeaders([1, 2, 3, 4].map(n => guessTopicHeader(headers, n)));
+        setCourseworkSkipHeaders(headers.filter(h => /comment|note|email|phone|mobile|dob|birth|address|timestamp|^id$|gender|suburb|postcode/i.test(h)));
         setCourseworkDetectedAttendanceHeaders([]);
       },
       error: () => setCourseworkError("Could not read file. Make sure it's a valid CSV."),
@@ -7579,6 +7622,24 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       setCourseworkPreview(null);
       return;
     }
+    const nameMapped = courseworkNameHeader === "__firstlast__" ? !!(courseworkFirstNameHeader && courseworkLastNameHeader) : !!courseworkNameHeader;
+    if (courseworkSheetDriven) {
+      const missing = [];
+      if (!nameMapped) missing.push("Name");
+      if (!courseworkClubHeader) missing.push("Club");
+      if (!courseworkFaHeader) missing.push("FA Number");
+      if (!courseworkCetHeader) missing.push("CET");
+      if (!courseworkOnlineModulesHeader) missing.push("Online Modules");
+      if (courseworkDiplomaType !== "C") courseworkTopicHeaders.forEach((h, i) => { if (!h) missing.push(`Session ${i + 1} Topic`); });
+      if (missing.length) {
+        setCourseworkError(`Required column${missing.length === 1 ? "" : "s"} not matched: ${missing.join(", ")}. Match each one above (or fix the sheet), or untick "Sheet-driven checklist" to use the original import.`);
+        setCourseworkPreview(null);
+        return;
+      }
+    }
+    const extraHeaders = courseworkSheetDriven
+      ? courseworkHeaders.filter(h => h && h.trim() && !excluded.has(h) && !attendanceHeaders.includes(h) && !courseworkSkipHeaders.includes(h))
+      : [];
     const maxSessions = courseworkDiplomaType === "C" ? 4 : courseworkDiplomaType === "A" ? 12 : 9;
     let skippedBlankName = 0;
     const preview = courseworkRawRows.map(r => {
@@ -7595,13 +7656,14 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       const total = maxSessions;
       const pct = Math.round((attended / total) * 100);
       const matchedCoach = coaches.find(c => c.name.toLowerCase() === coachName.toLowerCase());
-      const topics = courseworkDiplomaType === "B"
+      const topics = courseworkDiplomaType !== "C"
         ? courseworkTopicHeaders.map((h, i) => {
             const val = h ? (r[h] || "").toString().trim() : "";
             return val || `Session Topic ${i + 1}`;
           })
         : [];
-      return { coachName, club, faNumber, cetName, goalscoringTeam, onlineModulesPct, attended, total, pct, matchedCoach, topics };
+      const customItems = extraHeaders.map(h => ({ label: h.trim(), done: isTickedCell(r[h]) }));
+      return { coachName, club, faNumber, cetName, goalscoringTeam, onlineModulesPct, attended, total, pct, matchedCoach, topics, customItems };
     }).filter(Boolean);
     if (!preview.length) {
       setCourseworkError("No valid coach rows found using that name column — try a different one.");
@@ -7624,12 +7686,12 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     courseworkPreview.forEach(p => {
       let coach = p.matchedCoach || updatedCoaches.find(c => c.name.toLowerCase() === p.coachName.toLowerCase());
       if (!coach) {
-        coach = { id: uid(), name: p.coachName, club: p.club || "", level: "", topics: courseworkDiplomaType === "B" ? p.topics : [], faNumber: p.faNumber || "" };
+        coach = { id: uid(), name: p.coachName, club: p.club || "", level: "", topics: courseworkDiplomaType !== "C" ? p.topics : [], faNumber: p.faNumber || "" };
         updatedCoaches.push(coach);
       } else {
         const idx = updatedCoaches.findIndex(c => c.id === coach.id);
         const patch = {};
-        if (courseworkDiplomaType === "B") patch.topics = p.topics;
+        if (courseworkDiplomaType !== "C") patch.topics = p.topics;
         if (p.faNumber && !coach.faNumber) patch.faNumber = p.faNumber;
         if (Object.keys(patch).length) {
           updatedCoaches[idx] = { ...coach, ...patch };
@@ -7645,6 +7707,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           team: p.goalscoringTeam || p.club || updatedTasks[existingIdx].team || "",
           cet: p.cetName || updatedTasks[existingIdx].cet || "",
           memberFederation: courseworkMemberFederation,
+          ...(updatedTasks[existingIdx].sheetDriven ? { customItems: mergeCustomItems(updatedTasks[existingIdx].customItems, p.customItems) } : {}),
           updatedAt: new Date().toISOString(),
         };
       } else {
@@ -7673,6 +7736,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           practicalSessionOutcome: "",
           practicalReassessmentDone: false,
           sessionPlansReassessmentDone: {},
+          ...(courseworkSheetDriven ? { sheetDriven: true, customItems: p.customItems || [] } : {}),
           updatedAt: new Date().toISOString(),
         });
       }
@@ -8095,6 +8159,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               )}
             </div>
 
+            {!form.sheetDriven && (
             <div className="border-t border-slate-100 pt-3 space-y-2">
               <p className="text-sm font-semibold text-slate-800 mb-1">Coursework</p>
               {[
@@ -8142,8 +8207,23 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                   className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1 ml-5" />
               )}
             </div>
+            )}
           </>
         ) : null}
+
+        {form.sheetDriven && (form.customItems || []).length > 0 && (
+          <div className="border-t border-slate-100 pt-3 space-y-2">
+            <p className="text-sm font-semibold text-slate-800 mb-1">Course Items</p>
+            {form.customItems.map(ci => (
+              <label key={ci.label} className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
+                <span>{ci.label}</span>
+                <input type="checkbox" checked={!!ci.done}
+                  onChange={() => setForm(prev => ({ ...prev, customItems: prev.customItems.map(x => x.label === ci.label ? { ...x, done: !x.done } : x) }))}
+                  className="rounded border-slate-300" />
+              </label>
+            ))}
+          </div>
+        )}
 
         {(() => {
           const { done, total } = courseworkProgress(form, selectedCoach?.topics);
@@ -8425,9 +8505,9 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                   <p className="text-xs text-slate-400 mt-1">Accepts a % number (e.g. "75"), a fraction (e.g. "3/4"), or Y/N. Needs to reach 100% to count as complete.</p>
                 </div>
               </div>
-              {courseworkDiplomaType === "B" && (
+              {courseworkDiplomaType !== "C" && (
                 <div>
-                  <p className="text-xs font-medium text-slate-600 mb-1.5">Session Topic columns (optional — leave as None to use "Session Topic 1–4")</p>
+                  <p className="text-xs font-medium text-slate-600 mb-1.5">{courseworkSheetDriven ? "Session Topic columns (required)" : 'Session Topic columns (optional — leave as None to use "Session Topic 1–4")'}</p>
                   <div className="grid sm:grid-cols-2 gap-3">
                     {[0, 1, 2, 3].map(i => (
                       <div key={i}>
@@ -8461,6 +8541,34 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                   </p>
                 );
               })()}
+              <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                <label className="flex items-start gap-2 text-sm font-medium text-slate-700 cursor-pointer">
+                  <input type="checkbox" checked={courseworkSheetDriven} onChange={() => { setCourseworkSheetDriven(v => !v); setCourseworkPreview(null); }} className="rounded border-slate-300 mt-0.5" />
+                  <span>Sheet-driven checklist (new format)
+                    <span className="block text-xs font-normal text-slate-500">Name, Club, FA Number, CET, Online Modules{courseworkDiplomaType !== "C" ? ", Session Topics 1–4" : ""} and the attendance dates are required. Every other column becomes a tick item titled with its header. Existing coaches already on the old checklist keep it.</span>
+                  </span>
+                </label>
+                {courseworkSheetDriven && (() => {
+                  const used = new Set([courseworkNameHeader, courseworkFirstNameHeader, courseworkLastNameHeader, courseworkClubHeader, courseworkFaHeader, courseworkCetHeader, courseworkOnlineModulesHeader, ...courseworkTopicHeaders].filter(Boolean));
+                  const extras = (courseworkHeaders || []).filter(h => h && h.trim() && !used.has(h) && !isDateColumnHeader(h, courseworkDiplomaType));
+                  if (!extras.length) return <p className="text-xs text-slate-400">No extra columns — nothing to add as tick items.</p>;
+                  return (
+                    <div>
+                      <p className="text-xs font-medium text-slate-600 mb-1">Extra columns to add as tick items (untick any to leave out):</p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        {extras.map(h => (
+                          <label key={h} className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
+                            <input type="checkbox" checked={!courseworkSkipHeaders.includes(h)}
+                              onChange={() => { setCourseworkSkipHeaders(prev => prev.includes(h) ? prev.filter(x => x !== h) : [...prev, h]); setCourseworkPreview(null); }}
+                              className="rounded border-slate-300" />
+                            {h}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
               <button onClick={generateCourseworkPreview} disabled={!courseworkNameHeader}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:bg-slate-300">
                 Generate Preview
@@ -8475,6 +8583,15 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 {" · "}{courseworkPreview.filter(p => !p.matchedCoach).length} will be added as new coaches
               </p>
               <p className="text-xs text-slate-400">Attendance columns used: {courseworkDetectedAttendanceHeaders.join(", ")}</p>
+              {courseworkSheetDriven && (() => {
+                const legacy = courseworkPreview.filter(p => {
+                  const c = p.matchedCoach;
+                  const t = c && completedTasks.find(x => x.coachId === c.id && (x.courseNumber || "").trim() === courseworkCourseNumber.trim());
+                  return t && !t.sheetDriven;
+                }).length;
+                const n = (courseworkPreview[0]?.customItems || []).length;
+                return <p className="text-xs text-slate-500">{n} extra tick item{n === 1 ? "" : "s"} per coach{legacy ? ` · ${legacy} existing record${legacy === 1 ? "" : "s"} on the old checklist will keep it (attendance and online modules still update)` : ""}.</p>;
+              })()}
               <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
                 {courseworkPreview.map((p, i) => (
                   <div key={i} className="px-3 py-2 text-sm flex items-center justify-between gap-2">
@@ -8819,10 +8936,11 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                               {(() => {
                                                 // Grouped subheaders instead of one flat list — the "group" tag on
                                                 // each item comes from courseworkItems().
-                                                const GROUP_ORDER = ["topics", "fixed", "modules"];
+                                                const GROUP_ORDER = ["topics", "fixed", "custom", "modules"];
                                                 const GROUP_LABELS = {
                                                   topics: isCDiploma(t.courseTitle) ? "Practical Assessment" : usesNewLabels(t) ? "Sessions" : "Session Topics",
                                                   fixed: "Fixed Items",
+                                                  custom: "Course Items",
                                                   modules: "Modules & Assessment",
                                                 };
                                                 const grouped = GROUP_ORDER
