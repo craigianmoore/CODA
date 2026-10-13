@@ -5356,6 +5356,16 @@ async function saveHtmlAsPdf(htmlContent, filename) {
 // Course Report export — either the full cohort or filtered to just
 // candidates with outstanding coursework, matching the same document
 // style as the individual candidate PDF.
+// Guidance note a CET typed under an unticked checklist item, as report HTML.
+// Online Modules / Formative Assessment have no note box, so they're skipped.
+function itemNoteHtml(task, label) {
+  if (label === "Online Modules" || label === "Formative Assessment") return "";
+  const note = String((task.courseworkNotes || {})[label] || "").trim();
+  if (!note) return "";
+  const esc = (x) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<div style="margin-top:3px;font-size:12px;color:#334155;line-height:1.4;"><strong style="color:#0f172a;">Note:</strong> ${esc(note)}</div>`;
+}
+
 function buildCourseReportHtml(group, coaches, incompleteOnly) {
   const esc = (s) => (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const rows = [...group.records].sort((a, b) => (a.coachName || "").localeCompare(b.coachName || "")).map(t => {
@@ -5370,7 +5380,7 @@ function buildCourseReportHtml(group, coaches, incompleteOnly) {
 
   const candidateSections = rows.map(({ t, done, total, outstanding }) => {
     const outstandingRows = outstanding.length > 0
-      ? `<table style="width:100%;border-collapse:collapse;font-size:12px;margin:6px 0 10px;">${outstanding.map(i => `<tr><td style="padding:4px 8px;border:1px solid #ddd;">☐ ${esc(i.label)}</td></tr>`).join("")}</table>`
+      ? `<table style="width:100%;border-collapse:collapse;font-size:12px;margin:6px 0 10px;">${outstanding.map(i => `<tr><td style="padding:4px 8px;border:1px solid #ddd;">☐ ${esc(i.display || i.label)}${itemNoteHtml(t, i.label)}</td></tr>`).join("")}</table>`
       : `<p style="font-size:12px;color:#059669;font-weight:600;margin:4px 0 10px;">All coursework completed.</p>`;
     const blockOpts = blockOptionsFor(t);
     const statuses = t.blockStatuses || {};
@@ -5421,8 +5431,7 @@ function buildOutstandingCandidateHtml(task, coach) {
   const items = total > 0 ? courseworkItems(task, coach?.topics, task.team) : [];
   const outstanding = items.filter(i => !i.done);
   const outstandingRows = outstanding.map(i => {
-    const itemNote = (task.courseworkNotes || {})[i.label];
-    return `<tr><td style="padding:6px 8px;border:1px solid #ddd;">☐ ${esc(i.label)}${i.outcome === "Not Yet Competent" ? " (Not Yet Competent — needs a re-observation)" : ""}${itemNote ? `<br/><span style="font-style:italic;color:#94a3b8;font-size:12px;">${esc(itemNote)}</span>` : ""}</td></tr>`;
+    return `<tr><td style="padding:6px 8px;border:1px solid #ddd;">☐ ${esc(i.display || i.label)}${i.outcome === "Not Yet Competent" ? " (Not Yet Competent — needs a re-observation)" : ""}${itemNoteHtml(task, i.label)}</td></tr>`;
   }).join("");
   return `<html><head><title>${esc(task.coachName)} - Outstanding Items</title></head><body style="margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1e293b;padding:28px;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:2px solid #0f172a;padding-bottom:16px;margin-bottom:20px;">
@@ -5455,7 +5464,7 @@ function buildCandidateHtml(task, coach, observations) {
   const { done, total } = courseworkProgress(task, coach?.topics);
   const items = total > 0 ? courseworkItems(task, coach?.topics, task.team) : [];
   const checklistRows = items.map(i =>
-    `<tr><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${i.done ? "✅" : "☐"} ${esc(i.label)}</td><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;">${esc(i.outcome) || "—"}</td></tr>`
+    `<tr><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${i.done ? "✅" : "☐"} ${esc(i.display || i.label)}${i.done ? "" : itemNoteHtml(task, i.label)}</td><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;">${esc(i.outcome) || "—"}</td></tr>`
   ).join("");
   const matchingReports = (observations || [])
     .filter(o => o.status !== "draft" && o.coachId === task.coachId && (o.courseNumber || "").trim() === (task.courseNumber || "").trim() && task.courseNumber)
@@ -8247,12 +8256,19 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           <div className="border-t border-slate-100 pt-3 space-y-2">
             <p className="text-sm font-semibold text-slate-800 mb-1">Course Items</p>
             {form.customItems.map(ci => (
-              <label key={ci.label} className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
+              <div key={ci.label}>
+              <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
                 <span>{ci.label}</span>
                 <input type="checkbox" checked={!!ci.done}
                   onChange={() => setForm(prev => ({ ...prev, customItems: prev.customItems.map(x => x.label === ci.label ? { ...x, done: !x.done } : x) }))}
                   className="rounded border-slate-300" />
               </label>
+              {!ci.done && (
+                <input value={form.courseworkNotes?.[ci.label] || ""} onChange={e => setCourseworkNote(ci.label, e.target.value)}
+                  placeholder="Short note (optional)..." maxLength={140}
+                  className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1" />
+              )}
+              </div>
             ))}
           </div>
         )}
