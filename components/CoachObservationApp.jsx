@@ -1746,6 +1746,26 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     setCodaSession(session);
     saveCodaSession(session);
   }
+
+  // A signed-in admin's federations/courses are copied into their saved
+  // session at sign-in, so changes made later (Edit Courses) never reached an
+  // already-signed-in browser. Re-sync from the live admin settings whenever
+  // they load or change.
+  useEffect(() => {
+    if (!codaSession || codaSession.kind !== "admin" || !adminSettings || !adminSettings.admins) return;
+    const me = adminSettings.admins.find(x => (x.name || "").trim().toLowerCase() === (codaSession.name || "").trim().toLowerCase());
+    if (!me) return;
+    const mfs = me.memberFederations || [];
+    const courses = me.assignedCourseNumbers || [];
+    const tier = adminTier(me);
+    const same = tier === codaSession.tier
+      && JSON.stringify(mfs) === JSON.stringify(codaSession.memberFederations || [])
+      && JSON.stringify(courses) === JSON.stringify(codaSession.assignedCourseNumbers || []);
+    if (same) return;
+    const next = { ...codaSession, tier, memberFederations: mfs, assignedCourseNumbers: courses };
+    setCodaSession(next);
+    saveCodaSession(next);
+  }, [adminSettings]);
   function handleSignOut() {
     setCodaSession(null);
     saveCodaSession(null);
