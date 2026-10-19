@@ -942,16 +942,16 @@ const REPORT_STYLE_TAG = `<style>
         .final-score-row > div { flex: 1 1 calc(50% - 6px); min-width: 200px; }
         .final-score-box { border-radius: 10px; padding: 12px; }
         .final-score-pass { background: #ecfdf5; border: 1px solid #bbf7d0; }
-        .final-score-fail { background: #fff8f8; border: 1px solid #f6dcdc; }
+        .final-score-fail { background: #fef2f2; border: 1px solid #fecaca; }
         .final-score-label { font-size: 11px; color: #64748b; margin: 0 0 2px; }
         .final-score-value { font-size: 17px; font-weight: 800; margin: 0; }
         .final-score-value.pass { color: #15803d; }
-        .final-score-value.fail { color: #b45454; }
+        .final-score-value.fail { color: #b91c1c; }
         .outcome-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; display: flex; align-items: center; justify-content: space-between; }
         .outcome-badge { font-size: 13px; font-weight: 700; padding: 5px 14px; border-radius: 999px; }
         .outcome-highly { background: #ede9fe; color: #6d28d9; }
         .outcome-competent { background: #dcfce7; color: #15803d; }
-        .outcome-notyet { background: #fdeeee; color: #b45454; }
+        .outcome-notyet { background: #fee2e2; color: #b91c1c; }
         .outcome-neutral { background: #f1f5f9; color: #64748b; }
         .pathway-box { border-radius: 10px; padding: 14px; background: #f5f3ff; border: 1px solid #ddd6fe; margin: 16px 0; }
         .pathway-title { font-size: 13px; font-weight: 700; color: #6d28d9; margin: 0 0 8px; }
@@ -5389,7 +5389,9 @@ async function saveHtmlAsPdf(htmlContent, filename) {
 function itemLabelHtml(i) {
   const esc = (x) => (x || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const text = String(i.display || i.label || "");
-  if (text.endsWith(REASSESSMENT_SUFFIX)) return `${esc(text.slice(0, -REASSESSMENT_SUFFIX.length))} <strong style="text-decoration:underline;">(Reassessment)</strong>`;
+  if (text.endsWith(REASSESSMENT_SUFFIX)) return `<span style="font-weight:700;color:#0f172a;">${esc(text.slice(0, -REASSESSMENT_SUFFIX.length))} <span style="text-decoration:underline;">(Reassessment)</span></span>`;
+  // Original attempt that was Not Yet Competent: greyed back.
+  if (i.outcome === "Not Yet Competent") return `<span style="color:#94a3b8;">${esc(text)}</span>`;
   return esc(text);
 }
 
@@ -5468,7 +5470,7 @@ function buildOutstandingCandidateHtml(task, coach) {
   const items = total > 0 ? courseworkItems(task, coach?.topics, task.team) : [];
   const outstanding = items.filter(i => !i.done);
   const outstandingRows = outstanding.map(i => {
-    return `<tr><td style="padding:6px 8px;border:1px solid #ddd;">☐ ${itemLabelHtml(i)}${i.outcome === "Not Yet Competent" ? ` <span style="color:#b45454;font-size:12px;">(Not Yet Competent — needs a re-observation)</span>` : ""}${itemNoteHtml(task, i.label)}</td></tr>`;
+    return `<tr><td style="padding:6px 8px;border:1px solid #ddd;">☐ ${itemLabelHtml(i)}${i.outcome === "Not Yet Competent" ? ` <span style="color:#94a3b8;font-size:12px;">(Not Yet Competent — needs a re-observation)</span>` : ""}${itemNoteHtml(task, i.label)}</td></tr>`;
   }).join("");
   return `<html><head><title>${esc(task.coachName)} - Outstanding Items</title></head><body style="margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1e293b;padding:28px;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:2px solid #0f172a;padding-bottom:16px;margin-bottom:20px;">
@@ -5502,7 +5504,7 @@ function buildCandidateHtml(task, coach, observations, proxyLogos = false) {
   const { done, total } = courseworkProgress(task, coach?.topics);
   const items = total > 0 ? courseworkItems(task, coach?.topics, task.team) : [];
   const checklistRows = items.map(i =>
-    `<tr><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${i.done ? "✅" : "☐"} ${itemLabelHtml(i)}${i.done ? "" : itemNoteHtml(task, i.label)}</td><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;">${esc(i.outcome) || "—"}</td></tr>`
+    `<tr><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${i.done ? "✅" : "☐"} ${itemLabelHtml(i)}${i.done ? "" : itemNoteHtml(task, i.label)}</td><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;${i.outcome === "Not Yet Competent" ? "color:#94a3b8;" : ""}">${esc(i.outcome) || "—"}</td></tr>`
   ).join("");
   const cnTask = (task.courseNumber || "").trim();
   const forThisCourse = (observations || []).filter(o =>
