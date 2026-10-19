@@ -1608,7 +1608,7 @@ function buildPitchZoneSvg(selectedZones) {
   const spots = g.penaltySpots.map(p => `<circle cx="${p.x}" cy="${p.y}" r="2.5" fill="#ffffff" />`).join("");
   const arcs = [...g.penaltyArcs, ...g.cornerArcs].map(d => `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="2" />`).join("");
   const goals = g.goals.map(gl => `<rect x="${gl.x}" y="${gl.y}" width="${gl.w}" height="${gl.h}" fill="#cbd5e1" stroke="#475569" stroke-width="1.5" />`).join("");
-  return `<svg viewBox="0 0 ${w} ${h + 36}" style="width:100%;max-width:500px;display:block;margin:0 auto;">
+  return `<svg viewBox="0 0 ${w} ${h + 36}" width="500" height="${Math.round((h + 36) * 500 / w)}" style="width:500px;max-width:100%;display:block;margin:0 auto;">
     ${stripes}
     <rect x="${pad}" y="${pad}" width="${innerW}" height="${innerH}" fill="none" stroke="#ffffff" stroke-width="2" />
     <line x1="${pad + innerW / 2}" y1="${pad}" x2="${pad + innerW / 2}" y2="${pad + innerH}" stroke="#ffffff" stroke-width="2" />
@@ -5480,49 +5480,29 @@ function buildOutstandingCandidateHtml(task, coach) {
   </body></html>`;
 }
 
-function buildCandidateHtml(task, coach, observations) {
+function buildCandidateHtml(task, coach, observations, proxyLogos = false) {
+  const logoSrc = (u) => proxyLogos ? `/api/logo-proxy?url=${encodeURIComponent(u || "")}` : (u || "");
   const esc = (s) => (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const { done, total } = courseworkProgress(task, coach?.topics);
   const items = total > 0 ? courseworkItems(task, coach?.topics, task.team) : [];
   const checklistRows = items.map(i =>
     `<tr><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${i.done ? "✅" : "☐"} ${esc(i.display || i.label)}${i.done ? "" : itemNoteHtml(task, i.label)}</td><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;">${esc(i.outcome) || "—"}</td></tr>`
   ).join("");
-  const matchingReports = (observations || [])
-    .filter(o => o.status !== "draft" && o.coachId === task.coachId && (o.courseNumber || "").trim() === (task.courseNumber || "").trim() && task.courseNumber)
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
-  const logoUrl = memberFederationLogo(task.memberFederation);
-  const reportSections = matchingReports.map(o => {
-    const totalScore = totalForObs(o);
-    const areaCards = o.areas
-      ? ASSESSMENT_AREAS.map(a => {
-          const d = o.areas[a.key] || {};
-          const lvl = SCORE_LEVELS.find(l => l.value === d.score);
-          const badgeClass = typeof d.score === "number" ? `badge-${d.score}` : "badge-none";
-          return `
-      <div class="area-card" data-pdf-nosplit="1">
-        <div class="area-head">
-          <span class="area-name">${esc(a.label)}</span>
-          ${lvl ? `<span class="badge ${badgeClass}">${lvl.value} · ${esc(lvl.label)}</span>` : `<span class="badge badge-none">—</span>`}
-        </div>
-        <p class="area-notes">${esc(d.notes) || "No evidence recorded."}</p>
-      </div>`;
-        }).join("")
-      : "";
-    const pitchMap = o.sessionPlan?.zonesUsed?.length > 0
-      ? `<div class="section" data-pdf-nosplit="1"><p class="section-title">Pitch Zones Used</p>${buildPitchZoneSvg(o.sessionPlan.zonesUsed)}</div>`
-      : "";
+  const cnTask = (task.courseNumber || "").trim();
+  const forThisCourse = (observations || []).filter(o =>
+    o.coachId === task.coachId && (cnTask
+      ? (o.courseNumber || "").trim() === cnTask
+      : (o.formalCourseName || "") === task.courseTitle))
+    .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+  const matchingReports = forThisCourse.filter(o => o.status !== "draft");
+  const draftReports = forThisCourse.filter(o => o.status === "draft");
+  const logoUrl = logoSrc(memberFederationLogo(task.memberFederation));
+  const reportSections = [...matchingReports, ...draftReports].map(o => {
+    const isDraft = o.status === "draft";
     return `
       <div class="section" style="page-break-before: always;">
-        <p class="section-title"><span>${new Date(o.date).toLocaleDateString("en-GB")}${o.sessionTopic ? " · " + esc(o.sessionTopic) : ""}</span>${areaCards ? `<span class="score-total">${totalScore ?? "—"} / ${MAX_TOTAL_SCORE}</span>` : ""}</p>
-        ${areaCards ? `<div class="areas-grid">${areaCards}</div>` : ""}
-        ${pitchMap}
-        <div class="two-col">
-          <div class="box box-green"><p class="box-title">Strengths</p><p style="margin:0;">${esc(o.strengths) || "—"}</p></div>
-          <div class="box box-amber"><p class="box-title">Areas for Development</p><p style="margin:0;">${esc(o.areas_feedback) || "—"}</p></div>
-        </div>
-        ${o.assessmentOutcome ? `<div class="outcome-box" style="margin-top:12px;"><p style="font-size:11px;color:#64748b;margin:0;">Assessment Outcome</p><span class="outcome-badge ${
-          o.assessmentOutcome === "Highly Competent" ? "outcome-highly" : o.assessmentOutcome === "Competent" ? "outcome-competent" : o.assessmentOutcome === "Not Yet Competent" ? "outcome-notyet" : "outcome-neutral"
-        }">${esc(o.assessmentOutcome)}</span></div>` : ""}
+        <p class="section-title"><span>Observation — ${o.date ? new Date(o.date).toLocaleDateString("en-GB") : "—"}${o.sessionTopic ? " · " + esc(o.sessionTopic) : ""}</span>${isDraft ? `<span style="font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 10px;border-radius:999px;">Incomplete draft</span>` : ""}</p>
+        ${buildObservationInnerHtml(o)}
       </div>`;
   }).join("");
   return `<html>
@@ -5539,7 +5519,7 @@ function buildCandidateHtml(task, coach, observations) {
             <p class="subtitle">${esc(task.courseTitle)}${task.courseNumber ? ` (#${esc(task.courseNumber)})` : ""}</p>
           </div>
           <span class="type-badge">Coaches Progress &amp; Observation History</span>
-          ${task.memberFederation !== "FA" ? `<div class="header-icon"><img src="${(MEMBER_FEDERATIONS.find(m => m.key === "FA") || {}).logoUrl || ""}" alt="Football Australia logo" /></div>` : ""}
+          ${task.memberFederation !== "FA" ? `<div class="header-icon"><img src="${logoSrc((MEMBER_FEDERATIONS.find(m => m.key === "FA") || {}).logoUrl)}" alt="Football Australia logo" /></div>` : ""}
         </div>
 
         <div class="section">
@@ -5549,8 +5529,8 @@ function buildCandidateHtml(task, coach, observations) {
         </div>
 
         <div class="section">
-          <p class="section-title">Observation Reports (${matchingReports.length})</p>
-          ${matchingReports.length === 0 ? `<p style="font-size:13px;color:#94a3b8;">No submitted observation reports linked to this course yet.</p>` : ""}
+          <p class="section-title">Observation Reports (${matchingReports.length}${draftReports.length ? ` + ${draftReports.length} incomplete` : ""})</p>
+          ${forThisCourse.length === 0 ? `<p style="font-size:13px;color:#94a3b8;">No observation reports linked to this course yet.</p>` : `<p style="font-size:12.5px;color:#64748b;margin:0;">Full reports follow, one per page.</p>`}
         </div>
       ${reportSections}
       </div>
@@ -7522,7 +7502,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     setSavingCandidatePdfId(t.id);
     try {
       const filename = `${(t.coachName || "candidate").replace(/[^a-z0-9]+/gi, "-")}-report.pdf`;
-      await saveHtmlAsPdf(buildCandidateHtml(t, cardCoach, observations), filename);
+      await saveHtmlAsPdf(buildCandidateHtml(t, cardCoach, observations, true), filename);
     } catch (e) {
       alert("Couldn't generate the PDF file — try Download HTML instead.");
     }
@@ -10883,7 +10863,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
 // button on ReportView. Styled to mirror the on-screen report (same score
 // colours, card layout, badges) and sized for A4 printing/PDF export via
 // window.print(), rather than the plain data-dump table this started as.
-function buildSingleObservationHtml(obs) {
+function buildObservationInnerHtml(obs) {
   const esc = (s) => (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const total = totalForObs(obs);
   const actionItems = (obs.actionPlan || []).filter(a => a && a.trim());
@@ -10942,23 +10922,7 @@ function buildSingleObservationHtml(obs) {
       </div>`;
   }).join("") : "";
 
-  return `<html>
-    <head>
-      <title>${esc(obs.coachName)} - Coaching Observation Report</title>
-      ${REPORT_STYLE_TAG}
-    </head>
-    <body>
-      <div class="page">
-        <div class="header">
-          <div class="header-icon"><img src="${logoUrl}" alt="${esc((MEMBER_FEDERATIONS.find(m => m.key === obs.memberFederation) || {}).label || "Football Victoria")} logo" /></div>
-          <div>
-            <h1>Coaching Observation Report</h1>
-            <p class="subtitle">${esc(obs.coachName) || "—"}</p>
-          </div>
-          <span class="type-badge">${obs.sessionType === "formal" ? `Formal · ${esc(obs.formalCourseName)}${obs.courseNumber ? ` (#${esc(obs.courseNumber)})` : ""}${obs.diplomaBlock ? " · " + esc(obs.diplomaBlock) : ""}` : "Informal Club Session"}</span>
-          ${obs.memberFederation !== "FA" ? `<div class="header-icon"><img src="${(MEMBER_FEDERATIONS.find(m => m.key === "FA") || {}).logoUrl || ""}" alt="Football Australia logo" /></div>` : ""}
-        </div>
-
+  return `
         <div class="meta-grid">
           <div><p class="meta-label">Coach</p><p class="meta-value">${esc(obs.coachName) || "—"}</p></div>
           <div><p class="meta-label">${esc(obs.educatorRole) || "Coach Education Tutor (CET)"}</p><p class="meta-value">${esc(obs.coachEducatorName) || "—"}</p></div>
@@ -11029,6 +10993,30 @@ function buildSingleObservationHtml(obs) {
             <p class="signature-script">${esc(obs.assessorSignature) || "—"}</p>
           </div>
         </div>
+  `;
+}
+
+function buildSingleObservationHtml(obs) {
+  const esc = (s) => (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const logoUrl = memberFederationLogo(obs.memberFederation);
+  return `<html>
+    <head>
+      <title>${esc(obs.coachName)} - Coaching Observation Report</title>
+      ${REPORT_STYLE_TAG}
+    </head>
+    <body>
+      <div class="page">
+        <div class="header">
+          <div class="header-icon"><img src="${logoUrl}" alt="${esc((MEMBER_FEDERATIONS.find(m => m.key === obs.memberFederation) || {}).label || "Football Victoria")} logo" /></div>
+          <div>
+            <h1>Coaching Observation Report</h1>
+            <p class="subtitle">${esc(obs.coachName) || "—"}</p>
+          </div>
+          <span class="type-badge">${obs.sessionType === "formal" ? `Formal · ${esc(obs.formalCourseName)}${obs.courseNumber ? ` (#${esc(obs.courseNumber)})` : ""}${obs.diplomaBlock ? " · " + esc(obs.diplomaBlock) : ""}` : "Informal Club Session"}</span>
+          ${obs.memberFederation !== "FA" ? `<div class="header-icon"><img src="${(MEMBER_FEDERATIONS.find(m => m.key === "FA") || {}).logoUrl || ""}" alt="Football Australia logo" /></div>` : ""}
+        </div>
+
+${buildObservationInnerHtml(obs)}
 
         <div class="footer-note">
           CODA was created by Craig Moore. For additional information, suggested changes or any query contact craigianmoore@gmail.com
