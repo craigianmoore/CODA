@@ -605,7 +605,7 @@ function findItemObservations(observations, record, label) {
 function reassessNode(text) {
   const t = String(text || "");
   if (!t.endsWith(REASSESSMENT_SUFFIX)) return t;
-  return <><span className="font-semibold">{t.slice(0, -REASSESSMENT_SUFFIX.length)}</span> <span className="font-bold underline underline-offset-4">Reassessment Needed</span></>;
+  return <><span className="font-semibold">{t.slice(0, -REASSESSMENT_SUFFIX.length)}</span> <span className="font-bold underline underline-offset-4">(Reassessment Needed)</span></>;
 }
 
 function ItemObsLink({ observations, record, label, text, onViewReport, onEditDraft, className = "" }) {
@@ -5396,7 +5396,7 @@ async function saveHtmlAsPdf(htmlContent, filename) {
 function itemLabelHtml(i) {
   const esc = (x) => (x || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const text = String(i.display || i.label || "");
-  if (text.endsWith(REASSESSMENT_SUFFIX)) return `<span style="font-weight:700;color:#0f172a;">${esc(text.slice(0, -REASSESSMENT_SUFFIX.length))} <span style="display:inline-block;border-bottom:1.5px solid #0f172a;padding-bottom:3px;line-height:1.2;">Reassessment Needed</span></span>`;
+  if (text.endsWith(REASSESSMENT_SUFFIX)) return `<span style="font-weight:700;color:#0f172a;">${esc(text.slice(0, -REASSESSMENT_SUFFIX.length))} <span style="display:inline-block;border-bottom:1.5px solid #0f172a;padding-bottom:3px;line-height:1.2;">(Reassessment Needed)</span></span>`;
   // Original attempt that was Not Yet Competent: greyed back.
   if (i.outcome === "Not Yet Competent") return `<span style="color:#94a3b8;">${esc(text)}</span>`;
   return esc(text);
