@@ -1608,7 +1608,7 @@ function buildPitchZoneSvg(selectedZones) {
   const spots = g.penaltySpots.map(p => `<circle cx="${p.x}" cy="${p.y}" r="2.5" fill="#ffffff" />`).join("");
   const arcs = [...g.penaltyArcs, ...g.cornerArcs].map(d => `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="2" />`).join("");
   const goals = g.goals.map(gl => `<rect x="${gl.x}" y="${gl.y}" width="${gl.w}" height="${gl.h}" fill="#cbd5e1" stroke="#475569" stroke-width="1.5" />`).join("");
-  return `<svg viewBox="0 0 ${w} ${h + 36}" width="500" height="${Math.round((h + 36) * 500 / w)}" style="width:500px;max-width:100%;display:block;margin:0 auto;">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h + 36}" width="${w}" height="${h + 36}" font-family="Helvetica, Arial, sans-serif">
     ${stripes}
     <rect x="${pad}" y="${pad}" width="${innerW}" height="${innerH}" fill="none" stroke="#ffffff" stroke-width="2" />
     <line x1="${pad + innerW / 2}" y1="${pad}" x2="${pad + innerW / 2}" y2="${pad + innerH}" stroke="#ffffff" stroke-width="2" />
@@ -1622,6 +1622,7 @@ function buildPitchZoneSvg(selectedZones) {
     <text x="${pad + thirdW * 1.5}" y="${h + 22}" text-anchor="middle" font-size="14" font-weight="600" fill="#475569">Middle Third (M3)</text>
     <text x="${pad + thirdW * 2.5}" y="${h + 22}" text-anchor="middle" font-size="14" font-weight="600" fill="#475569">Final Third (F3)</text>
   </svg>`;
+  return `<img alt="Pitch zones used" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}" width="500" height="${Math.round((h + 36) * 500 / w)}" style="width:500px;max-width:100%;height:auto;display:block;margin:0 auto;" />`;
 }
 
 // ── Supabase-backed storage layer ────────────────────────────────
@@ -5332,11 +5333,17 @@ async function saveHtmlAsPdf(htmlContent, filename) {
     // in container CSS px (via the shared viewport frame, so it stays
     // correct regardless of page scroll), then converted to canvas px.
     const containerTop = container.getBoundingClientRect().top;
+    container.querySelectorAll(".plan-field-card, .info-box, .box, .action-plan-box, .signature-row, .pathway-box, .final-score-row, .meta-grid, .area-card, .outcome-box, tr").forEach(el => el.setAttribute("data-pdf-nosplit", "1"));
     const noSplitBlocks = Array.from(container.querySelectorAll("[data-pdf-nosplit]"))
       .map(el => {
         const rect = el.getBoundingClientRect();
         return { top: (rect.top - containerTop) * scaleFactor, bottom: (rect.bottom - containerTop) * scaleFactor };
       })
+      // Keep section headings with the content that follows them.
+      .concat(Array.from(container.querySelectorAll(".section-title")).map(el => {
+        const rect = el.getBoundingClientRect();
+        return { top: (rect.top - containerTop) * scaleFactor, bottom: (rect.bottom - containerTop) * scaleFactor + 90 * scaleFactor };
+      }))
       .sort((a, b) => a.top - b.top);
 
     const slices = [];
@@ -5495,13 +5502,11 @@ function buildCandidateHtml(task, coach, observations, proxyLogos = false) {
       : (o.formalCourseName || "") === task.courseTitle))
     .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
   const matchingReports = forThisCourse.filter(o => o.status !== "draft");
-  const draftReports = forThisCourse.filter(o => o.status === "draft");
   const logoUrl = logoSrc(memberFederationLogo(task.memberFederation));
-  const reportSections = [...matchingReports, ...draftReports].map(o => {
-    const isDraft = o.status === "draft";
+  const reportSections = matchingReports.map(o => {
     return `
       <div class="section" style="page-break-before: always;">
-        <p class="section-title"><span>Observation — ${o.date ? new Date(o.date).toLocaleDateString("en-GB") : "—"}${o.sessionTopic ? " · " + esc(o.sessionTopic) : ""}</span>${isDraft ? `<span style="font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 10px;border-radius:999px;">Incomplete draft</span>` : ""}</p>
+        <p class="section-title"><span>Observation — ${o.date ? new Date(o.date).toLocaleDateString("en-GB") : "—"}${o.sessionTopic ? " · " + esc(o.sessionTopic) : ""}</span></p>
         ${buildObservationInnerHtml(o)}
       </div>`;
   }).join("");
@@ -5529,8 +5534,8 @@ function buildCandidateHtml(task, coach, observations, proxyLogos = false) {
         </div>
 
         <div class="section">
-          <p class="section-title">Observation Reports (${matchingReports.length}${draftReports.length ? ` + ${draftReports.length} incomplete` : ""})</p>
-          ${forThisCourse.length === 0 ? `<p style="font-size:13px;color:#94a3b8;">No observation reports linked to this course yet.</p>` : `<p style="font-size:12.5px;color:#64748b;margin:0;">Full reports follow, one per page.</p>`}
+          <p class="section-title">Observation Reports (${matchingReports.length})</p>
+          ${matchingReports.length === 0 ? `<p style="font-size:13px;color:#94a3b8;">No observation reports linked to this course yet.</p>` : `<p style="font-size:12.5px;color:#64748b;margin:0;">Full reports follow, one per page.</p>`}
         </div>
       ${reportSections}
       </div>
