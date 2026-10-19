@@ -601,9 +601,16 @@ function findItemObservations(observations, record, label) {
 
 // Label that links to the item's observation report, plus an "(incomplete)"
 // link when an unsubmitted draft exists so a CET can resume it.
+// On-screen label: the "(Reassessment)" suffix reads "Reassessment Needed", bold.
+function reassessNode(text) {
+  const t = String(text || "");
+  if (!t.endsWith(REASSESSMENT_SUFFIX)) return t;
+  return <><span className="font-semibold">{t.slice(0, -REASSESSMENT_SUFFIX.length)}</span> <span className="font-bold underline underline-offset-4">Reassessment Needed</span></>;
+}
+
 function ItemObsLink({ observations, record, label, text, onViewReport, onEditDraft, className = "" }) {
   const { submitted, draft } = findItemObservations(observations, record, label);
-  const shown = text || label;
+  const shown = reassessNode(text || label);
   return (
     <>
       {submitted && onViewReport
@@ -8198,7 +8205,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                         <>
                           <p className="text-[10px] text-red-500 mt-0.5">Not Yet Competent — needs a re-observation before this can be marked done.</p>
                           <label className="flex items-center justify-between gap-2 text-xs text-slate-700 cursor-pointer">
-                            <span>{newLabelDisplay(form, topic + REASSESSMENT_SUFFIX, (selectedCoach?.topics || []).slice(0, 4))}</span>
+                            <span>{reassessNode(newLabelDisplay(form, topic + REASSESSMENT_SUFFIX, (selectedCoach?.topics || []).slice(0, 4)))}</span>
                             <input type="checkbox" checked={!!form.sessionPlansReassessmentDone?.[topic]}
                               onChange={() => toggleSessionPlanReassessment(topic)}
                               className="rounded border-slate-300" />
