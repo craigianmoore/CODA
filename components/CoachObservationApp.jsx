@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Fragment } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { Users, BookOpen, ClipboardList, FileText, Plus, ChevronLeft, ChevronRight, Check, X, Calendar, Award, TrendingUp, ArrowRight, Loader2, ListChecks, Pencil, Upload, AlertCircle, PenLine, Search, Trash2, Settings, Clock, Smartphone, Tablet, Laptop, Lock, LogOut, Mic, ShieldAlert } from "lucide-react";
 import Papa from "papaparse";
 import * as mammoth from "mammoth";
@@ -707,6 +707,16 @@ function outcomeBadgeClass(outcome) {
 // Off by default so existing courses are untouched; set from Coaches Progress.
 let NEW_LABEL_COURSES = {};
 function setNewLabelCourses(v) { NEW_LABEL_COURSES = v || {}; }
+
+// Submitted observations per CET (by name), shown in brackets after the CET's
+// name wherever it appears in the app. Refreshed on every App render.
+let CET_OBS_COUNTS = {};
+function setCetObsCounts(v) { CET_OBS_COUNTS = v || {}; }
+function cetLabel(name) {
+  const n = String(name || "").trim();
+  if (!n) return name;
+  return `${n} (${CET_OBS_COUNTS[n.toLowerCase()] || 0})`;
+}
 function usesNewLabels(record) {
   const n = ((record && record.courseNumber) || "").trim();
   return !!(n && NEW_LABEL_COURSES[n] && (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)));
@@ -1805,6 +1815,15 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [closedCourseBlocks, setClosedCourseBlocks] = useState({});
   const [newLabelCourses, setNewLabelCoursesState] = useState({});
   setNewLabelCourses(newLabelCourses);
+  setCetObsCounts(useMemo(() => {
+    const m = {};
+    (observations || []).forEach(o => {
+      if (o.status === "draft") return;
+      const k = String(o.coachEducatorName || "").trim().toLowerCase();
+      if (k) m[k] = (m[k] || 0) + 1;
+    });
+    return m;
+  }, [observations]));
   const [adminLockouts, setAdminLockouts] = useState({});
   const [adminSettings, setAdminSettings] = useState(DEFAULT_ADMIN_SETTINGS);
 
@@ -2374,7 +2393,7 @@ function SignInGate({ educators, adminSettings, adminLockouts, recordAdminAttemp
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">Your name</label>
               <select value={cetId} onChange={e => setCetId(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
                 <option value="">Select your name...</option>
-                {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{cetLabel(c.name)}</option>)}
               </select>
             </div>
             {error && <p className="text-xs text-red-600">{error}</p>}
@@ -2614,7 +2633,7 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
                 <div onClick={() => onViewDraft(d.id)} className="cursor-pointer flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 truncate">{d.coachName || "Unnamed coach"}</p>
                   <p className="text-xs text-slate-400 truncate">
-                    {d.sessionType === "formal" ? `Formal · ${d.formalCourseName || "Course"}` : "Informal"} · {new Date(d.date).toLocaleDateString("en-GB")} · {d.coachEducatorName || "No CET set"}
+                    {d.sessionType === "formal" ? `Formal · ${d.formalCourseName || "Course"}` : "Informal"} · {new Date(d.date).toLocaleDateString("en-GB")} · {d.coachEducatorName ? cetLabel(d.coachEducatorName) : "No CET set"}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -4512,7 +4531,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                           <input type="checkbox" checked={selectedCetIds.has(c.id)} onChange={() => toggleCetSelected(c.id)}
                             className="rounded border-slate-300 mt-1 shrink-0" />
                           <div className="flex-1">
-                            <p className="font-semibold text-slate-900">{c.name}</p>
+                            <p className="font-semibold text-slate-900">{c.name} <span className="font-normal text-slate-500">({observations.filter(o => o.status !== "draft" && (o.coachEducatorName || "").trim().toLowerCase() === c.name.trim().toLowerCase()).length})</span></p>
                             <p className="text-xs text-slate-400">{[c.club, c.level].filter(Boolean).join(" · ") || "No details"}</p>
                             {(c.memberFederations || []).length > 0 && (
                               <div className="flex gap-1 flex-wrap mt-1.5">
@@ -5864,7 +5883,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Lead CET / TD</label>
                 <select value={raForm.leadCetId} onChange={e => selectLeadCet(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
                   <option value="">Select CET...</option>
-                  {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{cetLabel(c.name)}</option>)}
                 </select>
               </div>
               <div>
@@ -6070,7 +6089,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Lead CET / Coach</label>
                 <select value={irForm.leadCoachId} onChange={e => selectIrLeadCoach(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
                   <option value="">Select CET...</option>
-                  {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{cetLabel(c.name)}</option>)}
                 </select>
               </div>
               <div>
@@ -6186,7 +6205,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Name *</label>
                 <select value={irForm.repNameId} onChange={e => selectIrReporter(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
                   <option value="">Select CET...</option>
-                  {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{cetLabel(c.name)}</option>)}
                 </select>
               </div>
               <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Role *</label><input value={irForm.repRole} onChange={e => irSetField("repRole", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
@@ -6592,7 +6611,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
             <label className="text-xs font-medium text-slate-500 mb-1.5 block">CET being observed</label>
             <select value={form.cetId} onChange={e => selectCet(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
               <option value="">Select CET...</option>
-              {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {[...educators].sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{cetLabel(c.name)}</option>)}
             </select>
           </div>
           <div>
@@ -6607,7 +6626,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
             <label className="text-xs font-medium text-slate-500 mb-1.5 block">Assessor</label>
             <select value={form.assessorName} onChange={e => setField("assessorName", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
               <option value="">Select assessor...</option>
-              {[...educators].filter(c => c.isAssessor).sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+              {[...educators].filter(c => c.isAssessor).sort((a, b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.name}>{cetLabel(c.name)}</option>)}
             </select>
           </div>
         </div>
@@ -8670,7 +8689,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                     <span className="flex items-center gap-2">
                       <span className="font-medium text-slate-800">{p.coachName}</span>
                       {!p.matchedCoach && <span className="text-xs font-medium bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full">New coach</span>}
-                      {p.cetName && <span className="text-xs font-medium bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full">CET: {p.cetName}</span>}
+                      {p.cetName && <span className="text-xs font-medium bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full">CET: {cetLabel(p.cetName)}</span>}
                     </span>
                     <span className="text-xs text-slate-400 flex items-center gap-2">
                       <span>{p.attended}/{p.total} sessions · {p.pct}%</span>
@@ -10201,7 +10220,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                                   orderedMatches.map(e => (
                                     <button key={e.id} onMouseDown={() => { setEducatorId(e.id); setEducatorSearchQuery(e.name); setEducatorDropdownOpen(false); }}
                                       className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm border-b border-slate-50 last:border-0">
-                                      <span className="font-medium text-slate-800">{e.name}</span>
+                                      <span className="font-medium text-slate-800">{cetLabel(e.name)}</span>
                                     </button>
                                   ))
                                 )}
@@ -11222,7 +11241,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
 
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div><p className="text-[10px] font-bold uppercase tracking-wide text-indigo-600">Coach</p><p className="font-medium text-slate-800">{obs.coachName}</p></div>
-          <div><p className="text-[10px] font-bold uppercase tracking-wide text-indigo-600">{obs.educatorRole || "Coach Education Tutor (CET)"}</p><p className="font-medium text-slate-800">{obs.coachEducatorName}</p></div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-indigo-600">{obs.educatorRole || "Coach Education Tutor (CET)"}</p><p className="font-medium text-slate-800">{cetLabel(obs.coachEducatorName)}</p></div>
           <div><p className="text-[10px] font-bold uppercase tracking-wide text-indigo-600">Date</p><p className="font-medium text-slate-800">{new Date(obs.date).toLocaleDateString("en-GB")}</p></div>
         </div>
         {obs.ageGroup && <p className="text-sm text-slate-500">Context: {obs.ageGroup}</p>}
@@ -11435,7 +11454,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
           <div className="border-t border-slate-100 pt-4 grid sm:grid-cols-2 gap-4">
             <div>
               <p className="text-xs text-slate-400">{obs.educatorRole || "Coach Education Tutor (CET)"} Name</p>
-              <p className="text-sm font-medium text-slate-800">{obs.coachEducatorName || "—"}</p>
+              <p className="text-sm font-medium text-slate-800">{obs.coachEducatorName ? cetLabel(obs.coachEducatorName) : "—"}</p>
             </div>
             <div>
               <p className="text-xs text-slate-400">Assessor Signature</p>
@@ -12300,7 +12319,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
           {[...educators]
             .filter(e => observations.some(o => (o.coachEducatorName || "").toLowerCase() === e.name.toLowerCase()))
             .sort((a, b) => a.name.localeCompare(b.name))
-            .map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
+            .map(e => <option key={e.id} value={e.name}>{cetLabel(e.name)}</option>)}
         </select>
         <select value={courseNumberFilter} onChange={e => setCourseNumberFilter(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
           <option value="">All course numbers</option>
@@ -12910,7 +12929,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                       <div>
                         <p className="text-sm font-semibold text-slate-800">{o.coachName}</p>
                         <p className="text-xs text-slate-400">
-                          {o.sessionType === "formal" ? `Formal · ${o.formalCourseName || "Course"}${o.courseNumber ? ` (#${o.courseNumber})` : ""}` : "Informal"} · {new Date(o.date).toLocaleDateString("en-GB")} · {o.coachEducatorName}
+                          {o.sessionType === "formal" ? `Formal · ${o.formalCourseName || "Course"}${o.courseNumber ? ` (#${o.courseNumber})` : ""}` : "Informal"} · {new Date(o.date).toLocaleDateString("en-GB")} · {cetLabel(o.coachEducatorName)}
                           {oSessionNumber ? ` · Session ${oSessionNumber}` : ""}
                         </p>
                       </div>
