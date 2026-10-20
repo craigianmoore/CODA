@@ -708,14 +708,16 @@ function outcomeBadgeClass(outcome) {
 let NEW_LABEL_COURSES = {};
 function setNewLabelCourses(v) { NEW_LABEL_COURSES = v || {}; }
 
-// Submitted observations per CET (by name), shown in brackets after the CET's
-// name wherever it appears in the app. Refreshed on every App render.
+// Per CET (by name): submitted observations they have done / CET Observation
+// assessments where they were the one observed. Shown in brackets after the
+// CET's name wherever it appears. Refreshed on every App render.
 let CET_OBS_COUNTS = {};
 function setCetObsCounts(v) { CET_OBS_COUNTS = v || {}; }
 function cetLabel(name) {
   const n = String(name || "").trim();
   if (!n) return name;
-  return `${n} (${CET_OBS_COUNTS[n.toLowerCase()] || 0})`;
+  const c = CET_OBS_COUNTS[n.toLowerCase()] || { obs: 0, seen: 0 };
+  return `${n} (${c.obs} / ${c.seen})`;
 }
 function usesNewLabels(record) {
   const n = ((record && record.courseNumber) || "").trim();
@@ -1807,6 +1809,17 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [observations, setObservations] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
   const [cetAssessments, setCetAssessments] = useState([]);
+  setCetObsCounts(useMemo(() => {
+    const m = {};
+    const bump = (name, key) => {
+      const k = String(name || "").trim().toLowerCase();
+      if (!k) return;
+      (m[k] = m[k] || { obs: 0, seen: 0 })[key] += 1;
+    };
+    (observations || []).forEach(o => { if (o.status !== "draft") bump(o.coachEducatorName, "obs"); });
+    (cetAssessments || []).forEach(a => bump(a.cetName, "seen"));
+    return m;
+  }, [observations, cetAssessments]));
   const [rapaAssessments, setRapaAssessments] = useState([]);
   const [rapaIncidents, setRapaIncidents] = useState([]);
   const [rapaProposals, setRapaProposals] = useState([]);
@@ -1815,15 +1828,6 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [closedCourseBlocks, setClosedCourseBlocks] = useState({});
   const [newLabelCourses, setNewLabelCoursesState] = useState({});
   setNewLabelCourses(newLabelCourses);
-  setCetObsCounts(useMemo(() => {
-    const m = {};
-    (observations || []).forEach(o => {
-      if (o.status === "draft") return;
-      const k = String(o.coachEducatorName || "").trim().toLowerCase();
-      if (k) m[k] = (m[k] || 0) + 1;
-    });
-    return m;
-  }, [observations]));
   const [adminLockouts, setAdminLockouts] = useState({});
   const [adminSettings, setAdminSettings] = useState(DEFAULT_ADMIN_SETTINGS);
 
@@ -4531,7 +4535,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                           <input type="checkbox" checked={selectedCetIds.has(c.id)} onChange={() => toggleCetSelected(c.id)}
                             className="rounded border-slate-300 mt-1 shrink-0" />
                           <div className="flex-1">
-                            <p className="font-semibold text-slate-900">{c.name} <span className="font-normal text-slate-500">({observations.filter(o => o.status !== "draft" && (o.coachEducatorName || "").trim().toLowerCase() === c.name.trim().toLowerCase()).length})</span></p>
+                            <p className="font-semibold text-slate-900">{c.name} <span className="font-normal text-slate-500">{cetLabel(c.name).slice(c.name.trim().length)}</span></p>
                             <p className="text-xs text-slate-400">{[c.club, c.level].filter(Boolean).join(" · ") || "No details"}</p>
                             {(c.memberFederations || []).length > 0 && (
                               <div className="flex gap-1 flex-wrap mt-1.5">
