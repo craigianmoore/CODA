@@ -713,11 +713,44 @@ function setNewLabelCourses(v) { NEW_LABEL_COURSES = v || {}; }
 // CET's name wherever it appears. Refreshed on every App render.
 let CET_OBS_COUNTS = {};
 function setCetObsCounts(v) { CET_OBS_COUNTS = v || {}; }
-function cetLabel(name) {
+// Highest course level a CET can present (covers the levels below it).
+const CET_PRESENT_LEVELS = [
+  { key: "FoF", rank: 1, label: "Foundation (FoF)" },
+  { key: "C", rank: 2, label: "C Diploma" },
+  { key: "B", rank: 3, label: "B Diploma" },
+  { key: "A", rank: 4, label: "A Diploma" },
+];
+const cetLevelRank = (key) => (CET_PRESENT_LEVELS.find(l => l.key === key) || {}).rank || 0;
+let CET_LEVELS = {};
+function setCetLevels(v) { CET_LEVELS = v || {}; }
+function cetLevelOf(name) { return CET_LEVELS[String(name || "").trim().toLowerCase()] || ""; }
+// Course level needed to present a formal qualification, by its title.
+function requiredCetLevelFor(courseTitle) {
+  if (isADiploma(courseTitle)) return "A";
+  if (isBDiploma(courseTitle)) return "B";
+  if (isCDiploma(courseTitle)) return "C";
+  return "";
+}
+function cetCountText(name) {
   const n = String(name || "").trim();
   if (!n) return name;
   const c = CET_OBS_COUNTS[n.toLowerCase()] || { obs: 0, seen: 0 };
   return `${n} (${c.obs} / ${c.seen})`;
+}
+// Plain-text version (for <option>s): counts plus the level letter.
+function cetLabel(name) {
+  const lvl = cetLevelOf(name);
+  return cetCountText(name) + (lvl && String(name || "").trim() ? ` · ${lvl}` : "");
+}
+function CetLevelPill({ name }) {
+  const lvl = cetLevelOf(name);
+  if (!lvl) return null;
+  return <span title={`Can present up to ${(CET_PRESENT_LEVELS.find(l => l.key === lvl) || {}).label || lvl}`} className="inline-block align-middle text-[10px] font-bold leading-none px-1.5 py-0.5 rounded-full bg-yellow-300 text-black">{lvl}</span>;
+}
+// Name with counts and the coloured level pill.
+function CetName({ name }) {
+  if (!String(name || "").trim()) return null;
+  return <>{cetCountText(name)} <CetLevelPill name={name} /></>;
 }
 function usesNewLabels(record) {
   const n = ((record && record.courseNumber) || "").trim();
@@ -1809,6 +1842,14 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [observations, setObservations] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
   const [cetAssessments, setCetAssessments] = useState([]);
+  setCetLevels(useMemo(() => {
+    const m = {};
+    (educators || []).forEach(e => {
+      const k = String(e.name || "").trim().toLowerCase();
+      if (k && cetLevelRank(e.presentLevel) > cetLevelRank(m[k])) m[k] = e.presentLevel;
+    });
+    return m;
+  }, [educators]));
   setCetObsCounts(useMemo(() => {
     const m = {};
     const bump = (name, key) => {
@@ -2637,7 +2678,7 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
                 <div onClick={() => onViewDraft(d.id)} className="cursor-pointer flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 truncate">{d.coachName || "Unnamed coach"}</p>
                   <p className="text-xs text-slate-400 truncate">
-                    {d.sessionType === "formal" ? `Formal · ${d.formalCourseName || "Course"}` : "Informal"} · {new Date(d.date).toLocaleDateString("en-GB")} · {d.coachEducatorName ? cetLabel(d.coachEducatorName) : "No CET set"}
+                    {d.sessionType === "formal" ? `Formal · ${d.formalCourseName || "Course"}` : "Informal"} · {new Date(d.date).toLocaleDateString("en-GB")} · {d.coachEducatorName ? <CetName name={d.coachEducatorName} /> : "No CET set"}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -4046,6 +4087,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
   const [editingDetailsClub, setEditingDetailsClub] = useState("");
   const [editingDetailsLevelOption, setEditingDetailsLevelOption] = useState("");
   const [editingDetailsLevel, setEditingDetailsLevel] = useState("");
+  const [editingPresentLevel, setEditingPresentLevel] = useState("");
   const [selectedCetIds, setSelectedCetIds] = useState(() => new Set());
   const [bulkMfPicker, setBulkMfPicker] = useState("");
   const [bulkMfMsg, setBulkMfMsg] = useState("");
@@ -4055,6 +4097,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
     setEditingDetailsClub(cet.club || "");
     setEditingDetailsLevelOption(cet.level ? (COACH_LEVEL_OPTIONS.includes(cet.level) ? cet.level : "__other__") : "");
     setEditingDetailsLevel(cet.level && !COACH_LEVEL_OPTIONS.includes(cet.level) ? cet.level : "");
+    setEditingPresentLevel(cet.presentLevel || "");
   }
 
   function handleEditDetailsLevelOptionChange(value) {
@@ -4064,7 +4107,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
 
   function saveEditDetails() {
     const finalLevel = editingDetailsLevelOption === "__other__" ? editingDetailsLevel.trim() : editingDetailsLevelOption;
-    saveEducators(educators.map(c => c.id === editingDetailsId ? { ...c, club: editingDetailsClub.trim(), level: finalLevel } : c));
+    saveEducators(educators.map(c => c.id === editingDetailsId ? { ...c, club: editingDetailsClub.trim(), level: finalLevel, presentLevel: editingPresentLevel } : c));
     setEditingDetailsId(null);
   }
 
@@ -4535,7 +4578,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                           <input type="checkbox" checked={selectedCetIds.has(c.id)} onChange={() => toggleCetSelected(c.id)}
                             className="rounded border-slate-300 mt-1 shrink-0" />
                           <div className="flex-1">
-                            <p className="font-semibold text-slate-900">{c.name} <span className="font-normal text-slate-500">{cetLabel(c.name).slice(c.name.trim().length)}</span></p>
+                            <p className="font-semibold text-slate-900">{c.name} <span className="font-normal text-slate-500">{cetCountText(c.name).slice(c.name.trim().length)}</span> <CetLevelPill name={c.name} /></p>
                             <p className="text-xs text-slate-400">{[c.club, c.level].filter(Boolean).join(" · ") || "No details"}</p>
                             {(c.memberFederations || []).length > 0 && (
                               <div className="flex gap-1 flex-wrap mt-1.5">
@@ -4584,6 +4627,11 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                             <input value={editingDetailsLevel} onChange={e => setEditingDetailsLevel(e.target.value)} placeholder="Custom accreditation level"
                               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
                           )}
+                          <select value={editingPresentLevel} onChange={e => setEditingPresentLevel(e.target.value)}
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+                            <option value="">Highest course level they can present (not set)</option>
+                            {CET_PRESENT_LEVELS.map(l => <option key={l.key} value={l.key}>Can present up to {l.label}</option>)}
+                          </select>
                           <div className="flex gap-2">
                             <button onClick={saveEditDetails} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Save</button>
                             <button onClick={() => setEditingDetailsId(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
@@ -8693,7 +8741,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                     <span className="flex items-center gap-2">
                       <span className="font-medium text-slate-800">{p.coachName}</span>
                       {!p.matchedCoach && <span className="text-xs font-medium bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full">New coach</span>}
-                      {p.cetName && <span className="text-xs font-medium bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full">CET: {cetLabel(p.cetName)}</span>}
+                      {p.cetName && <span className="text-xs font-medium bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full">CET: <CetName name={p.cetName} /></span>}
                     </span>
                     <span className="text-xs text-slate-400 flex items-center gap-2">
                       <span>{p.attended}/{p.total} sessions · {p.pct}%</span>
@@ -10224,7 +10272,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                                   orderedMatches.map(e => (
                                     <button key={e.id} onMouseDown={() => { setEducatorId(e.id); setEducatorSearchQuery(e.name); setEducatorDropdownOpen(false); }}
                                       className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm border-b border-slate-50 last:border-0">
-                                      <span className="font-medium text-slate-800">{cetLabel(e.name)}</span>
+                                      <span className="font-medium text-slate-800"><CetName name={e.name} /></span>
                                     </button>
                                   ))
                                 )}
@@ -10251,6 +10299,15 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                   className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
               )}
             </div>
+
+            {(() => {
+              if (sessionType !== "formal" || !selectedEducator) return null;
+              const need = requiredCetLevelFor(formalCourseName);
+              const has = cetLevelOf(selectedEducator.name);
+              if (!need || !has || cetLevelRank(has) >= cetLevelRank(need)) return null;
+              const needLabel = (CET_PRESENT_LEVELS.find(l => l.key === need) || {}).label;
+              return <p className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-3 py-2">⚠ {selectedEducator.name} is marked as able to present up to level {has}, but this is a {needLabel} course.</p>;
+            })()}
 
             <div>
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">Session type</label>
@@ -11245,7 +11302,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
 
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div><p className="text-[10px] font-bold uppercase tracking-wide text-indigo-600">Coach</p><p className="font-medium text-slate-800">{obs.coachName}</p></div>
-          <div><p className="text-[10px] font-bold uppercase tracking-wide text-indigo-600">{obs.educatorRole || "Coach Education Tutor (CET)"}</p><p className="font-medium text-slate-800">{cetLabel(obs.coachEducatorName)}</p></div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-indigo-600">{obs.educatorRole || "Coach Education Tutor (CET)"}</p><p className="font-medium text-slate-800"><CetName name={obs.coachEducatorName} /></p></div>
           <div><p className="text-[10px] font-bold uppercase tracking-wide text-indigo-600">Date</p><p className="font-medium text-slate-800">{new Date(obs.date).toLocaleDateString("en-GB")}</p></div>
         </div>
         {obs.ageGroup && <p className="text-sm text-slate-500">Context: {obs.ageGroup}</p>}
@@ -11458,7 +11515,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
           <div className="border-t border-slate-100 pt-4 grid sm:grid-cols-2 gap-4">
             <div>
               <p className="text-xs text-slate-400">{obs.educatorRole || "Coach Education Tutor (CET)"} Name</p>
-              <p className="text-sm font-medium text-slate-800">{obs.coachEducatorName ? cetLabel(obs.coachEducatorName) : "—"}</p>
+              <p className="text-sm font-medium text-slate-800">{obs.coachEducatorName ? <CetName name={obs.coachEducatorName} /> : "—"}</p>
             </div>
             <div>
               <p className="text-xs text-slate-400">Assessor Signature</p>
@@ -12933,7 +12990,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                       <div>
                         <p className="text-sm font-semibold text-slate-800">{o.coachName}</p>
                         <p className="text-xs text-slate-400">
-                          {o.sessionType === "formal" ? `Formal · ${o.formalCourseName || "Course"}${o.courseNumber ? ` (#${o.courseNumber})` : ""}` : "Informal"} · {new Date(o.date).toLocaleDateString("en-GB")} · {cetLabel(o.coachEducatorName)}
+                          {o.sessionType === "formal" ? `Formal · ${o.formalCourseName || "Course"}${o.courseNumber ? ` (#${o.courseNumber})` : ""}` : "Informal"} · {new Date(o.date).toLocaleDateString("en-GB")} · <CetName name={o.coachEducatorName} />
                           {oSessionNumber ? ` · Session ${oSessionNumber}` : ""}
                         </p>
                       </div>
