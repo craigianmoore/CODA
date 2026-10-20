@@ -121,3 +121,19 @@ create policy "public read trial_users" on trial_users for select using (true);
 -- insert into trial_users (name, pin, is_admin) values
 --   ('Craig Moore', '2468', true),
 --   ('Jane Smith', '1357', false);
+
+-- Table grants. Supabase no longer gives the API roles access to tables
+-- created in "public" automatically, so a fresh project, preview branch or
+-- local reset built from this file needs these. CODA uses the anon key and
+-- its own PIN screen, so anon gets full access (matching the open RLS
+-- policies above). Add a block like this for any new table.
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'coaches','cets','courses','observations','admin_settings','completed_tasks',
+    'kv_settings','trial_users','cet_assessments','rapa_assessments','rapa_incidents','rapa_proposals'
+  ] loop
+    execute format('grant select, insert, update, delete on public.%I to anon, authenticated, service_role', t);
+  end loop;
+end $$;
