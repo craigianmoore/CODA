@@ -7558,6 +7558,11 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     return null;
   }
 
+  function promptUnlockFor(task) {
+    setProgressAuthForTaskId(task.id);
+    setProgressAuthName(""); setProgressAuthPin(""); setProgressAuthError(false);
+  }
+
   function setRecommendation(task, recommend, notes) {
     if (!progressAuthed || !adminHasCourseAccess(progressAuthMatch, task.courseNumber, task.memberFederation)) {
       setProgressAuthForTaskId(task.id);
@@ -8801,6 +8806,42 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             </label>
           </div>
           {(() => {
+            const recs = completedTasks
+              .filter(t => t.recommendNextLevel && recommendationLabelFor(t.courseTitle) && sessionCanSeeRecord(session, t.courseNumber, t.memberFederation))
+              .sort((a, b) => (a.coachName || "").localeCompare(b.coachName || ""));
+            if (recs.length === 0) return null;
+            const byLabel = {};
+            recs.forEach(t => { (byLabel[recommendationLabelFor(t.courseTitle)] = byLabel[recommendationLabelFor(t.courseTitle)] || []).push(t); });
+            return (
+              <details className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+                <summary className="cursor-pointer text-sm font-bold text-sky-800">Recommended for the next level up ({recs.length})</summary>
+                <div className="mt-2 space-y-3">
+                  {Object.entries(byLabel).map(([label, list]) => (
+                    <div key={label}>
+                      <p className="text-xs font-bold uppercase tracking-wide text-sky-700 mb-1">{label} ({list.length})</p>
+                      <ul className="space-y-1">
+                        {list.map(t => {
+                          const latestObs = (observations || [])
+                            .filter(o => o.status !== "draft" && o.coachId === t.coachId && (o.courseNumber || "").trim() === (t.courseNumber || "").trim())
+                            .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+                          return (
+                            <li key={t.id} className="text-sm text-slate-700">
+                              {latestObs && onViewReport
+                                ? <button onClick={() => onViewReport(latestObs.id)} className="underline decoration-dotted hover:text-sky-700 font-medium">{t.coachName}</button>
+                                : <span className="font-medium">{t.coachName}</span>}
+                              <span className="text-xs text-slate-500"> · {t.courseTitle}{t.courseNumber ? ` (#${t.courseNumber})` : ""}</span>
+                              {t.recommendNextLevelNotes && <span className="text-xs text-slate-400"> — {t.recommendNextLevelNotes}</span>}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            );
+          })()}
+          {(() => {
             const q = searchQuery.trim().toLowerCase();
             const groups = groupTasksForDisplay(completedTasks).map(g => ({
               ...g,
@@ -9328,11 +9369,12 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                               </label>
                                               <input value={draftNotes}
                                                 onChange={e => setRecommendNotesDraft(prev => ({ ...prev, [t.id]: e.target.value }))}
-                                                onBlur={() => { if (recommendNotesDraft[t.id] !== undefined) setRecommendation(t, t.recommendNextLevel, recommendNotesDraft[t.id]); }}
+                                                onFocus={() => { if (!canSetRec) promptUnlockFor(t); }}
+                                                onBlur={() => { if (canSetRec && recommendNotesDraft[t.id] !== undefined) setRecommendation(t, t.recommendNextLevel, recommendNotesDraft[t.id]); }}
                                                 placeholder="Optional note (visible on the Course Report)..." maxLength={200}
                                                 className="w-full border border-sky-200 rounded-md px-2 py-1 text-xs text-slate-600" />
                                               {progressAuthForTaskId === t.id && !canSetRec && (
-                                                <p className="text-[10px] text-sky-700">Unlock in Progress Tracking above to change this.</p>
+                                                <p className="text-[10px] text-sky-700">Enter your admin name and PIN in Progress Tracking above to tick or save a note here — notes typed before unlocking aren't saved.</p>
                                               )}
                                             </div>
                                           );
