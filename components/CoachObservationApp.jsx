@@ -1030,6 +1030,40 @@ const COACH_LEVEL_OPTIONS = [
   "UEFA Pro Licence",
 ];
 
+const AFC_LEVEL_OPTIONS = COACH_LEVEL_OPTIONS.filter(o => !/^UEFA/i.test(o));
+const UEFA_LEVEL_OPTIONS = COACH_LEVEL_OPTIONS.filter(o => /^UEFA/i.test(o));
+
+// Accreditation-level picker: AFC/FA levels up front; the UEFA licences sit
+// in a second drop-down that only opens after "UEFA Badges…" is chosen.
+// value / onChange use the same strings as before ("" | option | "__other__").
+function AccreditationLevelSelect({ value, onChange, placeholder }) {
+  const isUefa = UEFA_LEVEL_OPTIONS.includes(value);
+  const [uefaOpen, setUefaOpen] = useState(isUefa);
+  const showUefa = uefaOpen || isUefa;
+  const cls = "w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white";
+  return (
+    <div className="flex flex-col gap-2">
+      <select value={showUefa ? "__uefa__" : value} className={cls}
+        onChange={e => {
+          const v = e.target.value;
+          if (v === "__uefa__") { setUefaOpen(true); if (!isUefa) onChange(""); }
+          else { setUefaOpen(false); onChange(v); }
+        }}>
+        <option value="">{placeholder}</option>
+        {AFC_LEVEL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+        <option value="__uefa__">UEFA Badges…</option>
+        <option value="__other__">Other (type your own)</option>
+      </select>
+      {showUefa && (
+        <select value={isUefa ? value : ""} onChange={e => onChange(e.target.value)} className={cls}>
+          <option value="">Select UEFA licence...</option>
+          {UEFA_LEVEL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+      )}
+    </div>
+  );
+}
+
 function isOverseasLicence(level) {
   return /uefa/i.test(level || "");
 }
@@ -3855,11 +3889,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
           <div className="grid grid-cols-3 gap-3">
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Coach name" className="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
             <input value={club} onChange={e => setClub(e.target.value)} placeholder="Club / Team" className="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-            <select value={levelOption} onChange={e => handleLevelOptionChange(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
-              <option value="">Select coaching level...</option>
-              {COACH_LEVEL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-              <option value="__other__">Other (type your own)</option>
-            </select>
+            <AccreditationLevelSelect value={levelOption} onChange={handleLevelOptionChange} placeholder="Select coaching level..." />
           </div>
           {levelOption === "__other__" && (
             <input value={level} onChange={e => setLevel(e.target.value)} placeholder="Custom coaching level" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
@@ -4491,11 +4521,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
           <div className="grid grid-cols-3 gap-3">
             <input value={name} onChange={e => setName(e.target.value)} placeholder="CET name" className="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
             <input value={org} onChange={e => setOrg(e.target.value)} placeholder="Club / Organisation" className="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-            <select value={levelOption} onChange={e => handleLevelOptionChange(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
-              <option value="">Select coaching level...</option>
-              {COACH_LEVEL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-              <option value="__other__">Other (type your own)</option>
-            </select>
+            <AccreditationLevelSelect value={levelOption} onChange={handleLevelOptionChange} placeholder="Select coaching level..." />
           </div>
           {levelOption === "__other__" && (
             <input value={level} onChange={e => setLevel(e.target.value)} placeholder="Custom coaching level" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
@@ -4617,12 +4643,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                           <p className="text-xs font-medium text-slate-500 mb-1">Details</p>
                           <input value={editingDetailsClub} onChange={e => setEditingDetailsClub(e.target.value)} placeholder="Club / Organisation"
                             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-                          <select value={editingDetailsLevelOption} onChange={e => handleEditDetailsLevelOptionChange(e.target.value)}
-                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
-                            <option value="">Select current accreditation level...</option>
-                            {COACH_LEVEL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                            <option value="__other__">Other (type your own)</option>
-                          </select>
+                          <AccreditationLevelSelect value={editingDetailsLevelOption} onChange={handleEditDetailsLevelOptionChange} placeholder="Select current accreditation level..." />
                           {editingDetailsLevelOption === "__other__" && (
                             <input value={editingDetailsLevel} onChange={e => setEditingDetailsLevel(e.target.value)} placeholder="Custom accreditation level"
                               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
