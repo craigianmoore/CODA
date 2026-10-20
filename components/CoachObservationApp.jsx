@@ -7456,6 +7456,18 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const PROGRESS_STATUSES = ["Tracking Ahead", "As Expected", "Needs Assistance"];
   const [progressAuthed, setProgressAuthed] = useState(false);
   const [progressAuthMatch, setProgressAuthMatch] = useState(null);
+  // Already signed in as an admin: that PIN login is enough, so don't ask again
+  // for the per-card unlock (it also isn't shown on C Diploma cards).
+  useEffect(() => {
+    if (!session || session.kind !== "admin" || progressAuthed) return;
+    setProgressAuthed(true);
+    setProgressAuthMatch({
+      name: session.name,
+      role: session.tier === "master" ? undefined : session.tier,
+      memberFederations: session.memberFederations || [],
+      assignedCourseNumbers: session.assignedCourseNumbers || [],
+    });
+  }, [session, progressAuthed]);
   const [progressAuthName, setProgressAuthName] = useState("");
   const [progressAuthPin, setProgressAuthPin] = useState("");
   const [progressAuthError, setProgressAuthError] = useState(false);
@@ -9373,9 +9385,23 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                 onBlur={() => { if (canSetRec && recommendNotesDraft[t.id] !== undefined) setRecommendation(t, t.recommendNextLevel, recommendNotesDraft[t.id]); }}
                                                 placeholder="Optional note (visible on the Course Report)..." maxLength={200}
                                                 className="w-full border border-sky-200 rounded-md px-2 py-1 text-xs text-slate-600" />
-                                              {progressAuthForTaskId === t.id && !canSetRec && (
+                                              {progressAuthForTaskId === t.id && !canSetRec && (blockOptionsForTask(t).length > 0 ? (
                                                 <p className="text-[10px] text-sky-700">Enter your admin name and PIN in Progress Tracking above to tick or save a note here — notes typed before unlocking aren't saved.</p>
-                                              )}
+                                              ) : (
+                                                <div className="space-y-1">
+                                                  <p className="text-[10px] text-sky-700">Enter an admin name and PIN for this course to tick or save a note — notes typed before unlocking aren't saved.</p>
+                                                  <div className="flex gap-1.5">
+                                                    <input value={progressAuthName} onChange={e => { setProgressAuthName(e.target.value); setProgressAuthError(false); }} placeholder="Admin name"
+                                                      className={`flex-1 border rounded-lg px-2 py-1.5 text-xs ${progressAuthError ? "border-red-400" : "border-sky-300"}`} />
+                                                    <input type="password" inputMode="numeric" maxLength={4} value={progressAuthPin}
+                                                      onChange={e => { setProgressAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setProgressAuthError(false); }}
+                                                      onKeyDown={e => { if (e.key === "Enter") handleProgressAuth(); }}
+                                                      placeholder="PIN" className={`w-20 border rounded-lg px-2 py-1.5 text-xs text-center tracking-widest ${progressAuthError ? "border-red-400" : "border-sky-300"}`} />
+                                                    <button onClick={handleProgressAuth} className="text-xs font-semibold text-sky-700 hover:text-sky-800 whitespace-nowrap">Unlock</button>
+                                                  </div>
+                                                  {progressAuthError && <p className="text-[10px] text-red-600">Incorrect admin name or PIN.</p>}
+                                                </div>
+                                              ))}
                                             </div>
                                           );
                                         })()}
