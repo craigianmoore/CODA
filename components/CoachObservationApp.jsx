@@ -7067,8 +7067,10 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
                   <p className="text-xs text-slate-400">{a.courseTitle}{a.date ? ` · ${new Date(a.date).toLocaleDateString("en-GB")}` : ""}{a.outcome ? ` · ${a.outcome}` : ""}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {a.status !== "draft" && (
                   <button onClick={() => handleSaveCetPdf(a)} disabled={savingPdfId === a.id}
                     className="flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 disabled:opacity-50"><FileText className="w-3.5 h-3.5" /> {savingPdfId === a.id ? "Saving..." : "PDF"}</button>
+                  )}
                   <button onClick={() => startEdit(a)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Open</button>
                   <button onClick={() => setConfirmDeleteId(a.id)} className="text-slate-300 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
