@@ -953,7 +953,7 @@ const REPORT_STYLE_TAG = `<style>
         .header-icon img { max-width: 100%; max-height: 100%; object-fit: contain; }
         h1 { margin: 0; font-size: 21px; }
         .subtitle { color: #64748b; font-size: 13px; margin: 2px 0 0; }
-        .type-badge { margin-left: auto; font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: #eef2ff; color: #4338ca; white-space: nowrap; }
+        .type-badge { margin-left: auto; display: inline-block; line-height: 1; font-size: 11px; font-weight: 700; padding: 6px 12px 8px; border-radius: 999px; background: #eef2ff; color: #4338ca; white-space: nowrap; }
         .meta-grid { display: flex; flex-wrap: wrap; gap: 14px; margin: 18px 0; }
         .meta-grid > div { flex: 1 1 calc(33.333% - 10px); min-width: 150px; }
         .meta-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #4f46e5; margin: 0 0 2px; }
@@ -968,7 +968,7 @@ const REPORT_STYLE_TAG = `<style>
         .plan-field-label { font-size: 10.5px; font-weight: 700; color: #64748b; margin: 0 0 3px; }
         .plan-field-value { font-size: 12.5px; color: #1e293b; margin: 0; white-space: pre-wrap; }
         .plan-field-sub { font-size: 11px; color: #64748b; margin: 4px 0 0; }
-        .chip-slate { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: #e2e8f0; color: #334155; margin: 0 6px 4px 0; }
+        .chip-slate { display: inline-block; line-height: 1; font-size: 11px; font-weight: 600; padding: 4px 10px 6px; border-radius: 999px; background: #e2e8f0; color: #334155; margin: 0 6px 4px 0; }
         .action-plan-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; background: #fff; }
         .areas-grid { display: flex; flex-wrap: wrap; gap: 10px; }
         .area-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; background: #fff; break-inside: avoid; flex: 1 1 calc(50% - 5px); min-width: 200px; }
@@ -977,7 +977,7 @@ const REPORT_STYLE_TAG = `<style>
         .area-desc { font-size: 10.5px; color: #94a3b8; margin: 0 0 6px; }
         .area-descriptor { font-style: italic; font-size: 11px; color: #64748b; background: #f8fafc; border-radius: 6px; padding: 6px 8px; margin: 0 0 6px; }
         .area-notes { font-size: 12px; color: #475569; margin: 0; }
-        .badge { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
+        .badge { display: inline-block; line-height: 1; font-size: 10.5px; font-weight: 700; padding: 4px 9px 6px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
         .badge-0 { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
         .badge-1 { background: #ffedd5; color: #c2410c; border-color: #fed7aa; }
         .badge-2 { background: #fef9c3; color: #854d0e; border-color: #fde68a; }
@@ -1000,14 +1000,15 @@ const REPORT_STYLE_TAG = `<style>
         .final-score-value.pass { color: #15803d; }
         .final-score-value.fail { color: #b91c1c; }
         .outcome-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; display: flex; align-items: center; justify-content: space-between; }
-        .outcome-badge { font-size: 13px; font-weight: 700; padding: 5px 14px; border-radius: 999px; }
+        .outcome-badge { display: inline-block; line-height: 1; font-size: 13px; font-weight: 700; padding: 6px 14px 8px; border-radius: 999px; }
         .outcome-highly { background: #ede9fe; color: #6d28d9; }
         .outcome-competent { background: #dcfce7; color: #15803d; }
+        .outcome-continuing { background: #fef3c7; color: #b45309; }
         .outcome-notyet { background: #fee2e2; color: #b91c1c; }
         .outcome-neutral { background: #f1f5f9; color: #64748b; }
         .pathway-box { border-radius: 10px; padding: 14px; background: #f5f3ff; border: 1px solid #ddd6fe; margin: 16px 0; }
         .pathway-title { font-size: 13px; font-weight: 700; color: #6d28d9; margin: 0 0 8px; }
-        .pathway-chip { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 4px 12px; border-radius: 999px; background: #ede9fe; color: #6d28d9; border: 1px solid #ddd6fe; margin: 0 6px 6px 0; }
+        .pathway-chip { display: inline-block; line-height: 1; font-size: 11.5px; font-weight: 700; padding: 5px 12px 7px; border-radius: 999px; background: #ede9fe; color: #6d28d9; border: 1px solid #ddd6fe; margin: 0 6px 6px 0; }
         ol.action-plan { margin: 0; padding-left: 18px; font-size: 12.5px; }
         ol.action-plan li { margin-bottom: 6px; }
         .signature-row { display: flex; flex-wrap: wrap; gap: 20px; border-top: 1px solid #e2e8f0; padding-top: 14px; margin-top: 20px; }
@@ -6467,7 +6468,7 @@ function buildCetAssessmentHtml(a, proxyLogos = false) {
   const cp = a.coachingProcess || {};
   const cpCards = isDip ? CP_ITEMS.map(i => card(i.label, i.hint, (cp[i.key] || {}).rating, (cp[i.key] || {}).evidence)).join("") : "";
   const fb = a.feedback || {};
-  const outcomeClass = a.outcome === "Highly Competent" ? "outcome-highly" : a.outcome === "Competent" ? "outcome-competent" : "outcome-neutral";
+  const outcomeClass = a.outcome === "Highly Competent" ? "outcome-highly" : a.outcome === "Competent" ? "outcome-competent" : a.outcome === "Continuing Development" ? "outcome-continuing" : "outcome-neutral";
   const actions = (a.actionPlan || []).filter(r => r && (r.focus || r.action || r.support));
   const actionRows = actions.map(r => `<tr><td style="padding:6px 8px;border:1px solid #ddd;vertical-align:top;">${nl(r.focus)}</td><td style="padding:6px 8px;border:1px solid #ddd;vertical-align:top;">${nl(r.action)}</td><td style="padding:6px 8px;border:1px solid #ddd;vertical-align:top;">${nl(r.support)}</td></tr>`).join("");
   const fa = (MEMBER_FEDERATIONS.find(m => m.key === "FA") || {});
@@ -6978,7 +6979,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
         <p className="text-sm font-semibold text-slate-800">Overall Outcome</p>
         <div className="flex gap-2 flex-wrap">
-          {["Highly Competent", "Competent", "Requires Development"].map(opt => (
+          {["Highly Competent", "Competent", "Continuing Development", "Requires Development"].map(opt => (
             <button key={opt} type="button" onClick={() => setField("outcome", opt)}
               className={`flex-1 min-w-[140px] text-center text-sm font-bold px-3 py-2.5 rounded-lg border-2 ${form.outcome === opt ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-500"}`}>{opt}</button>
           ))}
