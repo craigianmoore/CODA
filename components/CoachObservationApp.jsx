@@ -6528,9 +6528,31 @@ function buildCetAssessmentHtml(a, proxyLogos = false) {
   </html>`;
 }
 
+// In-progress CET Observation is kept on this device as it's typed, so a page
+// reload or an app update never loses a half-finished assessment.
+const CET_DRAFT_KEY = "codaCetFormDraft";
+function readCetDraft() {
+  try {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(CET_DRAFT_KEY) : null;
+    const d = raw ? JSON.parse(raw) : null;
+    return d && d.form ? d : null;
+  } catch (e) { return null; }
+}
+
 function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, saveCetAssessments, adminSettings, adminLockouts, recordAdminAttempt }) {
-  const [form, setForm] = useState(emptyCetAssessmentForm());
-  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(() => { const d = readCetDraft(); return d ? { ...emptyCetAssessmentForm(), ...d.form } : emptyCetAssessmentForm(); });
+  const [editingId, setEditingId] = useState(() => { const d = readCetDraft(); return d ? (d.editingId || null) : null; });
+  const [restoredDraft, setRestoredDraft] = useState(() => !!readCetDraft());
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const untouched = !editingId && JSON.stringify(form) === JSON.stringify(emptyCetAssessmentForm());
+        if (untouched) window.localStorage.removeItem(CET_DRAFT_KEY);
+        else window.localStorage.setItem(CET_DRAFT_KEY, JSON.stringify({ form, editingId, savedAt: Date.now() }));
+      } catch (e) { /* storage unavailable — carry on without the safety copy */ }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [form, editingId]);
   const [historySearch, setHistorySearch] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [savingPdfId, setSavingPdfId] = useState(null);
@@ -6632,6 +6654,8 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
   function resetForm() {
     setForm(emptyCetAssessmentForm());
     setEditingId(null);
+    setRestoredDraft(false);
+    try { window.localStorage.removeItem(CET_DRAFT_KEY); } catch (e) { /* ignore */ }
   }
 
   function saveRecord(status) {
@@ -6700,7 +6724,19 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
           className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-100 whitespace-nowrap">
           <Settings className="w-4 h-4" /> Manage Assessors
         </button>
+        <button onClick={() => { const el = document.getElementById("cet-history"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+          className="flex items-center gap-1.5 text-sm font-semibold text-indigo-700 border border-indigo-200 px-3 py-2 rounded-lg hover:bg-indigo-50 whitespace-nowrap">
+          <FileText className="w-4 h-4" /> History &amp; search ({cetAssessments.length})
+        </button>
       </div>
+
+      {restoredDraft && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex items-center gap-3 flex-wrap">
+          <p className="text-xs text-amber-800 flex-1">Restored your unsaved CET Observation from this device. Save &amp; Return or Save &amp; Submit to keep it.</p>
+          <button onClick={resetForm} className="text-xs font-semibold text-amber-800 underline">Discard &amp; start fresh</button>
+          <button onClick={() => setRestoredDraft(false)} className="text-xs text-amber-700">Dismiss</button>
+        </div>
+      )}
 
       {adminAuthFor === "assessors" && (
         <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
@@ -7003,7 +7039,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
         <p className="text-xs text-slate-400 mt-2">Save &amp; Return keeps this as a draft — nothing needs to be complete yet. Save &amp; Submit finalises it and starts a fresh form.</p>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+      <div id="cet-history" className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm font-semibold text-slate-800">History ({cetAssessments.length})</p>
           <div className="flex items-center gap-2 flex-wrap">
