@@ -516,7 +516,7 @@ function rapaRatingBadgeClass(rating) {
   if (rating === "High") return "bg-orange-100 text-orange-700 border-orange-300";
   if (rating === "Moderate") return "bg-amber-100 text-amber-700 border-amber-300";
   if (rating === "Low") return "bg-emerald-100 text-emerald-700 border-emerald-300";
-  return "bg-slate-100 text-slate-400 border-slate-200";
+  return "bg-slate-100 text-slate-500 border-slate-200";
 }
 function emptyRapaAssessmentForm() {
   return {
@@ -974,7 +974,7 @@ const REPORT_STYLE_TAG = `<style>
         .area-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; background: #fff; break-inside: avoid; flex: 1 1 calc(50% - 5px); min-width: 200px; }
         .area-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
         .area-name { font-weight: 700; font-size: 13px; }
-        .area-desc { font-size: 10.5px; color: #94a3b8; margin: 0 0 6px; }
+        .area-desc { font-size: 10.5px; color: #64748b; margin: 0 0 6px; }
         .area-descriptor { font-style: italic; font-size: 11px; color: #64748b; background: #f8fafc; border-radius: 6px; padding: 6px 8px; margin: 0 0 6px; }
         .area-notes { font-size: 12px; color: #475569; margin: 0; }
         .badge { display: inline-block; line-height: 1; font-size: 10.5px; font-weight: 700; padding: 4px 9px 6px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
@@ -982,7 +982,7 @@ const REPORT_STYLE_TAG = `<style>
         .badge-1 { background: #ffedd5; color: #c2410c; border-color: #fed7aa; }
         .badge-2 { background: #fef9c3; color: #854d0e; border-color: #fde68a; }
         .badge-3 { background: #dcfce7; color: #15803d; border-color: #bbf7d0; }
-        .badge-none { background: #f1f5f9; color: #94a3b8; border-color: #e2e8f0; }
+        .badge-none { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
         .two-col { display: flex; flex-wrap: wrap; gap: 12px; }
         .two-col > div { flex: 1 1 calc(50% - 6px); min-width: 200px; }
         .box { border-radius: 10px; padding: 12px; font-size: 12.5px; }
@@ -1013,10 +1013,10 @@ const REPORT_STYLE_TAG = `<style>
         ol.action-plan li { margin-bottom: 6px; }
         .signature-row { display: flex; flex-wrap: wrap; gap: 20px; border-top: 1px solid #e2e8f0; padding-top: 14px; margin-top: 20px; }
         .signature-row > div { flex: 1 1 calc(50% - 10px); min-width: 150px; }
-        .signature-label { font-size: 11px; color: #94a3b8; margin: 0 0 2px; }
+        .signature-label { font-size: 11px; color: #64748b; margin: 0 0 2px; }
         .signature-name { font-size: 13px; font-weight: 600; margin: 0; }
         .signature-script { font-family: "Brush Script MT", cursive; font-size: 22px; margin: 0; }
-        .footer-note { text-align: center; font-size: 10.5px; color: #94a3b8; border-top: 1px solid #e2e8f0; margin-top: 24px; padding-top: 12px; }
+        .footer-note { text-align: center; font-size: 10.5px; color: #64748b; border-top: 1px solid #e2e8f0; margin-top: 24px; padding-top: 12px; }
         @media print { body { background: #fff; } .page { padding: 0; max-width: none; } }
       </style>`;
 
@@ -2529,7 +2529,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
             </div>
             <div>
               <h1 className="font-bold text-slate-900 text-sm leading-tight">Coach Session Observation</h1>
-              <p className="text-xs text-slate-400 leading-tight">Coach Observation Development App</p>
+              <p className="text-xs text-slate-500 leading-tight">Coach Observation Development App</p>
             </div>
           </a>
           {onViewModeChange && (
@@ -2543,7 +2543,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
                     onClick={() => onViewModeChange(v.id)}
                     title={v.label}
                     className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                      active ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                      active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-600"
                     }`}
                   >
                     <Icon className="w-3.5 h-3.5" />
@@ -2566,7 +2566,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
                   onClick={() => onFontScaleChange(s.id)}
                   title="Text size"
                   className={`px-2 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                    fontScale === s.id ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                    fontScale === s.id ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-600"
                   }`}
                 >
                   {s.label}
@@ -2579,7 +2579,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
               <span className="hidden sm:inline">
                 {session.kind === "cet" ? session.name : `${session.name} · ${{ master: "MA Admin", lead: "MF Admin", coordinator: "MF Coordinator", course: "Course Admin" }[session.tier] || "Admin"}`}
               </span>
-              <button onClick={onSignOut} className="font-semibold text-slate-400 hover:text-slate-600">Sign Out</button>
+              <button onClick={onSignOut} className="font-semibold text-slate-500 hover:text-slate-600">Sign Out</button>
             </div>
           )}
         </div>
@@ -2596,7 +2596,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
                   onClick={() => setTab(it.id)}
                   title={it.fullLabel || it.label}
                   className={`flex items-center gap-1.5 px-2.5 py-2 text-sm font-medium rounded-t-lg whitespace-nowrap border-b-2 transition-colors ${
-                    active ? "border-slate-900 text-slate-900" : "border-transparent text-slate-400 hover:text-slate-600"
+                    active ? "border-slate-900 text-slate-900" : "border-transparent text-slate-500 hover:text-slate-600"
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -2698,10 +2698,10 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
           {draftsExpanded && (
           <>
           <div className="px-5 py-2 flex items-center gap-2 text-xs bg-slate-50 border-b border-slate-100">
-            <span className="text-slate-400 font-medium">Sort:</span>
-            <button onClick={() => { setDraftsSortMode("name"); if (session?.name) kvSet(`draftsSortMode:${session.name}`, "name"); }} className={`px-2 py-0.5 rounded-full border transition-colors ${draftsSortMode === "name" ? "bg-amber-100 border-amber-300 text-amber-700 font-semibold" : "border-slate-200 text-slate-400 hover:text-slate-600"}`}>A–Z</button>
-            <button onClick={() => { setDraftsSortMode("date"); if (session?.name) kvSet(`draftsSortMode:${session.name}`, "date"); }} className={`px-2 py-0.5 rounded-full border transition-colors ${draftsSortMode === "date" ? "bg-amber-100 border-amber-300 text-amber-700 font-semibold" : "border-slate-200 text-slate-400 hover:text-slate-600"}`}>Date</button>
-            <button onClick={() => { setDraftsSortMode("cet"); if (session?.name) kvSet(`draftsSortMode:${session.name}`, "cet"); }} className={`px-2 py-0.5 rounded-full border transition-colors ${draftsSortMode === "cet" ? "bg-amber-100 border-amber-300 text-amber-700 font-semibold" : "border-slate-200 text-slate-400 hover:text-slate-600"}`}>CET</button>
+            <span className="text-slate-500 font-medium">Sort:</span>
+            <button onClick={() => { setDraftsSortMode("name"); if (session?.name) kvSet(`draftsSortMode:${session.name}`, "name"); }} className={`px-2 py-0.5 rounded-full border transition-colors ${draftsSortMode === "name" ? "bg-amber-100 border-amber-300 text-amber-700 font-semibold" : "border-slate-200 text-slate-500 hover:text-slate-600"}`}>A–Z</button>
+            <button onClick={() => { setDraftsSortMode("date"); if (session?.name) kvSet(`draftsSortMode:${session.name}`, "date"); }} className={`px-2 py-0.5 rounded-full border transition-colors ${draftsSortMode === "date" ? "bg-amber-100 border-amber-300 text-amber-700 font-semibold" : "border-slate-200 text-slate-500 hover:text-slate-600"}`}>Date</button>
+            <button onClick={() => { setDraftsSortMode("cet"); if (session?.name) kvSet(`draftsSortMode:${session.name}`, "cet"); }} className={`px-2 py-0.5 rounded-full border transition-colors ${draftsSortMode === "cet" ? "bg-amber-100 border-amber-300 text-amber-700 font-semibold" : "border-slate-200 text-slate-500 hover:text-slate-600"}`}>CET</button>
           </div>
           <div className="divide-y divide-slate-100">
             {[...drafts].sort((a, b) => draftsSortMode === "date"
@@ -2712,7 +2712,7 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
               <div key={d.id} className="px-5 py-3 flex items-center justify-between gap-3">
                 <div onClick={() => onViewDraft(d.id)} className="cursor-pointer flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 truncate">{d.coachName || "Unnamed coach"}</p>
-                  <p className="text-xs text-slate-400 truncate">
+                  <p className="text-xs text-slate-500 truncate">
                     {d.sessionType === "formal" ? `Formal · ${d.formalCourseName || "Course"}` : "Informal"} · {new Date(d.date).toLocaleDateString("en-GB")} · {d.coachEducatorName ? <CetName name={d.coachEducatorName} /> : "No CET set"}
                   </p>
                 </div>
@@ -2735,20 +2735,20 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <button onClick={() => setRecentObsExpanded(v => !v)} type="button"
             className="w-full flex items-center gap-2 text-left px-5 py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors">
-            <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${recentObsExpanded ? "rotate-90" : ""}`} />
+            <ChevronRight className={`w-4 h-4 text-slate-500 transition-transform shrink-0 ${recentObsExpanded ? "rotate-90" : ""}`} />
             <h3 className="font-semibold text-slate-800 text-sm flex-1">Recent Observations</h3>
-            <span className="text-xs text-slate-400">{coachSummaries.length}</span>
+            <span className="text-xs text-slate-500">{coachSummaries.length}</span>
           </button>
         {recentObsExpanded && (
         coachSummaries.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 text-sm">No observations in the last 4 days.</div>
+          <div className="p-8 text-center text-slate-500 text-sm">No observations in the last 4 days.</div>
         ) : (
           <div className="divide-y divide-slate-100">
             {coachSummaries.map(c => (
               <div key={c.coachId} onClick={() => goHistory(c.coachId)} className="px-5 py-3 flex items-center justify-between hover:bg-slate-50 cursor-pointer transition-colors">
                 <div>
                   <p className="text-sm font-medium text-slate-800">{c.coachName}</p>
-                  <p className="text-xs text-slate-400">Last observed {new Date(c.lastDate).toLocaleDateString("en-GB")}</p>
+                  <p className="text-xs text-slate-500">Last observed {new Date(c.lastDate).toLocaleDateString("en-GB")}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium bg-slate-100 text-slate-600 px-2 py-1 rounded-full">{c.count} session{c.count === 1 ? "" : "s"} observed</span>
@@ -2906,7 +2906,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
           <h3 className="font-semibold text-slate-800 text-sm">Open Courses</h3>
         </div>
         {openGroups.length === 0 ? (
-          <div className="p-6 text-center text-slate-400 text-sm">No open courses yet — these appear once a Coaches Progress record has a Course Number set.</div>
+          <div className="p-6 text-center text-slate-500 text-sm">No open courses yet — these appear once a Coaches Progress record has a Course Number set.</div>
         ) : (
           <div className="divide-y divide-slate-100">
             {openGroupsByMf.map(([mfKey, groupsForMf]) => {
@@ -2921,7 +2921,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                     })} type="button"
                     style={{ borderLeftColor: memberFederationColor(mfKey) }}
                     className="w-full flex items-center gap-2 text-left px-5 py-2.5 bg-slate-50 hover:bg-slate-100 transition-colors border-l-4">
-                    <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${mfExpanded ? "rotate-90" : ""}`} />
+                    <ChevronRight className={`w-4 h-4 text-slate-500 transition-transform shrink-0 ${mfExpanded ? "rotate-90" : ""}`} />
                     <div className="w-6 h-6 rounded-md bg-white border-2 flex items-center justify-center shrink-0 overflow-hidden" style={{ borderColor: memberFederationColor(mfKey) }}>
                       <img src={memberFederationLogo(mfKey)} alt="" className="max-w-full max-h-full object-contain" />
                     </div>
@@ -2941,7 +2941,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                       <ChevronRight className={`w-4 h-4 text-slate-300 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-slate-800 truncate">#{g.courseNumber} — {g.courseTitle}</p>
-                        <p className="text-xs text-slate-400">{g.records.length} coach{g.records.length === 1 ? "" : "es"} tracked · out of {maxDays} days</p>
+                        <p className="text-xs text-slate-500">{g.records.length} coach{g.records.length === 1 ? "" : "es"} tracked · out of {maxDays} days</p>
                       </div>
                     </button>
                     <button onClick={() => closeCourse(g.courseNumber)}
@@ -2985,7 +2985,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                             <div key={t.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
                               <div>
                                 <p className="text-sm font-medium text-slate-800">{t.coachName}</p>
-                                <p className="text-xs text-slate-400">Currently {currentDays}/{maxDays} days ({t.attendancePercent}%)</p>
+                                <p className="text-xs text-slate-500">Currently {currentDays}/{maxDays} days ({t.attendancePercent}%)</p>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 <input type="number" min="0" max={maxDays}
@@ -3005,7 +3005,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                           <div key={t.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
                             <div>
                               <p className="text-sm font-medium text-slate-800">{t.coachName}</p>
-                              <p className="text-xs text-slate-400">Currently {t.onlineModulesPercent || 0}%</p>
+                              <p className="text-xs text-slate-500">Currently {t.onlineModulesPercent || 0}%</p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               <input type="number" min="0" max="100"
@@ -3035,12 +3035,12 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <button onClick={() => setCompletedCoursesExpanded(v => !v)} type="button"
           className="w-full flex items-center gap-2 text-left px-5 py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors">
-          <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${completedCoursesExpanded ? "rotate-90" : ""}`} />
+          <ChevronRight className={`w-4 h-4 text-slate-500 transition-transform shrink-0 ${completedCoursesExpanded ? "rotate-90" : ""}`} />
           <h3 className="font-semibold text-slate-800 text-sm flex-1">Closed Courses</h3>
-          <span className="text-xs text-slate-400">{completedGroups.length} course{completedGroups.length === 1 ? "" : "s"}</span>
+          <span className="text-xs text-slate-500">{completedGroups.length} course{completedGroups.length === 1 ? "" : "s"}</span>
         </button>
         {completedCoursesExpanded && (completedGroups.length === 0 ? (
-          <div className="p-6 text-center text-slate-400 text-sm">No completed courses yet.</div>
+          <div className="p-6 text-center text-slate-500 text-sm">No completed courses yet.</div>
         ) : (
           <div className="divide-y divide-slate-100">
             {completedGroups.map(g => (
@@ -3051,7 +3051,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                     <ChevronRight className={`w-4 h-4 text-slate-300 transition-transform shrink-0 ${expandedCourse === g.courseNumber ? "rotate-90" : ""}`} />
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-800 truncate">#{g.courseNumber} — {g.courseTitle}</p>
-                      <p className="text-xs text-slate-400">{g.records.length} coach{g.records.length === 1 ? "" : "es"} tracked</p>
+                      <p className="text-xs text-slate-500">{g.records.length} coach{g.records.length === 1 ? "" : "es"} tracked</p>
                     </div>
                   </button>
                   <button onClick={() => reopenCourse(g.courseNumber)}
@@ -3068,7 +3068,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                         <div key={t.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
                           <div>
                             <p className="text-sm font-medium text-slate-800">{t.coachName}</p>
-                            <p className="text-xs text-slate-400">
+                            <p className="text-xs text-slate-500">
                               Attendance {t.attendancePercent}%{total > 0 ? ` · Coursework ${done}/${total}` : ""}
                             </p>
                           </div>
@@ -3092,10 +3092,10 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-5 py-3 border-b border-slate-100">
           <h3 className="font-semibold text-slate-800 text-sm">Outstanding Coaches</h3>
-          <p className="text-xs text-slate-400">Coaches from Closed Courses who still have outstanding attendance or coursework.</p>
+          <p className="text-xs text-slate-500">Coaches from Closed Courses who still have outstanding attendance or coursework.</p>
         </div>
         {incompleteByCourse.length === 0 ? (
-          <div className="p-6 text-center text-slate-400 text-sm">No outstanding coaches on any completed course.</div>
+          <div className="p-6 text-center text-slate-500 text-sm">No outstanding coaches on any completed course.</div>
         ) : (
           <div className="divide-y divide-slate-100">
             {incompleteByCourse.map(g => {
@@ -3122,7 +3122,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                             <div className="flex items-center justify-between gap-3">
                               <div>
                                 <button type="button" onClick={function handleOpenCompletedTaskClick() { openCompletedTaskFn(t.id); }} className="text-sm font-medium text-slate-800 hover:text-indigo-600 hover:underline text-left">{t.coachName}</button>
-                                <p className="text-xs text-slate-400">
+                                <p className="text-xs text-slate-500">
                                   Attendance {t.attendancePercent}%{t.total > 0 ? ` · Coursework ${t.done}/${t.total}` : ""}
                                 </p>
                                 {t.attendancePercent < 100 && (
@@ -3137,7 +3137,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                                   const isNyc = item.outcome === "Not Yet Competent";
                                   const isPercentBased = item.label === "Online Modules";
                                   return (
-                                    <label key={i} className={`flex items-center gap-2 text-xs ${isNyc ? "text-red-500" : isPercentBased ? "text-slate-400" : "text-slate-600 cursor-pointer"}`}>
+                                    <label key={i} className={`flex items-center gap-2 text-xs ${isNyc ? "text-red-500" : isPercentBased ? "text-slate-500" : "text-slate-600 cursor-pointer"}`}>
                                       <input type="checkbox" checked={false} disabled={isNyc || isPercentBased} onChange={() => toggleOutstandingItem(t, item.label)}
                                         className="rounded border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed" />
                                       <span><ItemObsLink observations={observations} record={t} label={item.label} text={item.display} onViewReport={onViewReport} onEditDraft={onEditDraft} />{isNyc ? " — Not Yet Competent, needs re-observation" : isPercentBased ? ` — ${item.percent || 0}% (update % in Coaches Progress)` : ""}</span>
@@ -3191,7 +3191,7 @@ function StatCard({ label, value, icon: Icon }) {
       </div>
       <div>
         <p className="text-2xl font-bold text-slate-900 leading-tight">{value}</p>
-        <p className="text-xs text-slate-400">{label}</p>
+        <p className="text-xs text-slate-500">{label}</p>
       </div>
     </div>
   );
@@ -3803,7 +3803,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
                 return (
                   <div key={groupKey} className="bg-white rounded-lg border border-amber-200 p-3">
                     <div className="flex items-center justify-between gap-3 mb-2">
-                      <p className="text-sm font-semibold text-slate-800">{group[0].name} <span className="text-xs font-normal text-slate-400">({group.length} profiles)</span></p>
+                      <p className="text-sm font-semibold text-slate-800">{group[0].name} <span className="text-xs font-normal text-slate-500">({group.length} profiles)</span></p>
                       <button onClick={() => mergeGroup(group)} disabled={mergingKey === groupKey}
                         className="flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-600 px-3 py-1.5 rounded-lg hover:bg-amber-700 disabled:bg-slate-300 whitespace-nowrap">
                         {mergingKey === groupKey ? "Merging..." : "Merge into One"}
@@ -3832,12 +3832,12 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
           <div>
             <p className="text-sm font-semibold text-slate-800 mb-1">Bulk upload coaches</p>
-            <p className="text-xs text-slate-400">Upload a .csv file with columns for Name (required), Club, Level, and Topics (semicolon or comma-separated session topics for this coach).</p>
+            <p className="text-xs text-slate-500">Upload a .csv file with columns for Name (required), Club, Level, and Topics (semicolon or comma-separated session topics for this coach).</p>
           </div>
           <input type="file" accept=".csv" onChange={handleFile}
             className="block w-full text-sm text-slate-600 border border-slate-300 rounded-lg px-3 py-2 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 file:text-sm" />
 
-          {parsing && <p className="text-sm text-slate-400 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Reading file...</p>}
+          {parsing && <p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Reading file...</p>}
 
           {uploadError && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
@@ -3862,7 +3862,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
                         <span className="font-medium text-slate-800">{r.name}</span>
                         {r.isDuplicate && <span className="text-xs font-medium bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Duplicate</span>}
                       </span>
-                      <span className="text-xs text-slate-400">{[r.club, r.level].filter(Boolean).join(" · ") || "—"}</span>
+                      <span className="text-xs text-slate-500">{[r.club, r.level].filter(Boolean).join(" · ") || "—"}</span>
                     </div>
                   ))}
                 </div>
@@ -3913,12 +3913,12 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
       )}
 
       {coaches.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">No coaches added yet.</div>
+        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500 text-sm">No coaches added yet.</div>
       ) : (
         <>
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search by first or last name..."
                 className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-sm" />
             </div>
@@ -3935,7 +3935,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
               .filter(c => !q || c.name.toLowerCase().split(/\s+/).some(part => part.includes(q)))
               .filter(c => !mfFilter || (mfFilter === "__none__" ? (c.memberFederations || []).length === 0 : (c.memberFederations || []).includes(mfFilter)));
             if (filtered.length === 0) {
-              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">{q || mfFilter ? "No coaches match these filters." : "No coaches added yet."}</div>;
+              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500 text-sm">{q || mfFilter ? "No coaches match these filters." : "No coaches added yet."}</div>;
             }
             const visibleSelectedCount = filtered.filter(c => selectedCoachIds.has(c.id)).length;
             return (
@@ -3972,8 +3972,8 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
                             className="mt-1 rounded border-slate-300 shrink-0" onClick={e => e.stopPropagation()} />
                           <div onClick={() => goHistory(c.id)} className="cursor-pointer flex-1">
                             <p className="font-semibold text-slate-900">{c.name}</p>
-                            <p className="text-xs text-slate-400">{[c.club, c.level].filter(Boolean).join(" · ") || "No details"}</p>
-                            {c.faNumber && <p className="text-xs text-slate-400">FA: {c.faNumber}</p>}
+                            <p className="text-xs text-slate-500">{[c.club, c.level].filter(Boolean).join(" · ") || "No details"}</p>
+                            {c.faNumber && <p className="text-xs text-slate-500">FA: {c.faNumber}</p>}
                             {idpHasContent(c.idp) && (
                               <span className="inline-block mt-1 text-xs font-medium bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full">IDP on file</span>
                             )}
@@ -4003,7 +4003,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
                             className="text-xs font-semibold text-indigo-600 border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-50 whitespace-nowrap">
                             MF
                           </button>
-                          <button onClick={() => setConfirmDeleteId(c.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50">
+                          <button onClick={() => setConfirmDeleteId(c.id)} className="text-slate-500 hover:text-red-600 p-1 rounded-md hover:bg-red-50">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -4015,7 +4015,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
                             {MEMBER_FEDERATIONS.map(mf => (
                               <button key={mf.key} type="button" onClick={() => toggleEditingCoachMf(mf.key)}
                                 className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                                  editingCoachMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                                  editingCoachMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-500 border-slate-200"
                                 }`}>
                                 {mf.label}
                               </button>
@@ -4071,11 +4071,11 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
                               <input type="file" accept=".docx,.pdf" onChange={handleIdpFile}
                                 className="block w-full text-xs text-slate-600 border border-slate-300 rounded-lg px-2.5 py-1.5 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 file:text-xs" />
                             )}
-                            <p className="text-xs text-slate-400 mt-1">Upload a Word file or a text-based PDF (not a scan or photo). Please don't attach the assessment rubric — only the coach's own notes are kept.</p>
-                            {idpParsing && <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Reading document...</p>}
+                            <p className="text-xs text-slate-500 mt-1">Upload a Word file or a text-based PDF (not a scan or photo). Please don't attach the assessment rubric — only the coach's own notes are kept.</p>
+                            {idpParsing && <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Reading document...</p>}
                             {idpError && <p className="text-xs text-red-600 mt-1">{idpError}</p>}
                             {idpForm.fileText && (
-                              <p className="text-xs text-slate-400 mt-1">Extracted text will show alongside this coach's IDP when starting a new observation. Copy the relevant part into Goals/Plan above if you want it to auto-link.</p>
+                              <p className="text-xs text-slate-500 mt-1">Extracted text will show alongside this coach's IDP when starting a new observation. Copy the relevant part into Goals/Plan above if you want it to auto-link.</p>
                             )}
                           </div>
                           <div className="flex gap-2">
@@ -4439,7 +4439,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                 return (
                   <div key={groupKey} className="bg-white rounded-lg border border-amber-200 p-3">
                     <div className="flex items-center justify-between gap-3 mb-2">
-                      <p className="text-sm font-semibold text-slate-800">{group[0].name} <span className="text-xs font-normal text-slate-400">({group.length} profiles · {combinedObsCount} total obs.)</span></p>
+                      <p className="text-sm font-semibold text-slate-800">{group[0].name} <span className="text-xs font-normal text-slate-500">({group.length} profiles · {combinedObsCount} total obs.)</span></p>
                       <button onClick={() => mergeGroup(group)} disabled={mergingKey === groupKey}
                         className="flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-600 px-3 py-1.5 rounded-lg hover:bg-amber-700 disabled:bg-slate-300 whitespace-nowrap">
                         {mergingKey === groupKey ? "Merging..." : "Merge into One"}
@@ -4464,12 +4464,12 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
           <div>
             <p className="text-sm font-semibold text-slate-800 mb-1">Bulk upload CETs</p>
-            <p className="text-xs text-slate-400">Upload a .csv file with columns for Name (required), Club/Organisation, and Level.</p>
+            <p className="text-xs text-slate-500">Upload a .csv file with columns for Name (required), Club/Organisation, and Level.</p>
           </div>
           <input type="file" accept=".csv" onChange={handleFile}
             className="block w-full text-sm text-slate-600 border border-slate-300 rounded-lg px-3 py-2 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 file:text-sm" />
 
-          {parsing && <p className="text-sm text-slate-400 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Reading file...</p>}
+          {parsing && <p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Reading file...</p>}
 
           {uploadError && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2 flex items-center gap-2">
@@ -4494,7 +4494,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                         <span className="font-medium text-slate-800">{r.name}</span>
                         {r.isDuplicate && <span className="text-xs font-medium bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Duplicate</span>}
                       </span>
-                      <span className="text-xs text-slate-400">{[r.club, r.level].filter(Boolean).join(" · ") || "—"}</span>
+                      <span className="text-xs text-slate-500">{[r.club, r.level].filter(Boolean).join(" · ") || "—"}</span>
                     </div>
                   ))}
                 </div>
@@ -4533,7 +4533,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
               {MEMBER_FEDERATIONS.map(mf => (
                 <button key={mf.key} type="button" onClick={() => toggleCetMf(mf.key)}
                   className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                    cetMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                    cetMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-500 border-slate-200"
                   }`}>
                   {mf.label}
                 </button>
@@ -4548,12 +4548,12 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
       )}
 
       {educators.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">No CETs added yet.</div>
+        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500 text-sm">No CETs added yet.</div>
       ) : (
         <>
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search by first or last name..."
                 className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-sm" />
             </div>
@@ -4569,7 +4569,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
               .filter(c => !q || c.name.toLowerCase().split(/\s+/).some(part => part.includes(q)))
               .filter(c => !mfFilter || (c.memberFederations || []).includes(mfFilter));
             if (filtered.length === 0) {
-              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">{q || mfFilter ? "No CETs match these filters." : "No CETs added yet."}</div>;
+              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500 text-sm">{q || mfFilter ? "No CETs match these filters." : "No CETs added yet."}</div>;
             }
             const visibleSelectedCount = filtered.filter(c => selectedCetIds.has(c.id)).length;
             return (
@@ -4606,7 +4606,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                             className="rounded border-slate-300 mt-1 shrink-0" />
                           <div className="flex-1">
                             <p className="font-semibold text-slate-900">{c.name} <span className="font-normal text-slate-500">{cetCountText(c.name).slice(c.name.trim().length)}</span> <CetLevelPill name={c.name} /></p>
-                            <p className="text-xs text-slate-400">{[c.club, c.level].filter(Boolean).join(" · ") || "No details"}</p>
+                            <p className="text-xs text-slate-500">{[c.club, c.level].filter(Boolean).join(" · ") || "No details"}</p>
                             {(c.memberFederations || []).length > 0 && (
                               <div className="flex gap-1 flex-wrap mt-1.5">
                                 {c.memberFederations.map(key => {
@@ -4634,7 +4634,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                             className="text-xs font-semibold text-indigo-600 border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-50 whitespace-nowrap">
                             MF
                           </button>
-                          <button onClick={() => setConfirmDeleteId(c.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50">
+                          <button onClick={() => setConfirmDeleteId(c.id)} className="text-slate-500 hover:text-red-600 p-1 rounded-md hover:bg-red-50">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -4667,7 +4667,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                             {MEMBER_FEDERATIONS.map(mf => (
                               <button key={mf.key} type="button" onClick={() => toggleEditingMf(mf.key)}
                                 className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                                  editingMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                                  editingMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-500 border-slate-200"
                                 }`}>
                                 {mf.label}
                               </button>
@@ -4978,7 +4978,7 @@ function CoursesTab({ courses, saveCourses, adminSettings, adminLockouts, record
               <div className="space-y-1.5 pt-1">
                 {duplicateCourseGroups.map(group => (
                   <div key={group[0].title} className="flex items-center justify-between gap-2 bg-white rounded-lg border border-amber-200 px-3 py-2">
-                    <p className="text-sm text-slate-700">{group[0].title} <span className="text-xs text-slate-400">({group.length} copies)</span></p>
+                    <p className="text-sm text-slate-700">{group[0].title} <span className="text-xs text-slate-500">({group.length} copies)</span></p>
                     <button onClick={() => removeDuplicateGroup(group)} className="text-xs font-semibold text-amber-700 hover:text-amber-800 whitespace-nowrap">Keep 1</button>
                   </div>
                 ))}
@@ -5008,7 +5008,7 @@ function CoursesTab({ courses, saveCourses, adminSettings, adminLockouts, record
                 {bulkPreview.map((r, i) => (
                   <div key={i} className={`px-3 py-2 flex items-center gap-2 ${bulkDupes.includes(r.title) ? "bg-amber-50" : ""}`}>
                     <span className="text-xs text-slate-700 flex-1 truncate">{r.title}</span>
-                    {r.provider && <span className="text-xs text-slate-400 truncate">{r.provider}</span>}
+                    {r.provider && <span className="text-xs text-slate-500 truncate">{r.provider}</span>}
                     {bulkDupes.includes(r.title) && <span className="text-xs text-amber-600 font-medium shrink-0">duplicate</span>}
                   </div>
                 ))}
@@ -5091,7 +5091,7 @@ function CoursesTab({ courses, saveCourses, adminSettings, adminLockouts, record
               {ASSESSMENT_AREAS.map(a => (
                 <button key={a.key} onClick={() => toggleArea(a.key)}
                   className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                    selAreas.includes(a.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                    selAreas.includes(a.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-500 border-slate-200"
                   }`}>
                   {a.label}
                 </button>
@@ -5106,7 +5106,7 @@ function CoursesTab({ courses, saveCourses, adminSettings, adminLockouts, record
       )}
 
       {courses.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">No courses in the library yet. Add the courses/workshops you can recommend.</div>
+        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500 text-sm">No courses in the library yet. Add the courses/workshops you can recommend.</div>
       ) : (
         <div className="space-y-6">
           {COURSE_LEVEL_GROUP_ORDER.map(group => {
@@ -5114,16 +5114,16 @@ function CoursesTab({ courses, saveCourses, adminSettings, adminLockouts, record
             if (groupCourses.length === 0) return null;
             return (
               <div key={group}>
-                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">{group}</h3>
+                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">{group}</h3>
                 <div className="grid sm:grid-cols-2 gap-3">
                   {groupCourses.map(c => (
                     <div key={c.id} className="bg-white rounded-xl border border-slate-200 p-4">
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="font-semibold text-slate-900 text-sm">{c.title}</p>
-                          <p className="text-xs text-slate-400 mb-2">{[c.provider, c.level].filter(Boolean).join(" · ")}</p>
+                          <p className="text-xs text-slate-500 mb-2">{[c.provider, c.level].filter(Boolean).join(" · ")}</p>
                         </div>
-                        <button onClick={() => startEdit(c)} className="text-slate-400 hover:text-slate-700 p-1 rounded-md hover:bg-slate-100 shrink-0">
+                        <button onClick={() => startEdit(c)} className="text-slate-500 hover:text-slate-700 p-1 rounded-md hover:bg-slate-100 shrink-0">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -5491,7 +5491,7 @@ function itemLabelHtml(i) {
   const text = String(i.display || i.label || "");
   if (text.endsWith(REASSESSMENT_SUFFIX)) return `<span style="font-weight:700;color:#0f172a;">${esc(text.slice(0, -REASSESSMENT_SUFFIX.length))} <span style="display:inline-block;border-bottom:1.5px solid #0f172a;padding-bottom:3px;line-height:1.2;">(Reassessment Needed)</span></span>`;
   // Original attempt that was Not Yet Competent: greyed back.
-  if (i.outcome === "Not Yet Competent") return `<span style="color:#94a3b8;">${esc(text)}</span>`;
+  if (i.outcome === "Not Yet Competent") return `<span style="color:#64748b;">${esc(text)}</span>`;
   return esc(text);
 }
 
@@ -5570,7 +5570,7 @@ function buildOutstandingCandidateHtml(task, coach) {
   const items = total > 0 ? courseworkItems(task, coach?.topics, task.team) : [];
   const outstanding = items.filter(i => !i.done);
   const outstandingRows = outstanding.map(i => {
-    return `<tr><td style="padding:6px 8px;border:1px solid #ddd;">☐ ${itemLabelHtml(i)}${i.outcome === "Not Yet Competent" ? ` <span style="color:#94a3b8;font-size:12px;">(Not Yet Competent — needs a re-observation)</span>` : ""}${itemNoteHtml(task, i.label)}</td></tr>`;
+    return `<tr><td style="padding:6px 8px;border:1px solid #ddd;">☐ ${itemLabelHtml(i)}${i.outcome === "Not Yet Competent" ? ` <span style="color:#64748b;font-size:12px;">(Not Yet Competent — needs a re-observation)</span>` : ""}${itemNoteHtml(task, i.label)}</td></tr>`;
   }).join("");
   return `<html><head><title>${esc(task.coachName)} - Outstanding Items</title></head><body style="margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1e293b;padding:28px;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:2px solid #0f172a;padding-bottom:16px;margin-bottom:20px;">
@@ -5604,7 +5604,7 @@ function buildCandidateHtml(task, coach, observations, proxyLogos = false) {
   const { done, total } = courseworkProgress(task, coach?.topics);
   const items = total > 0 ? courseworkItems(task, coach?.topics, task.team) : [];
   const checklistRows = items.map(i =>
-    `<tr><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${i.done ? "✅" : "☐"} ${itemLabelHtml(i)}${i.done ? "" : itemNoteHtml(task, i.label)}</td><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;${i.outcome === "Not Yet Competent" ? "color:#94a3b8;" : ""}">${esc(i.outcome) || "—"}</td></tr>`
+    `<tr><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${i.done ? "✅" : "☐"} ${itemLabelHtml(i)}${i.done ? "" : itemNoteHtml(task, i.label)}</td><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;${i.outcome === "Not Yet Competent" ? "color:#64748b;" : ""}">${esc(i.outcome) || "—"}</td></tr>`
   ).join("");
   const cnTask = (task.courseNumber || "").trim();
   const forThisCourse = (observations || []).filter(o =>
@@ -5646,7 +5646,7 @@ function buildCandidateHtml(task, coach, observations, proxyLogos = false) {
 
         <div class="section">
           <p class="section-title">Observation Reports (${matchingReports.length})</p>
-          ${matchingReports.length === 0 ? `<p style="font-size:13px;color:#94a3b8;">No observation reports linked to this course yet.</p>` : `<p style="font-size:12.5px;color:#64748b;margin:0;">Full reports follow, one per page.</p>`}
+          ${matchingReports.length === 0 ? `<p style="font-size:13px;color:#64748b;">No observation reports linked to this course yet.</p>` : `<p style="font-size:12.5px;color:#64748b;margin:0;">Full reports follow, one per page.</p>`}
         </div>
       ${reportSections}
       </div>
@@ -5985,7 +5985,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
 
           <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
             <p className="text-sm font-semibold text-slate-800">Add a Hazard</p>
-            <p className="text-xs text-slate-400">Choose a category — the standard information shows below. Use it as-is if it fits, or flag it for the Executive Manager to review.</p>
+            <p className="text-xs text-slate-500">Choose a category — the standard information shows below. Use it as-is if it fits, or flag it for the Executive Manager to review.</p>
             <div>
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">Hazard category</label>
               <select value={hzCategory} onChange={e => { setHzCategory(e.target.value); setHzFlag(false); }} className="w-full sm:w-96 border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
@@ -6122,14 +6122,14 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
             <input value={raSearch} onChange={e => setRaSearch(e.target.value)} placeholder="Search session or CET..." className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs w-56" />
           </div>
           {raFiltered.length === 0 ? (
-            <p className="text-xs text-slate-400">No risk assessments saved yet.</p>
+            <p className="text-xs text-slate-500">No risk assessments saved yet.</p>
           ) : (
             <div className="space-y-1.5">
               {raFiltered.map(a => (
                 <div key={a.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
                   <div>
                     <p className="text-sm font-medium text-slate-800">{a.session || "(untitled session)"}</p>
-                    <p className="text-xs text-slate-400">{a.leadCetName} · {a.venue}{a.date ? ` · ${new Date(a.date).toLocaleDateString("en-GB")}` : ""} · {(a.hazards || []).length} hazard{(a.hazards || []).length === 1 ? "" : "s"}</p>
+                    <p className="text-xs text-slate-500">{a.leadCetName} · {a.venue}{a.date ? ` · ${new Date(a.date).toLocaleDateString("en-GB")}` : ""} · {(a.hazards || []).length} hazard{(a.hazards || []).length === 1 ? "" : "s"}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {highestRatingOf(a.hazards || []) && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${rapaRatingBadgeClass(highestRatingOf(a.hazards || []))}`}>{highestRatingOf(a.hazards || [])}</span>}
@@ -6285,7 +6285,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
               <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Role *</label><input value={irForm.repRole} onChange={e => irSetField("repRole", e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
               <div><label className="text-xs font-medium text-slate-500 mb-1.5 block">Date *</label><input type="text" inputMode="numeric" placeholder="DD/MM/YY" value={irForm.repDate} onChange={e => irSetField("repDate", rapaMaskDate(e.target.value))} className={`w-full border rounded-lg px-3 py-2 text-sm ${irForm.repDate && !rapaIsValidDate(irForm.repDate) ? "border-red-400" : "border-slate-300"}`} /></div>
             </div>
-            <p className="text-xs text-slate-400">Section 9 (Office / Management Use Only) is completed by the Executive Manager in the Admin area once this report is submitted.</p>
+            <p className="text-xs text-slate-500">Section 9 (Office / Management Use Only) is completed by the Executive Manager in the Admin area once this report is submitted.</p>
             <div className="flex gap-2">
               <button onClick={saveIncident} className="bg-slate-900 text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-800">Submit Incident Report</button>
               {irEditingId && <button onClick={resetIrForm} className="px-6 py-2.5 rounded-lg text-sm font-medium text-slate-500">Cancel</button>}
@@ -6301,14 +6301,14 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
             <input value={irSearch} onChange={e => setIrSearch(e.target.value)} placeholder="Search course or venue..." className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs w-56" />
           </div>
           {irFiltered.length === 0 ? (
-            <p className="text-xs text-slate-400">No incident reports submitted yet.</p>
+            <p className="text-xs text-slate-500">No incident reports submitted yet.</p>
           ) : (
             <div className="space-y-1.5">
               {irFiltered.map(i => (
                 <div key={i.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
                   <div>
                     <p className="text-sm font-medium text-slate-800">{i.course}{i.status === "reviewed" && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full ml-1.5">REVIEWED</span>}</p>
-                    <p className="text-xs text-slate-400">{i.venue} · {i.incDate ? new Date(i.incDate).toLocaleDateString("en-GB") : ""} · Reported by {i.repName}</p>
+                    <p className="text-xs text-slate-500">{i.venue} · {i.incDate ? new Date(i.incDate).toLocaleDateString("en-GB") : ""} · Reported by {i.repName}</p>
                   </div>
                   <button onClick={() => openIncident(i)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Open</button>
                 </div>
@@ -6345,7 +6345,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
               <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
                 <p className="text-sm font-semibold text-slate-800">Hazard Proposals ({pendingProposals.length} pending)</p>
                 {pendingProposals.length === 0 ? (
-                  <p className="text-xs text-slate-400">No pending proposals.</p>
+                  <p className="text-xs text-slate-500">No pending proposals.</p>
                 ) : pendingProposals.map(p => (
                   <div key={p.id} className="border border-amber-200 bg-amber-50 rounded-lg p-3 space-y-1.5">
                     <p className="text-sm font-semibold text-slate-800">{p.name}</p>
@@ -6370,7 +6370,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
               <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
                 <p className="text-sm font-semibold text-slate-800">Equipment Restock Reminders ({equipPendingIncidents.length})</p>
                 {equipPendingIncidents.length === 0 ? (
-                  <p className="text-xs text-slate-400">Nothing outstanding.</p>
+                  <p className="text-xs text-slate-500">Nothing outstanding.</p>
                 ) : equipPendingIncidents.map(i => (
                   <div key={i.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
                     <div>
@@ -6781,7 +6781,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
           {(iAmMaster ? assessorMfPicker : myMf) ? (() => {
             const mfKey = iAmMaster ? assessorMfPicker : myMf;
             const cetsInMf = [...educators].filter(c => (c.memberFederations || []).includes(mfKey)).sort((a, b) => a.name.localeCompare(b.name));
-            if (cetsInMf.length === 0) return <p className="text-xs text-slate-400">No CETs tagged to this federation yet — assign a Member Federation to CETs in Logistics first.</p>;
+            if (cetsInMf.length === 0) return <p className="text-xs text-slate-500">No CETs tagged to this federation yet — assign a Member Federation to CETs in Logistics first.</p>;
             return (
               <div className="space-y-1.5">
                 {cetsInMf.map(c => (
@@ -6874,7 +6874,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
         <div>
           <p className="text-sm font-semibold text-slate-800">GRIP — Coaching Conversation</p>
-          <p className="text-xs text-slate-400">Rate how effectively the CET used GRIP to structure feedback/coaching conversations with coaches.</p>
+          <p className="text-xs text-slate-500">Rate how effectively the CET used GRIP to structure feedback/coaching conversations with coaches.</p>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {GRIP_ITEMS.map(item => (
@@ -6885,7 +6885,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
           {GRIP_ITEMS.map(item => (
             <div key={item.key} className="border-b border-slate-100 pb-3 last:border-b-0 last:pb-0">
               <p className="text-sm font-semibold text-slate-700">{item.label}</p>
-              <p className="text-xs text-slate-400 mb-1.5">{item.hint}</p>
+              <p className="text-xs text-slate-500 mb-1.5">{item.hint}</p>
               <div className="flex gap-2 flex-wrap mb-1.5">
                 {["Strong", "Developing", "Needs attention"].map(opt => (
                   <button key={opt} type="button" onClick={() => setGripField(item.key, "rating", opt)}
@@ -6894,7 +6894,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
                         ? opt === "Strong" ? "bg-emerald-100 text-emerald-700 border-emerald-300"
                         : opt === "Needs attention" ? "bg-red-100 text-red-700 border-red-300"
                         : "bg-amber-100 text-amber-700 border-amber-300"
-                        : "bg-white text-slate-400 border-slate-200"
+                        : "bg-white text-slate-500 border-slate-200"
                     }`}>{opt}</button>
                 ))}
               </div>
@@ -6912,7 +6912,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
             <div key={item.letter} className="border border-slate-200 rounded-lg p-2">
               <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-indigo-600 text-white text-xs font-bold mr-1">{item.letter}</span>
               <span className="text-xs font-semibold">{item.label}</span>
-              <p className="text-[10px] text-slate-400 mt-1">{item.desc}</p>
+              <p className="text-[10px] text-slate-500 mt-1">{item.desc}</p>
             </div>
           ))}
         </div>
@@ -6921,7 +6921,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
           <div className="flex gap-2 flex-wrap mb-1.5">
             {rateOptions3.map(opt => (
               <button key={opt} type="button" onClick={() => setForm(prev => ({ ...prev, sochangeit: { ...prev.sochangeit, rating: opt } }))}
-                className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${form.sochangeit.rating === opt ? "bg-indigo-100 text-indigo-700 border-indigo-300" : "bg-white text-slate-400 border-slate-200"}`}>{opt}</button>
+                className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${form.sochangeit.rating === opt ? "bg-indigo-100 text-indigo-700 border-indigo-300" : "bg-white text-slate-500 border-slate-200"}`}>{opt}</button>
             ))}
           </div>
           <VoiceTextarea value={form.sochangeit.notes} onChange={e => setForm(prev => ({ ...prev, sochangeit: { ...prev.sochangeit, notes: e.target.value } }))} placeholder="Notes..." rows={3}
@@ -6936,11 +6936,11 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
             {CP_ITEMS.map(item => (
               <div key={item.key} className="border-b border-slate-100 pb-3 last:border-b-0 last:pb-0">
                 <p className="text-sm font-semibold text-slate-700">{item.label}</p>
-                <p className="text-xs text-slate-400 mb-1.5">{item.hint}</p>
+                <p className="text-xs text-slate-500 mb-1.5">{item.hint}</p>
                 <div className="flex gap-2 flex-wrap mb-1.5">
                   {rateOptions3.map(opt => (
                     <button key={opt} type="button" onClick={() => setCpField(item.key, "rating", opt)}
-                      className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${form.coachingProcess[item.key].rating === opt ? "bg-indigo-100 text-indigo-700 border-indigo-300" : "bg-white text-slate-400 border-slate-200"}`}>{opt}</button>
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${form.coachingProcess[item.key].rating === opt ? "bg-indigo-100 text-indigo-700 border-indigo-300" : "bg-white text-slate-500 border-slate-200"}`}>{opt}</button>
                   ))}
                 </div>
                 <VoiceTextarea value={form.coachingProcess[item.key].evidence} onChange={e => setCpField(item.key, "evidence", e.target.value)} placeholder="Evidence..." rows={3}
@@ -7037,7 +7037,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
             Save &amp; Submit
           </button>
         </div>
-        <p className="text-xs text-slate-400 mt-2">Save &amp; Return keeps this as a draft — nothing needs to be complete yet. Save &amp; Submit finalises it and starts a fresh form.</p>
+        <p className="text-xs text-slate-500 mt-2">Save &amp; Return keeps this as a draft — nothing needs to be complete yet. Save &amp; Submit finalises it and starts a fresh form.</p>
       </div>
 
       <div id="cet-history" className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
@@ -7091,7 +7091,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
           </div>
         )}
         {historyFiltered.length === 0 ? (
-          <p className="text-xs text-slate-400">No assessments yet.</p>
+          <p className="text-xs text-slate-500">No assessments yet.</p>
         ) : (
           <div className="space-y-1.5">
             {historyFiltered.map(a => (
@@ -7101,7 +7101,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
                     {a.cetName || "(no CET)"}
                     {a.status === "draft" && <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full ml-1.5">DRAFT</span>}
                   </p>
-                  <p className="text-xs text-slate-400">{a.courseTitle}{a.date ? ` · ${new Date(a.date).toLocaleDateString("en-GB")}` : ""}{a.outcome ? ` · ${a.outcome}` : ""}</p>
+                  <p className="text-xs text-slate-500">{a.courseTitle}{a.date ? ` · ${new Date(a.date).toLocaleDateString("en-GB")}` : ""}{a.outcome ? ` · ${a.outcome}` : ""}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {a.status !== "draft" && (
@@ -8136,7 +8136,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               <h3 className="text-lg font-bold text-slate-900">Course Report — #{group.courseNumber}</h3>
               <p className="text-sm text-slate-500">{group.courseTitle} · {group.records.length} coach{group.records.length === 1 ? "" : "es"}</p>
             </div>
-            <button onClick={() => setCourseReportNumber(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            <button onClick={() => setCourseReportNumber(null)} className="text-slate-500 hover:text-slate-600"><X className="w-5 h-5" /></button>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <button onClick={() => handleSaveCourseReportPdf(group, false)} disabled={savingCourseReportPdf !== null}
@@ -8164,7 +8164,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                         {latestObs
                           ? <button onClick={() => onViewReport(latestObs.id)} className="underline decoration-dotted hover:text-sky-700">{t.coachName}</button>
                           : t.coachName}
-                        {t.recommendNextLevelNotes && <span className="text-xs text-slate-400"> — {t.recommendNextLevelNotes}</span>}
+                        {t.recommendNextLevelNotes && <span className="text-xs text-slate-500"> — {t.recommendNextLevelNotes}</span>}
                       </li>
                     );
                   })}
@@ -8172,7 +8172,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               </div>
             );
           })()}
-          <p className="text-xs text-slate-400">Outstanding checklist items can be ticked off directly here. Progress Tracking is shown per block — open the coach's own card in Coaches Progress to change it.</p>
+          <p className="text-xs text-slate-500">Outstanding checklist items can be ticked off directly here. Progress Tracking is shown per block — open the coach's own card in Coaches Progress to change it.</p>
           <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
             {[...group.records].sort((a, b) => (a.coachName || "").localeCompare(b.coachName || "")).map(t => {
               const cardCoach = coaches.find(c => c.id === t.coachId);
@@ -8185,7 +8185,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <p className="text-sm font-semibold text-slate-800">{t.coachName}</p>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-slate-400">Attendance {t.attendancePercent}%</span>
+                      <span className="text-xs text-slate-500">Attendance {t.attendancePercent}%</span>
                       {outstanding.length > 0 && (
                         <button onClick={() => handleSaveOutstandingPdf(t, cardCoach)} disabled={savingOutstandingPdfId === t.id}
                           className="flex items-center gap-1 text-xs font-semibold text-orange-700 border border-orange-300 px-2 py-1 rounded-lg hover:bg-orange-50 disabled:opacity-50 whitespace-nowrap">
@@ -8198,7 +8198,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                     <p className="text-xs text-emerald-600 font-medium mb-2">All coursework completed.</p>
                   ) : (
                     <div className="space-y-1 mb-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Outstanding ({outstanding.length})</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Outstanding ({outstanding.length})</p>
                       {outstanding.map((item, i) => {
                         const isNyc = item.outcome === "Not Yet Competent";
                         return (
@@ -8213,7 +8213,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                   )}
                   {blockOpts.length > 0 && (
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-1">Progress Tracking</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Progress Tracking</p>
                       <div className="flex gap-1.5 flex-wrap">
                         {blockOpts.map(b => {
                           const s = statuses[b];
@@ -8277,7 +8277,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             </div>
           ) : (
             <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 value={coachSearchQuery}
                 onChange={e => { setCoachSearchQuery(e.target.value); setCoachDropdownOpen(true); }}
@@ -8294,13 +8294,13 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                       .sort((a, b) => a.name.localeCompare(b.name))
                       .filter(c => c.name.toLowerCase().split(/\s+/).some(part => part.includes(q)));
                     if (matches.length === 0) {
-                      return <p className="px-3 py-2.5 text-sm text-slate-400">No coaches match "{coachSearchQuery}".</p>;
+                      return <p className="px-3 py-2.5 text-sm text-slate-500">No coaches match "{coachSearchQuery}".</p>;
                     }
                     return matches.map(c => (
                       <button key={c.id} onMouseDown={() => { setField("coachId", c.id); setCoachSearchQuery(c.name); setCoachDropdownOpen(false); }}
                         className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm border-b border-slate-50 last:border-0">
                         <span className="font-medium text-slate-800">{c.name}</span>
-                        {c.club && <span className="text-xs text-slate-400 ml-1.5">({c.club})</span>}
+                        {c.club && <span className="text-xs text-slate-500 ml-1.5">({c.club})</span>}
                       </button>
                     ));
                   })()}
@@ -8352,7 +8352,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               <input type="number" min="0" max="100" value={form.attendancePercent}
                 onChange={e => setField("attendancePercent", e.target.value)} placeholder="e.g. 85"
                 className="w-full text-sm outline-none" />
-              <span className="text-sm text-slate-400">%</span>
+              <span className="text-sm text-slate-500">%</span>
             </div>
           </div>
           <div>
@@ -8361,7 +8361,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               <input type="number" min="0" max="100" value={form.onlineModulesPercent}
                 onChange={e => setField("onlineModulesPercent", e.target.value)} placeholder="e.g. 100"
                 className="w-full text-sm outline-none" />
-              <span className="text-sm text-slate-400">%</span>
+              <span className="text-sm text-slate-500">%</span>
             </div>
           </div>
         </div>
@@ -8385,15 +8385,15 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
         {isCDiploma(form.courseTitle) ? (
           <div className="border-t border-slate-100 pt-3">
             <p className="text-sm font-semibold text-slate-800 mb-2">Coursework</p>
-            <p className="text-xs text-slate-400 mb-2">C Diploma coursework is attendance plus a single practical session — no session plans or other milestones required.</p>
+            <p className="text-xs text-slate-500 mb-2">C Diploma coursework is attendance plus a single practical session — no session plans or other milestones required.</p>
             <div className="mb-3">
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">Session Activity</label>
-              <p className="text-xs text-slate-400 mb-1.5">Defaults from the CSV import's Session Activity column — tap a preset or type your own to amend it.</p>
+              <p className="text-xs text-slate-500 mb-1.5">Defaults from the CSV import's Session Activity column — tap a preset or type your own to amend it.</p>
               <div className="flex gap-1.5 flex-wrap mb-1.5">
                 {C_DIP_SESSION_TOPICS.map(t => (
                   <button key={t} type="button" onClick={() => setField("team", t)}
                     className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                      form.team === t ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                      form.team === t ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-500 border-slate-200"
                     }`}>
                     {t}
                   </button>
@@ -8436,7 +8436,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             <div className="border-t border-slate-100 pt-3">
               <p className="text-sm font-semibold text-slate-800 mb-2">{usesNewLabels(form) ? "Sessions" : "Session Plans"}</p>
               {!selectedCoach || !(selectedCoach.topics && selectedCoach.topics.length) ? (
-                <p className="text-xs text-slate-400">No session topics on file for this coach — add them via Coaches &amp; CETs (Add Coach or Bulk Upload → Topics column), or import a coursework CSV with topic columns mapped.</p>
+                <p className="text-xs text-slate-500">No session topics on file for this coach — add them via Coaches &amp; CETs (Add Coach or Bulk Upload → Topics column), or import a coursework CSV with topic columns mapped.</p>
               ) : (
                 <div className="space-y-1.5">
                   {selectedCoach.topics.slice(0, 4).map(topic => {
@@ -8485,7 +8485,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             <div className="border-t border-slate-100 pt-3 space-y-2">
               <p className="text-sm font-semibold text-slate-800 mb-1">Coursework</p>
               {[
-                { label: "Goalscoring Presentation", key: "goalscoringPresentationDone", extra: form.team ? <span className="text-xs text-slate-400">({form.team})</span> : null },
+                { label: "Goalscoring Presentation", key: "goalscoringPresentationDone", extra: form.team ? <span className="text-xs text-slate-500">({form.team})</span> : null },
                 { label: "Game Plan", key: "gamePlanDone" },
                 { label: "Analysis Session Plan", key: "analysisSessionPlanDone" },
                 { label: "Annual (Yearly) Plan", key: "annualPlanDone" },
@@ -8697,7 +8697,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 return (
                   <div key={groupKey} className="bg-white rounded-lg border border-amber-200 p-3">
                     <div className="flex items-center justify-between gap-3 mb-2">
-                      <p className="text-sm font-semibold text-slate-800">{group[0].coachName} <span className="text-xs font-normal text-slate-400">#{group[0].courseNumber} · {group.length} records</span></p>
+                      <p className="text-sm font-semibold text-slate-800">{group[0].coachName} <span className="text-xs font-normal text-slate-500">#{group[0].courseNumber} · {group.length} records</span></p>
                       <button onClick={() => mergeTaskGroup(group)} disabled={mergingTaskKey === groupKey}
                         className="flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-600 px-3 py-1.5 rounded-lg hover:bg-amber-700 disabled:bg-slate-300 whitespace-nowrap">
                         {mergingTaskKey === groupKey ? "Merging..." : "Merge into One"}
@@ -8727,17 +8727,17 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               <button onClick={() => selectDiplomaType("A")} type="button"
                 className={`text-left p-3 rounded-lg border-2 transition-colors ${courseworkDiplomaType === "A" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
                 <p className="text-sm font-semibold text-slate-800">A Diploma</p>
-                <p className="text-xs text-slate-400">Full coursework: session plans + 6 milestone items, 4 blocks</p>
+                <p className="text-xs text-slate-500">Full coursework: session plans + 6 milestone items, 4 blocks</p>
               </button>
               <button onClick={() => selectDiplomaType("B")} type="button"
                 className={`text-left p-3 rounded-lg border-2 transition-colors ${courseworkDiplomaType === "B" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
                 <p className="text-sm font-semibold text-slate-800">B Diploma</p>
-                <p className="text-xs text-slate-400">Full coursework: session plans + 6 milestone items</p>
+                <p className="text-xs text-slate-500">Full coursework: session plans + 6 milestone items</p>
               </button>
               <button onClick={() => selectDiplomaType("C")} type="button"
                 className={`text-left p-3 rounded-lg border-2 transition-colors ${courseworkDiplomaType === "C" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
                 <p className="text-sm font-semibold text-slate-800">C Diploma</p>
-                <p className="text-xs text-slate-400">Attendance + practical session only</p>
+                <p className="text-xs text-slate-500">Attendance + practical session only</p>
               </button>
             </div>
           </div>
@@ -8786,7 +8786,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                     {courseworkHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
                   {courseworkNameHeader === "__firstlast__" && (
-                    <p className="text-xs text-slate-400 mt-1">Combining {courseworkFirstNameHeader} and {courseworkLastNameHeader} into one full name.</p>
+                    <p className="text-xs text-slate-500 mt-1">Combining {courseworkFirstNameHeader} and {courseworkLastNameHeader} into one full name.</p>
                   )}
                 </div>
                 <div>
@@ -8812,7 +8812,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                     <option value="">None</option>
                     {courseworkHeaders.filter(h => h !== courseworkNameHeader).map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
-                  <p className="text-xs text-slate-400 mt-1">Used to propose the assigned CET at the top of the dropdown in New Observation.</p>
+                  <p className="text-xs text-slate-500 mt-1">Used to propose the assigned CET at the top of the dropdown in New Observation.</p>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-slate-600 mb-1.5 block">
@@ -8831,7 +8831,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                     <option value="">None</option>
                     {courseworkHeaders.filter(h => h !== courseworkNameHeader).map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
-                  <p className="text-xs text-slate-400 mt-1">Accepts a % number (e.g. "75"), a fraction (e.g. "3/4"), or Y/N. Needs to reach 100% to count as complete.</p>
+                  <p className="text-xs text-slate-500 mt-1">Accepts a % number (e.g. "75"), a fraction (e.g. "3/4"), or Y/N. Needs to reach 100% to count as complete.</p>
                 </div>
               </div>
               {courseworkDiplomaType !== "C" && (
@@ -8880,7 +8880,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 {courseworkSheetDriven && (() => {
                   const used = new Set([courseworkNameHeader, courseworkFirstNameHeader, courseworkLastNameHeader, courseworkClubHeader, courseworkFaHeader, courseworkCetHeader, courseworkOnlineModulesHeader, ...courseworkTopicHeaders].filter(Boolean));
                   const extras = (courseworkHeaders || []).filter(h => h && h.trim() && !used.has(h) && !isDateColumnHeader(h, courseworkDiplomaType));
-                  if (!extras.length) return <p className="text-xs text-slate-400">No extra columns — nothing to add as tick items.</p>;
+                  if (!extras.length) return <p className="text-xs text-slate-500">No extra columns — nothing to add as tick items.</p>;
                   return (
                     <div>
                       <p className="text-xs font-medium text-slate-600 mb-1">Extra columns to add as tick items (untick any to leave out):</p>
@@ -8911,7 +8911,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 {" · "}{courseworkPreview.filter(p => p.matchedCoach).length} already on your roster
                 {" · "}{courseworkPreview.filter(p => !p.matchedCoach).length} will be added as new coaches
               </p>
-              <p className="text-xs text-slate-400">Attendance columns used: {courseworkDetectedAttendanceHeaders.join(", ")}</p>
+              <p className="text-xs text-slate-500">Attendance columns used: {courseworkDetectedAttendanceHeaders.join(", ")}</p>
               {courseworkSheetDriven && (() => {
                 const legacy = courseworkPreview.filter(p => {
                   const c = p.matchedCoach;
@@ -8929,7 +8929,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                       {!p.matchedCoach && <span className="text-xs font-medium bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full">New coach</span>}
                       {p.cetName && <span className="text-xs font-medium bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full">CET: <CetName name={p.cetName} /></span>}
                     </span>
-                    <span className="text-xs text-slate-400 flex items-center gap-2">
+                    <span className="text-xs text-slate-500 flex items-center gap-2">
                       <span>{p.attended}/{p.total} sessions · {p.pct}%</span>
                       {p.onlineModulesPct != null && <span>Online: {p.onlineModulesPct}%</span>}
                     </span>
@@ -8951,12 +8951,12 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       {showForm && !editingId && renderTaskForm()}
 
       {completedTasks.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">No records yet. Add attendance and coursework tracking for a coach above.</div>
+        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500 text-sm">No records yet. Add attendance and coursework tracking for a coach above.</div>
       ) : (
         <>
           <div className="flex items-center gap-3 flex-wrap">
             <div className="relative flex-1 min-w-[220px]">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search by coach name..."
                 className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-sm" />
             </div>
@@ -8990,7 +8990,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                 ? <button onClick={() => onViewReport(latestObs.id)} className="underline decoration-dotted hover:text-sky-700 font-medium">{t.coachName}</button>
                                 : <span className="font-medium">{t.coachName}</span>}
                               <span className="text-xs text-slate-500"> · {t.courseTitle}{t.courseNumber ? ` (#${t.courseNumber})` : ""}</span>
-                              {t.recommendNextLevelNotes && <span className="text-xs text-slate-400"> — {t.recommendNextLevelNotes}</span>}
+                              {t.recommendNextLevelNotes && <span className="text-xs text-slate-500"> — {t.recommendNextLevelNotes}</span>}
                             </li>
                           );
                         })}
@@ -9011,7 +9011,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             })).filter(g => g.records.length > 0)
               .filter(g => sessionCanSeeRecord(session, g.courseNumber, dominantMfForGroup(g)));
             if (groups.length === 0) {
-              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">{q ? `No records match "${searchQuery}".` : incompleteOnly ? "No incomplete records — everyone's done!" : "No records yet."}</div>;
+              return <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500 text-sm">{q ? `No records match "${searchQuery}".` : incompleteOnly ? "No incomplete records — everyone's done!" : "No records yet."}</div>;
             }
             // Course groups are nested under a Member Federation header — the
             // MF is read off whichever value is most common among a course
@@ -9075,7 +9075,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                             <p className="text-sm font-semibold text-slate-800 truncate">
                               {g.courseNumber ? `#${g.courseNumber} — ${g.courseTitle}` : g.courseTitle}
                             </p>
-                            <p className="text-xs text-slate-400">{g.records.length} coach{g.records.length === 1 ? "" : "es"}</p>
+                            <p className="text-xs text-slate-500">{g.records.length} coach{g.records.length === 1 ? "" : "es"}</p>
                           </div>
                         </button>
                         <div className="flex items-center gap-2 shrink-0">
@@ -9220,14 +9220,14 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                               {isIdpExpanded ? "Hide IDP ▲" : "IDP on file ▼"}
                                             </button>
                                           )}
-                                          <p className="text-xs text-slate-400 truncate">{t.courseTitle}{t.courseNumber ? ` (#${t.courseNumber})` : ""}</p>
+                                          <p className="text-xs text-slate-500 truncate">{t.courseTitle}{t.courseNumber ? ` (#${t.courseNumber})` : ""}</p>
                                         </div>
                                       </div>
                                       <div className="flex items-center gap-1.5 shrink-0">
-                                        <button onClick={() => startEdit(t)} className="text-slate-400 hover:text-slate-700 p-1 rounded-md hover:bg-slate-100">
+                                        <button onClick={() => startEdit(t)} className="text-slate-500 hover:text-slate-700 p-1 rounded-md hover:bg-slate-100">
                                           <Pencil className="w-3.5 h-3.5" />
                                         </button>
-                                        <button onClick={() => setConfirmDeleteId(t.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50">
+                                        <button onClick={() => setConfirmDeleteId(t.id)} className="text-slate-500 hover:text-red-600 p-1 rounded-md hover:bg-red-50">
                                           <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                       </div>
@@ -9313,27 +9313,27 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                   .filter(g => g.list.length > 0);
                                                 return grouped.map(gr => (
                                                   <div key={gr.key} className="space-y-1">
-                                                    <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400 pt-1">{gr.label}</p>
+                                                    <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500 pt-1">{gr.label}</p>
                                                     {gr.list.map((item, i) => {
                                                       const itemObs = findItemObservations(observations, t, item.label);
                                                       const itemReport = itemObs.submitted;
                                                       return (
                                                         <div key={i}>
                                                         <div className="flex items-center justify-between gap-2 text-xs">
-                                                          <span className={`flex items-center gap-1.5 ${item.done ? "text-slate-700" : "text-slate-400"}`}>
+                                                          <span className={`flex items-center gap-1.5 ${item.done ? "text-slate-700" : "text-slate-500"}`}>
                                                             {item.done ? <Check className="w-3 h-3 text-emerald-600 shrink-0" /> : <span className="w-3 h-3 rounded-full border border-slate-300 inline-block shrink-0" />}
                                                             <ItemObsLink observations={observations} record={t} label={item.label} text={item.display} onViewReport={onViewReport} onEditDraft={onEditDraft} />
                                                             {suggestedTopics.includes(item.label) && <span className="text-amber-500" title="Suggested focus from IDP Performance Gap">★</span>}
                                                           </span>
                                                           <span className="flex items-center gap-1.5 shrink-0">
-                                                            {item.team && <span className="text-slate-400">({item.team})</span>}
+                                                            {item.team && <span className="text-slate-500">({item.team})</span>}
                                                             {item.outcome && (
                                                               <span className={`font-semibold px-1.5 py-0.5 rounded-full ${outcomeBadgeClass(item.outcome)}`}>{item.outcome}</span>
                                                             )}
                                                           </span>
                                                         </div>
                                                         {!item.done && t.courseworkNotes?.[item.label] && item.label !== "Online Modules" && item.label !== "Formative Assessment" && (
-                                                          <p className="text-[11px] text-slate-400 italic pl-4.5 ml-0.5">{t.courseworkNotes[item.label]}</p>
+                                                          <p className="text-[11px] text-slate-500 italic pl-4.5 ml-0.5">{t.courseworkNotes[item.label]}</p>
                                                         )}
                                                         </div>
                                                       );
@@ -9352,7 +9352,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                               if (obsList.length === 0) return null;
                                               return (
                                                 <div className="space-y-1 pt-1">
-                                                  <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Observations</p>
+                                                  <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">Observations</p>
                                                   {obsList.map(o => {
                                                     const isDraft = o.status === "draft";
                                                     const label = [o.sessionTopic || o.formalCourseName || "Observation", o.date].filter(Boolean).join(" · ");
@@ -9446,7 +9446,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                               ? s === "Tracking Ahead" ? "bg-emerald-100 text-emerald-700 border-emerald-300"
                                                               : s === "Needs Assistance" ? "bg-red-100 text-red-700 border-red-300"
                                                               : "bg-amber-100 text-amber-700 border-amber-300"
-                                                              : "bg-white text-slate-400 border-slate-200"
+                                                              : "bg-white text-slate-500 border-slate-200"
                                                           } ${locked ? "cursor-not-allowed" : !canSetActive ? "opacity-70 cursor-pointer" : ""}`}>
                                                           {s}
                                                         </button>
@@ -9460,7 +9460,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                           disabled={locked}
                                                           placeholder={`Notes for ${block}...`}
                                                           rows={2}
-                                                          className="w-full text-xs border border-violet-200 rounded-md px-2 py-1 bg-white text-slate-700 placeholder:text-slate-400 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+                                                          className="w-full text-xs border border-violet-200 rounded-md px-2 py-1 bg-white text-slate-700 placeholder:text-slate-500 disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed"
                                                         />
                                                       </div>
                                                     )}
@@ -9660,7 +9660,7 @@ function VoiceTextarea({ value, onChange, className, rows, placeholder, ...rest 
         <button type="button" onClick={toggleListening} onMouseDown={(e) => e.preventDefault()}
           title={listening ? "Stop dictation" : "Dictate with your voice"}
           className={`absolute bottom-2 right-2 w-10 h-10 rounded-full flex items-center justify-center transition-colors shrink-0 ${
-            listening ? "bg-red-500 text-white animate-pulse" : "bg-white text-slate-400 border border-slate-200 hover:text-slate-600 hover:border-slate-300"
+            listening ? "bg-red-500 text-white animate-pulse" : "bg-white text-slate-500 border border-slate-200 hover:text-slate-600 hover:border-slate-300"
           }`}>
           <Mic className="w-5 h-5" />
         </button>
@@ -10326,7 +10326,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     <div className={`space-y-5 ${step === 2 ? "pb-52" : ""}`}>
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-900">{isEditing ? "Edit Observation" : "New Observation"}</h2>
-        <button onClick={onCancel} className="text-sm text-slate-400 hover:text-slate-600 flex items-center gap-1">
+        <button onClick={onCancel} className="text-sm text-slate-500 hover:text-slate-600 flex items-center gap-1">
           <X className="w-4 h-4" /> Cancel
         </button>
       </div>
@@ -10373,7 +10373,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                   <div>
                     <p className="text-sm font-medium text-slate-800">{selectedCoach.name}</p>
                     <div className="flex items-center gap-2">
-                      {selectedCoach.club && <p className="text-xs text-slate-400">{selectedCoach.club}</p>}
+                      {selectedCoach.club && <p className="text-xs text-slate-500">{selectedCoach.club}</p>}
                       {selectedCoach.faNumber && (
                         <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">FA: {selectedCoach.faNumber}</span>
                       )}
@@ -10388,7 +10388,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 </div>
               ) : (
                 <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     value={coachSearchQuery}
                     onChange={e => { setCoachSearchQuery(e.target.value); setCoachDropdownOpen(true); }}
@@ -10407,13 +10407,13 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                         return (
                           <>
                             {matches.length === 0 ? (
-                              <p className="px-3 py-2.5 text-sm text-slate-400">No coaches match "{coachSearchQuery}".</p>
+                              <p className="px-3 py-2.5 text-sm text-slate-500">No coaches match "{coachSearchQuery}".</p>
                             ) : (
                               matches.map(c => (
                                 <button key={c.id} onMouseDown={() => { setCoachId(c.id); setCoachSearchQuery(c.name); setCoachDropdownOpen(false); }}
                                   className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm border-b border-slate-50 last:border-0">
                                   <span className="font-medium text-slate-800">{c.name}</span>
-                                  {c.club && <span className="text-xs text-slate-400 ml-1.5">({c.club})</span>}
+                                  {c.club && <span className="text-xs text-slate-500 ml-1.5">({c.club})</span>}
                                   {c.faNumber && <span className="text-xs text-indigo-600 ml-1.5">FA: {c.faNumber}</span>}
                                 </button>
                               ))
@@ -10455,7 +10455,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
               <select value={memberFederation} onChange={e => setMemberFederation(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
                 {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
               </select>
-              <p className="text-xs text-slate-400 mt-1">Sets the logo shown on this report's PDF export.</p>
+              <p className="text-xs text-slate-500 mt-1">Sets the logo shown on this report's PDF export.</p>
             </div>
 
             <div>
@@ -10480,7 +10480,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 ) : (
                   <div className="space-y-1.5">
                     <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
                         value={educatorSearchQuery}
                         onChange={e => { setEducatorSearchQuery(e.target.value); setEducatorDropdownOpen(true); }}
@@ -10504,7 +10504,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                             return (
                               <>
                                 {orderedMatches.length === 0 ? (
-                                  <p className="px-3 py-2.5 text-sm text-slate-400">No CETs match "{educatorSearchQuery}".</p>
+                                  <p className="px-3 py-2.5 text-sm text-slate-500">No CETs match "{educatorSearchQuery}".</p>
                                 ) : (
                                   orderedMatches.map(e => (
                                     <button key={e.id} onMouseDown={() => { setEducatorId(e.id); setEducatorSearchQuery(e.name); setEducatorDropdownOpen(false); }}
@@ -10552,12 +10552,12 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 <button onClick={() => handleSessionType("formal")}
                   className={`text-left p-3 rounded-lg border-2 transition-colors ${sessionType === "formal" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
                   <p className="text-sm font-semibold text-slate-800">Formal course session</p>
-                  <p className="text-xs text-slate-400">Part of a formal qualification / course assessment</p>
+                  <p className="text-xs text-slate-500">Part of a formal qualification / course assessment</p>
                 </button>
                 <button onClick={() => handleSessionType("informal")}
                   className={`text-left p-3 rounded-lg border-2 transition-colors ${sessionType === "informal" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
                   <p className="text-sm font-semibold text-slate-800">Informal club session</p>
-                  <p className="text-xs text-slate-400">A regular session observed at the coach's club</p>
+                  <p className="text-xs text-slate-500">A regular session observed at the coach's club</p>
                 </button>
               </div>
             </div>
@@ -10581,7 +10581,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                       placeholder={isCDiploma(formalCourseName) ? "e.g. 165" : "e.g. 240"}
                       className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
                     {courseNumber.trim() && (
-                      <p className="text-xs text-slate-400 mt-1">
+                      <p className="text-xs text-slate-500 mt-1">
                         {(() => {
                           const candidateName = usingNewCoach ? (newCoachName.trim() || "this coach") : (selectedCoach?.name || "this coach");
                           const sn = usingNewCoach || !coachId
@@ -10594,7 +10594,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                   </div>
                 )}
                 {threshold !== null && (
-                  <p className="text-xs text-slate-400 mt-1.5">Minimum passing score for this qualification: {threshold}/{MAX_TOTAL_SCORE}</p>
+                  <p className="text-xs text-slate-500 mt-1.5">Minimum passing score for this qualification: {threshold}/{MAX_TOTAL_SCORE}</p>
                 )}
               </div>
             )}
@@ -10615,7 +10615,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                   <p className="text-xs text-red-500 mt-1">Required for B/A Diploma courses.</p>
                 )}
                 {(isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && diplomaBlock && matchedCompletedTask && (
-                  <p className="text-xs text-slate-400 mt-1">Auto-filled from attendance on file — change it above if needed.</p>
+                  <p className="text-xs text-slate-500 mt-1">Auto-filled from attendance on file — change it above if needed.</p>
                 )}
               </div>
             )}
@@ -10699,8 +10699,8 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                       <input type="file" accept=".docx,.pdf" onChange={handleIdpFile}
                         className="block w-full text-xs text-slate-600 border border-slate-300 rounded-lg px-2.5 py-1.5 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 file:text-xs" />
                     )}
-                    <p className="text-xs text-slate-400 mt-1">Upload a Word file or a text-based PDF (not a scan or photo). Please don't attach the assessment rubric — only the coach's own notes are kept.</p>
-                    {idpParsing && <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Reading document...</p>}
+                    <p className="text-xs text-slate-500 mt-1">Upload a Word file or a text-based PDF (not a scan or photo). Please don't attach the assessment rubric — only the coach's own notes are kept.</p>
+                    {idpParsing && <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Reading document...</p>}
                     {idpError && <p className="text-xs text-red-600 mt-1">{idpError}</p>}
                   </div>
                   <div className="flex gap-2">
@@ -10763,7 +10763,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                   <p className="text-xs text-red-500 mt-1">Required.</p>
                 )}
                 {(!selectedCoach || !(selectedCoach.topics && selectedCoach.topics.length)) && (
-                  <p className="text-xs text-slate-400 mt-1">No topics on file for this coach — add them via Coaches &amp; CETs (Add Coach or Bulk Upload → Topics column), or select Other.</p>
+                  <p className="text-xs text-slate-500 mt-1">No topics on file for this coach — add them via Coaches &amp; CETs (Add Coach or Bulk Upload → Topics column), or select Other.</p>
                 )}
                 {(() => {
                   const suggested = (selectedCoach?.topics || []).filter(t => isTopicSuggestedByGap(t, selectedCoach?.idp?.performanceGap));
@@ -10795,7 +10795,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                     </label>
                     <div className="border border-slate-300 rounded-lg px-3 py-2 flex items-center gap-3 bg-white">
                       <div className="flex-1">
-                        <p className="text-xs text-slate-400 mb-0.5">Length</p>
+                        <p className="text-xs text-slate-500 mb-0.5">Length</p>
                         <input ref={pitchLengthRef} value={sessionPlan.pitchLength}
                           onChange={e => {
                             const clean = sanitizeAlphanumeric(e.target.value);
@@ -10804,9 +10804,9 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                           }}
                           placeholder="e.g. 40m" className="w-full text-sm outline-none" />
                       </div>
-                      <span className="text-slate-400 font-semibold">x</span>
+                      <span className="text-slate-500 font-semibold">x</span>
                       <div className="flex-1">
-                        <p className="text-xs text-slate-400 mb-0.5">Width</p>
+                        <p className="text-xs text-slate-500 mb-0.5">Width</p>
                         <input ref={pitchWidthRef} value={sessionPlan.pitchWidth}
                           onChange={e => {
                             const clean = sanitizeAlphanumeric(e.target.value);
@@ -10849,10 +10849,10 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                     <div className="relative">
                       <button onClick={() => setTypeOfSessionOpen(o => !o)} type="button"
                         className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white flex items-center justify-between text-left">
-                        <span className={sessionPlan.typeOfSession.length ? "text-slate-800" : "text-slate-400"}>
+                        <span className={sessionPlan.typeOfSession.length ? "text-slate-800" : "text-slate-500"}>
                           {sessionPlan.typeOfSession.length ? sessionPlan.typeOfSession.join(", ") : "Select type(s) of session..."}
                         </span>
-                        <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${typeOfSessionOpen ? "rotate-90" : ""}`} />
+                        <ChevronRight className={`w-4 h-4 text-slate-500 transition-transform ${typeOfSessionOpen ? "rotate-90" : ""}`} />
                       </button>
                       {typeOfSessionOpen && (
                         <div className="border border-slate-200 rounded-lg mt-1 p-2 bg-white shadow-sm">
@@ -10919,12 +10919,12 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
 
             <div>
               <p className="text-sm font-semibold text-slate-800 mb-1.5">Pitch Geography</p>
-              <p className="text-xs text-slate-400 mb-2">Tap D3 / M3 / F3 to select all six zones in that third at once, or tap individual zones on the pitch below.</p>
+              <p className="text-xs text-slate-500 mb-2">Tap D3 / M3 / F3 to select all six zones in that third at once, or tap individual zones on the pitch below.</p>
               <div className="flex gap-2 flex-wrap mb-3">
                 {["D3", "M3", "F3"].map(opt => (
                   <button key={opt} type="button" onClick={() => toggleThird(opt)}
                     className={`text-sm font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                      sessionPlan.pitchGeography.includes(opt) ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-400 border-slate-200 hover:border-slate-300"
+                      sessionPlan.pitchGeography.includes(opt) ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
                     }`}>
                     {opt}
                   </button>
@@ -10944,7 +10944,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 <PitchZoneDiagram selectedZones={sessionPlan.zonesUsed} onToggleZone={toggleZoneUsed} />
               </div>
               {sessionPlan.zonesUsed.length > 0 && (
-                <p className="text-xs text-slate-400 mt-1.5">Selected zones: {sessionPlan.zonesUsed.join(", ")}</p>
+                <p className="text-xs text-slate-500 mt-1.5">Selected zones: {sessionPlan.zonesUsed.join(", ")}</p>
               )}
             </div>
           </div>
@@ -10982,7 +10982,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
               <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div className="h-full bg-slate-900 transition-all" style={{ width: `${Math.min(100, (runningTotal / MAX_TOTAL_SCORE) * 100)}%` }} />
               </div>
-              <p className="text-xs text-slate-400 mt-2">Score each of the 6 areas 0–3. Maximum possible is {MAX_TOTAL_SCORE} points.</p>
+              <p className="text-xs text-slate-500 mt-2">Score each of the 6 areas 0–3. Maximum possible is {MAX_TOTAL_SCORE} points.</p>
             </div>
 
             {ASSESSMENT_AREAS.map(a => {
@@ -10990,12 +10990,12 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
               return (
                 <div key={a.key} className="rounded-lg border border-slate-200 bg-white p-4">
                   <p className="text-sm font-semibold text-slate-800">{a.label}</p>
-                  <p className="text-xs text-slate-400 mb-2">{a.desc}</p>
+                  <p className="text-xs text-slate-500 mb-2">{a.desc}</p>
                   <div className="flex gap-2 mb-3 flex-wrap">
                     {SCORE_LEVELS.map(l => (
                       <button key={l.value} onClick={() => setArea(a.key, "score", l.value)}
                         className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                          currentScore === l.value ? l.color : "bg-white text-slate-400 border-slate-200"
+                          currentScore === l.value ? l.color : "bg-white text-slate-500 border-slate-200"
                         }`}>
                         {l.value} · {l.label}
                       </button>
@@ -11052,11 +11052,11 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 <label className="text-xs font-medium text-slate-500 block">Coach's Action Plan</label>
                 <button onClick={suggestActions} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Suggest Actions</button>
               </div>
-              <p className="text-xs text-slate-400 mb-2">Auto-suggested from the assessment scoring, areas for development, and plan notes — edit freely.</p>
+              <p className="text-xs text-slate-500 mb-2">Auto-suggested from the assessment scoring, areas for development, and plan notes — edit freely.</p>
               <div className="space-y-2">
                 {[0, 1, 2].map(idx => (
                   <div key={idx} className="flex items-start gap-2">
-                    <span className="text-sm font-semibold text-slate-400 w-5 pt-2">{idx + 1}.</span>
+                    <span className="text-sm font-semibold text-slate-500 w-5 pt-2">{idx + 1}.</span>
                     <textarea
                       ref={el => actionTextareaRefs.current[idx] = el}
                       value={actionPlan[idx]} onChange={e => setActionItem(idx, e.target.value)} rows={1}
@@ -11093,10 +11093,10 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                     <button type="button" onClick={() => setOutcomeManuallySet(false)} className="underline font-medium">Sync with score</button>
                   </p>
                 ) : (
-                  <p className="text-xs text-slate-400 mt-1">Automatically follows the assessment score: {suggestedOutcome}</p>
+                  <p className="text-xs text-slate-500 mt-1">Automatically follows the assessment score: {suggestedOutcome}</p>
                 )}
                 {sessionType === "informal" && (
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="text-xs text-slate-500 mt-1">
                     Indicative only — calculated using the same scoring system as formal courses (6 assessment areas, scored 0–3 each, {MAX_TOTAL_SCORE} points max). This is not a formal qualification outcome.
                   </p>
                 )}
@@ -11132,9 +11132,9 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
               <input value={assessorSignature} onChange={e => setAssessorSignature(e.target.value)}
                 placeholder="Type your name to sign off this report" style={{ fontFamily: "cursive" }}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-base" />
-              {isCetRole && <p className="text-xs text-slate-400 mt-1">Auto-filled from the selected CET — edit if needed.</p>}
+              {isCetRole && <p className="text-xs text-slate-500 mt-1">Auto-filled from the selected CET — edit if needed.</p>}
               {isTdRole && (
-                <p className="text-xs text-slate-400 mt-1">Auto-filled from the Technical Director's name entered in Session Details — edit if needed.</p>
+                <p className="text-xs text-slate-500 mt-1">Auto-filled from the Technical Director's name entered in Session Details — edit if needed.</p>
               )}
             </div>
           </div>
@@ -11148,7 +11148,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
         </button>
         <div className="flex items-center gap-2">
           <button onClick={handleSaveAndReturn} disabled={!canSaveDraft()} title={!canSaveDraft() ? "Select or add a coach first to save a draft" : undefined}
-            className="flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400">
+            className="flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-500">
             <Clock className="w-4 h-4" /> Save & Return
           </button>
           {step < 4 ? (
@@ -11170,7 +11170,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
       {step === 2 && (
         <div className="fixed right-4 z-40 bg-white border-2 border-slate-300 rounded-xl shadow-lg px-3 py-2.5 flex flex-col items-center gap-1.5 w-24"
           style={{ top: `calc(8rem + ${keyboard.offsetTop}px)` }}>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Timer</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Timer</p>
           <p className="text-xl font-bold text-slate-900 tabular-nums">{swFormat(swSeconds)}</p>
           <div className="flex items-center gap-1">
             <button onClick={() => setSwRunning(r => !r)}
@@ -11189,7 +11189,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
           style={{ bottom: keyboard.insetBottom }}>
           <div className="max-w-5xl mx-auto px-4 py-3">
             <p className="text-sm font-semibold text-slate-800 mb-1">General Notes</p>
-            <p className="text-xs text-slate-400 mb-2">Always visible while scoring — use this for anything that doesn't fit neatly under one assessment area.</p>
+            <p className="text-xs text-slate-500 mb-2">Always visible while scoring — use this for anything that doesn't fit neatly under one assessment area.</p>
             <VoiceTextarea value={cetNotes} onChange={e => setCetNotes(e.target.value)} rows={3}
               placeholder="Add any general notes here..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
           </div>
@@ -11297,7 +11297,7 @@ function buildObservationInnerHtml(obs) {
           ${obs.diplomaThreshold != null ? `
           <div class="final-score-box ${thresholdPass ? "final-score-pass" : "final-score-fail"}">
             <p class="final-score-label">Final Score vs. ${esc(obs.formalCourseName)} threshold</p>
-            <p class="final-score-value ${thresholdPass ? "pass" : "fail"}">${total}/${MAX_TOTAL_SCORE} <span style="font-size:11px;font-weight:400;color:#94a3b8;">(min. ${obs.diplomaThreshold} required)</span></p>
+            <p class="final-score-value ${thresholdPass ? "pass" : "fail"}">${total}/${MAX_TOTAL_SCORE} <span style="font-size:11px;font-weight:400;color:#64748b;">(min. ${obs.diplomaThreshold} required)</span></p>
           </div>` : "<div></div>"}
           ${obs.assessmentOutcome ? `
           <div class="outcome-box">
@@ -11321,7 +11321,7 @@ function buildObservationInnerHtml(obs) {
             <p class="box-title" style="font-size:12px;">Coach's Action Plan</p>
             <ol class="action-plan">${actionItems.map(a => `<li>${esc(a)}</li>`).join("")}</ol>
           </div>` : ""}
-          ${!obs.planNotes && actionItems.length === 0 ? `<p style="font-size:12.5px;color:#94a3b8;">No specific plan items recorded.</p>` : ""}
+          ${!obs.planNotes && actionItems.length === 0 ? `<p style="font-size:12.5px;color:#64748b;">No specific plan items recorded.</p>` : ""}
         </div>
 
         <div class="signature-row">
@@ -11376,7 +11376,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
   const [reopenError, setReopenError] = useState("");
   const [reopening, setReopening] = useState(false);
   const obs = observations.find(o => o.id === reportId);
-  if (!obs) return <div className="text-slate-400 text-sm">Report not found.</div>;
+  if (!obs) return <div className="text-slate-500 text-sm">Report not found.</div>;
   const total = totalForObs(obs);
   const areasForDevelopmentText = obs.areas_feedback ?? obs.areas_text ?? "";
   const outcomeColor = obs.assessmentOutcome === "Competent" ? "bg-emerald-100 text-emerald-700"
@@ -11534,7 +11534,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
         </div>
 
         {obsSessionNumber && (
-          <p className="text-xs text-slate-400 -mt-3">Session {obsSessionNumber} for {obs.coachName} on Course #{obs.courseNumber}</p>
+          <p className="text-xs text-slate-500 -mt-3">Session {obsSessionNumber} for {obs.coachName} on Course #{obs.courseNumber}</p>
         )}
 
         <div className="grid grid-cols-3 gap-4 text-sm">
@@ -11625,7 +11625,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
           <div>
             <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center justify-between">
               <span className="flex items-center gap-2"><ListChecks className="w-4 h-4" /> SOCHANGEIT Evidence</span>
-              <span className="text-xs font-medium text-slate-400">
+              <span className="text-xs font-medium text-slate-500">
                 {SOCHANGEIT_ITEMS.filter(i => obs.sochangeit[i.key]).length}/{SOCHANGEIT_ITEMS.length} ticked · does not affect score
               </span>
             </h3>
@@ -11666,11 +11666,11 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
                   <div key={a.key} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <div className="flex items-center justify-between mb-1">
                       <p className="text-sm font-semibold text-slate-800">{a.label}</p>
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${lvl?.color || "bg-slate-100 text-slate-400 border-slate-200"}`}>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${lvl?.color || "bg-slate-100 text-slate-500 border-slate-200"}`}>
                         {lvl ? `${lvl.value} · ${lvl.label}` : "—"}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-400 mb-1">{a.desc}</p>
+                    <p className="text-xs text-slate-500 mb-1">{a.desc}</p>
                     {typeof data.score === "number" && (
                       <p className="text-xs text-slate-500 italic mb-1.5">{a.descriptors[data.score]}</p>
                     )}
@@ -11699,7 +11699,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
               <div className={`rounded-lg border p-3 ${total >= obs.diplomaThreshold ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
                 <p className="text-xs text-slate-500">Final Score vs. {obs.formalCourseName} threshold</p>
                 <p className={`text-base font-bold ${total >= obs.diplomaThreshold ? "text-emerald-700" : "text-red-700"}`}>
-                  {total}/{MAX_TOTAL_SCORE} <span className="text-xs font-normal text-slate-400">(min. {obs.diplomaThreshold} required)</span>
+                  {total}/{MAX_TOTAL_SCORE} <span className="text-xs font-normal text-slate-500">(min. {obs.diplomaThreshold} required)</span>
                 </p>
               </div>
             )}
@@ -11737,25 +11737,25 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
               <ol className="space-y-1.5">
                 {obs.actionPlan.map((a, i) => a && a.trim() ? (
                   <li key={i} className="text-sm text-slate-700 bg-slate-50 rounded-lg p-2.5 flex gap-2">
-                    <span className="font-semibold text-slate-400">{i + 1}.</span> {a}
+                    <span className="font-semibold text-slate-500">{i + 1}.</span> {a}
                   </li>
                 ) : null)}
               </ol>
             </div>
           )}
           {!obs.planNotes && (!obs.actionPlan || !obs.actionPlan.some(a => a && a.trim())) && (
-            <p className="text-sm text-slate-400">No specific plan items recorded.</p>
+            <p className="text-sm text-slate-500">No specific plan items recorded.</p>
           )}
         </div>
 
         {(obs.coachEducatorName || obs.assessorSignature) && (
           <div className="border-t border-slate-100 pt-4 grid sm:grid-cols-2 gap-4">
             <div>
-              <p className="text-xs text-slate-400">{obs.educatorRole || "Coach Education Tutor (CET)"} Name</p>
+              <p className="text-xs text-slate-500">{obs.educatorRole || "Coach Education Tutor (CET)"} Name</p>
               <p className="text-sm font-medium text-slate-800">{obs.coachEducatorName ? <CetName name={obs.coachEducatorName} /> : "—"}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400">Assessor Signature</p>
+              <p className="text-xs text-slate-500">Assessor Signature</p>
               <p className="text-base italic text-slate-700" style={{ fontFamily: "cursive" }}>{obs.assessorSignature || "—"}</p>
             </div>
           </div>
@@ -11772,7 +11772,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
         )}
 
         <div className="border-t border-slate-100 pt-4 text-center">
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-500">
             CODA was created by Craig Moore. For additional information, suggested changes or any query contact{" "}
             <a href="mailto:craigianmoore@gmail.com" className="underline">craigianmoore@gmail.com</a>
           </p>
@@ -12638,14 +12638,14 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
         <div className="flex items-center gap-1.5 sm:col-span-2">
           <input type="date" value={dateFromFilter} onChange={e => setDateFromFilter(e.target.value)} title="From date"
             className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
-          <span className="text-slate-400 text-sm shrink-0">to</span>
+          <span className="text-slate-500 text-sm shrink-0">to</span>
           <input type="date" value={dateToFilter} onChange={e => setDateToFilter(e.target.value)} title="To date"
             className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
         </div>
         <div className="flex items-center gap-1.5 sm:col-span-2">
           <input type="number" min="0" max={MAX_TOTAL_SCORE} value={minScoreFilter} onChange={e => setMinScoreFilter(e.target.value)}
             placeholder="Min score" title="Minimum score" className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
-          <span className="text-slate-400 text-sm shrink-0">–</span>
+          <span className="text-slate-500 text-sm shrink-0">–</span>
           <input type="number" min="0" max={MAX_TOTAL_SCORE} value={maxScoreFilter} onChange={e => setMaxScoreFilter(e.target.value)}
             placeholder="Max score" title="Maximum score" className="w-full border border-slate-300 rounded-lg px-2 py-2 text-sm" />
         </div>
@@ -12663,7 +12663,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
         <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5"><Settings className="w-4 h-4" /> Admin Settings</p>
-            <button onClick={resetAdminPanel} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+            <button onClick={resetAdminPanel} className="text-slate-500 hover:text-slate-600"><X className="w-4 h-4" /></button>
           </div>
 
           {!panelAuthed ? (
@@ -12781,7 +12781,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   <p className="text-xs text-slate-500 mb-2">Deleted coaches, CETs, observations, and completed tasks records — from individual deletes, bulk removals, Clear History, and merged duplicates — sit here for {BIN_RETENTION_DAYS} days before being permanently removed, and can be restored any time before then.</p>
                   {binOpen && (
                     binLoading ? (
-                      <p className="text-xs text-slate-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading Bin...</p>
+                      <p className="text-xs text-slate-500 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading Bin...</p>
                     ) : !binItems ? null : (
                       <div className="space-y-3">
                         {BIN_TABLES.filter(bt => !bt.masterOnly || iAmMaster).map(bt => {
@@ -12789,7 +12789,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           if (items.length === 0) return null;
                           return (
                             <div key={bt.table}>
-                              <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-1">{bt.label} ({items.length})</p>
+                              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">{bt.label} ({items.length})</p>
                               <div className="space-y-1.5">
                                 {items.map(item => {
                                   const key = `${bt.table}:${item.id}`;
@@ -12798,7 +12798,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                                     <div key={key} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
                                       <div className="min-w-0">
                                         <p className="text-sm text-slate-700 truncate">{bt.nameOf(item)}</p>
-                                        <p className="text-xs text-slate-400">Deleted {new Date(item.deletedAt).toLocaleDateString("en-GB")} · {remaining} day{remaining === 1 ? "" : "s"} left</p>
+                                        <p className="text-xs text-slate-500">Deleted {new Date(item.deletedAt).toLocaleDateString("en-GB")} · {remaining} day{remaining === 1 ? "" : "s"} left</p>
                                       </div>
                                       <button onClick={() => handleRestore(bt.table, item)} disabled={restoringKey === key}
                                         className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap disabled:text-slate-300">
@@ -12812,7 +12812,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           );
                         })}
                         {BIN_TABLES.filter(bt => !bt.masterOnly || iAmMaster).every(bt => (binItems[bt.table] || []).filter(item => binItemInScope(bt.table, item)).length === 0) && (
-                          <p className="text-xs text-slate-400">Nothing in the Bin{!iAmMaster ? " for your Member Federation(s)" : ""} right now.</p>
+                          <p className="text-xs text-slate-500">Nothing in the Bin{!iAmMaster ? " for your Member Federation(s)" : ""} right now.</p>
                         )}
                       </div>
                     )
@@ -12837,7 +12837,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         ? <span className="text-[10px] font-bold text-teal-600">· Coordinator: {(a.memberFederations || []).join(", ")}</span>
                         : a.role === "course"
                         ? <span className="text-[10px] font-bold text-violet-600">· Course: {(a.memberFederations || []).join(", ")} (#{(a.assignedCourseNumbers || []).join(", #")})</span>
-                        : <span className="text-[10px] font-bold text-slate-400">· Master</span>}
+                        : <span className="text-[10px] font-bold text-slate-500">· Master</span>}
                       {iAmMaster && (
                         <button onClick={() => editingAdminPinName === a.name ? setEditingAdminPinName(null) : startEditAdminPin(a.name)}
                           className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 ml-1">
@@ -12909,7 +12909,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                               return [...prev, mf.key];
                             })}
                             className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                              editAdminMfSelection.includes(mf.key) ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-white text-slate-400 border-slate-200"
+                              editAdminMfSelection.includes(mf.key) ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-white text-slate-500 border-slate-200"
                             }`}>
                             {mf.label}
                           </button>
@@ -12923,13 +12923,13 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         <div key={mfKey}>
                           <p className="text-[11px] font-medium text-violet-700 mb-1">{mfLabel} course number(s)</p>
                           {options.length === 0 ? (
-                            <p className="text-xs text-slate-400">No courses tagged to this federation yet in Coaches Progress.</p>
+                            <p className="text-xs text-slate-500">No courses tagged to this federation yet in Coaches Progress.</p>
                           ) : (
                             <div className="flex gap-1.5 flex-wrap">
                               {options.map(num => (
                                 <button key={num} type="button" onClick={() => setEditAdminCourseNumbers(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num])}
                                   className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                                    editAdminCourseNumbers.includes(num) ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-white text-slate-400 border-slate-200"
+                                    editAdminCourseNumbers.includes(num) ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-white text-slate-500 border-slate-200"
                                   }`}>
                                   #{num}
                                 </button>
@@ -12947,7 +12947,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   </div>
                 )}
                 {!canManageAdmins ? (
-                  <p className="text-xs text-slate-400">Only a MA Admin or MF Admin can add or manage admins.</p>
+                  <p className="text-xs text-slate-500">Only a MA Admin or MF Admin can add or manage admins.</p>
                 ) : adminSettings.admins.length < maxAdmins ? (
                   <div className="space-y-2">
                     <input value={newAdminName} onChange={e => { setNewAdminName(e.target.value); setAddAdminError(""); }}
@@ -13007,7 +13007,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                                   onClick={() => setNewAdminMfSelection([mf.key])}
                                   className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
                                     taken ? "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
-                                    : newAdminMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                                    : newAdminMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-500 border-slate-200"
                                   }`}>
                                   {mf.label}{taken ? " (taken)" : ""}
                                 </button>
@@ -13022,7 +13022,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                       return (
                         <div>
                           <p className="text-xs font-medium text-slate-500 mb-1">Member Federation — one MF Coordinator per federation</p>
-                          <p className="text-xs text-slate-400 mb-1">Can view and manage things for their federation (Reopen Report, Export PDF, RAPA assessors, Bin) but not Clear History, Remove All CETs, or Merge Duplicate CETs.</p>
+                          <p className="text-xs text-slate-500 mb-1">Can view and manage things for their federation (Reopen Report, Export PDF, RAPA assessors, Bin) but not Clear History, Remove All CETs, or Merge Duplicate CETs.</p>
                           <div className="flex gap-1.5 flex-wrap">
                             {MEMBER_FEDERATIONS.map(mf => {
                               const taken = claimedMfs.has(mf.key);
@@ -13031,7 +13031,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                                   onClick={() => setNewAdminMfSelection([mf.key])}
                                   className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
                                     taken ? "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
-                                    : newAdminMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                                    : newAdminMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-500 border-slate-200"
                                   }`}>
                                   {mf.label}{taken ? " (taken)" : ""}
                                 </button>
@@ -13062,7 +13062,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                                   return [...prev, mf.key];
                                 })}
                                 className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                                  newAdminCourseMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                                  newAdminCourseMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-500 border-slate-200"
                                 }`}>
                                 {mf.label}
                               </button>
@@ -13078,13 +13078,13 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                                 {mfLabel} course number(s) — {adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mfKey)).length}/4 Course Admins already set for this federation
                               </p>
                               {options.length === 0 ? (
-                                <p className="text-xs text-slate-400">No courses tagged to this federation yet in Coaches Progress.</p>
+                                <p className="text-xs text-slate-500">No courses tagged to this federation yet in Coaches Progress.</p>
                               ) : (
                                 <div className="flex gap-1.5 flex-wrap">
                                   {options.map(num => (
                                     <button key={num} type="button" onClick={() => setNewAdminCourseNumbers(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num])}
                                       className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                                        newAdminCourseNumbers.includes(num) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-400 border-slate-200"
+                                        newAdminCourseNumbers.includes(num) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-500 border-slate-200"
                                       }`}>
                                       #{num}
                                     </button>
@@ -13133,7 +13133,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                     )}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400">Admin slots full.</p>
+                  <p className="text-xs text-slate-500">Admin slots full.</p>
                 )}
                 {addAdminError && <p className="text-xs text-red-600 mt-1">{addAdminError}</p>}
               </div>
@@ -13208,7 +13208,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       )}
 
       {filtered.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-400 text-sm">
+        <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500 text-sm">
           {filtersActive ? "No observations match these filters." : "No observations found."}
         </div>
       ) : (
@@ -13226,7 +13226,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-slate-800">{o.coachName}</p>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-slate-500">
                           {o.sessionType === "formal" ? `Formal · ${o.formalCourseName || "Course"}${o.courseNumber ? ` (#${o.courseNumber})` : ""}` : "Informal"} · {new Date(o.date).toLocaleDateString("en-GB")} · <CetName name={o.coachEducatorName} />
                           {oSessionNumber ? ` · Session ${oSessionNumber}` : ""}
                         </p>
@@ -13240,7 +13240,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           : "bg-slate-100 text-slate-500"
                         }`}>{o.assessmentOutcome}</span>
                       )}
-                      {total !== null && <span className="text-xs font-medium text-slate-400">{total}/{MAX_TOTAL_SCORE}</span>}
+                      {total !== null && <span className="text-xs font-medium text-slate-500">{total}/{MAX_TOTAL_SCORE}</span>}
                       <ChevronRight className="w-4 h-4 text-slate-300" />
                       {onDeleteObservation && (
                         <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteObsId(o.id); }}
@@ -13295,9 +13295,9 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           return next;
                         })} type="button"
                         className="w-full flex items-center gap-2 text-left bg-slate-100 hover:bg-slate-200 transition-colors rounded-lg px-3 py-2 mb-2">
-                        <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
+                        <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
                         <p className="text-xs font-bold uppercase tracking-wide text-slate-500 flex-1">#{g.courseNumber} — {g.courseTitle || "Course"}</p>
-                        <span className="text-xs text-slate-400">{g.records.length}</span>
+                        <span className="text-xs text-slate-500">{g.records.length}</span>
                       </button>
                       {isExpanded && (
                         <div className="space-y-2 mb-2">
@@ -13318,9 +13318,9 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                             return next;
                           })} type="button"
                           className="w-full flex items-center gap-2 text-left bg-slate-100 hover:bg-slate-200 transition-colors rounded-lg px-3 py-2 mb-2">
-                          <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
+                          <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
                           <p className="text-xs font-bold uppercase tracking-wide text-slate-500 flex-1">No Course Number</p>
-                          <span className="text-xs text-slate-400">{noCourseNumber.length}</span>
+                          <span className="text-xs text-slate-500">{noCourseNumber.length}</span>
                         </button>
                       );
                     })()}
