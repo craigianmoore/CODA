@@ -1652,9 +1652,9 @@ function PitchZoneDiagram({ selectedZones = [], onToggleZone }) {
         return (
           <rect key={z.n} x={z.x} y={z.y} width={colW} height={rowH}
             onClick={interactive ? () => onToggleZone(z.n) : undefined}
-            fill={selected ? "#f59e0b" : "transparent"}
-            fillOpacity={selected ? 0.65 : 1}
-            stroke="#ffffff" strokeOpacity="0.35" strokeWidth="1"
+            fill={selected ? "#ffffff" : "transparent"}
+            fillOpacity={selected ? 0.6 : 1}
+            stroke={selected ? "#0f172a" : "#ffffff"} strokeOpacity={selected ? 1 : 0.35} strokeWidth={selected ? 3 : 1}
             style={{ cursor: interactive ? "pointer" : "default", pointerEvents: interactive ? "all" : "none" }}
           />
         );
@@ -1663,7 +1663,7 @@ function PitchZoneDiagram({ selectedZones = [], onToggleZone }) {
         const selected = selectedZones.includes(z.n);
         return (
           <text key={z.n} x={z.x + colW / 2} y={z.y + rowH / 2 + 5} textAnchor="middle" fontSize="14"
-            fill={selected ? "#78350f" : "#ffffff"} fontWeight={selected ? "700" : "500"}
+            fill={selected ? "#0f172a" : "#ffffff"} fontWeight={selected ? "800" : "500"}
             style={{ pointerEvents: "none", userSelect: "none" }}>{z.n}</text>
         );
       })}
@@ -1686,8 +1686,8 @@ function buildPitchZoneSvg(selectedZones) {
       zone += 1;
       const x = pad + c * colW, y = pad + r * rowH;
       const selected = (selectedZones || []).includes(zone);
-      rects += `<rect x="${x}" y="${y}" width="${colW}" height="${rowH}" fill="${selected ? "#f59e0b" : "transparent"}" fill-opacity="${selected ? 0.65 : 1}" stroke="#ffffff" stroke-opacity="0.35" stroke-width="1" />`;
-      texts += `<text x="${x + colW / 2}" y="${y + rowH / 2 + 5}" text-anchor="middle" font-size="14" fill="${selected ? "#78350f" : "#ffffff"}" font-weight="${selected ? "700" : "500"}">${zone}</text>`;
+      rects += `<rect x="${x}" y="${y}" width="${colW}" height="${rowH}" fill="${selected ? "#ffffff" : "transparent"}" fill-opacity="${selected ? 0.6 : 1}" stroke="${selected ? "#0f172a" : "#ffffff"}" stroke-opacity="${selected ? 1 : 0.35}" stroke-width="${selected ? 3 : 1}" />`;
+      texts += `<text x="${x + colW / 2}" y="${y + rowH / 2 + 5}" text-anchor="middle" font-size="14" fill="${selected ? "#0f172a" : "#ffffff"}" font-weight="${selected ? "800" : "500"}">${zone}</text>`;
     }
   }
   const stripes = g.stripes.map(s => `<rect x="${s.x}" y="${pad}" width="${s.w}" height="${innerH}" fill="${s.dark ? "#15a34a" : "#1cb355"}" />`).join("");
