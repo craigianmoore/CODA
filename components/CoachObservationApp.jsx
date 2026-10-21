@@ -5449,7 +5449,10 @@ async function saveHtmlAsPdf(htmlContent, filename) {
       });
     } catch (e) { /* fall back to plain rendering */ }
 
-    const canvas = await html2canvas(container, { scale: 2, useCORS: true });
+    // Sharper text for short reports (3x), stepping back to 2x for very long
+    // ones so the canvas stays inside browser size limits.
+    const renderScale = Math.max(2, Math.min(3, Math.sqrt(14000000 / (800 * Math.max(container.offsetHeight, 1)))));
+    const canvas = await html2canvas(container, { scale: renderScale, useCORS: true });
 
     const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
     const pageWidthMm = 210, pageHeightMm = 297;
