@@ -5412,6 +5412,43 @@ async function saveHtmlAsPdf(htmlContent, filename) {
       ? { top: headerEl.getBoundingClientRect().top - containerTopForHeader, bottom: headerEl.getBoundingClientRect().bottom - containerTopForHeader }
       : null;
 
+    // html2canvas positions text inside small rounded "pills" a few pixels
+    // low on some platforms (it estimates the baseline itself), so the
+    // wording never looked centred in badges. Draw each pill ourselves on a
+    // canvas — canvas text is centred from the font's cap height, which
+    // behaves identically everywhere — and use that picture as the pill's
+    // background with the live text hidden. Layout is untouched.
+    try {
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+      container.querySelectorAll("*").forEach((el) => {
+        if (el.children.length || !el.textContent.trim()) return;
+        const cs = getComputedStyle(el);
+        if (cs.display !== "inline-block" || parseFloat(cs.borderTopLeftRadius) < 50) return;
+        const w = el.offsetWidth, h = el.offsetHeight;
+        if (!w || !h || h > 60) return;
+        const k = 4;
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+        const g = cv.getContext("2d");
+        g.scale(k, k);
+        const bw = parseFloat(cs.borderTopWidth) || 0;
+        const rr = (x, y, ww, hh, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + ww, y, x + ww, y + hh, r); g.arcTo(x + ww, y + hh, x, y + hh, r); g.arcTo(x, y + hh, x, y, r); g.arcTo(x, y, x + ww, y, r); g.closePath(); };
+        if (cs.backgroundColor && cs.backgroundColor !== "rgba(0, 0, 0, 0)") { g.fillStyle = cs.backgroundColor; rr(0, 0, w, h, h / 2); g.fill(); }
+        if (bw > 0 && cs.borderTopStyle !== "none" && cs.borderTopColor !== "rgba(0, 0, 0, 0)") { g.strokeStyle = cs.borderTopColor; g.lineWidth = bw; rr(bw / 2, bw / 2, w - bw, h - bw, (h - bw) / 2); g.stroke(); }
+        let txt = el.textContent.trim();
+        if (cs.textTransform === "uppercase") txt = txt.toUpperCase();
+        g.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        g.fillStyle = cs.color; g.textAlign = "center"; g.textBaseline = "alphabetic";
+        const cap = g.measureText("H").actualBoundingBoxAscent || parseFloat(cs.fontSize) * 0.72;
+        g.fillText(txt, w / 2, h / 2 + cap / 2);
+        el.style.backgroundImage = `url(${cv.toDataURL("image/png")})`;
+        el.style.backgroundSize = "100% 100%";
+        el.style.backgroundColor = "transparent";
+        el.style.borderColor = "transparent";
+        el.style.color = "transparent";
+      });
+    } catch (e) { /* fall back to plain rendering */ }
+
     const canvas = await html2canvas(container, { scale: 2, useCORS: true });
 
     const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
