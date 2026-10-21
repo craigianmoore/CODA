@@ -6444,11 +6444,105 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
   );
 }
 
+// CET Observation (assessment of a CET) as a printable/emailable report.
+function buildCetAssessmentHtml(a, proxyLogos = false) {
+  const esc = (x) => (x || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const nl = (x) => esc(x).replace(/\n/g, "<br/>");
+  const logo = (u) => proxyLogos ? `/api/logo-proxy?url=${encodeURIComponent(u || "")}` : (u || "");
+  const badgeFor = (r) => {
+    const cls = r === "Strong" ? "badge-3" : r === "Developing" ? "badge-2" : r === "Needs attention" ? "badge-1" : "badge-none";
+    return `<span class="badge ${cls}">${esc(r) || "—"}</span>`;
+  };
+  const card = (title, hint, rating, note) => `
+    <div class="area-card" data-pdf-nosplit="1">
+      <div class="area-head"><span class="area-name">${esc(title)}</span>${badgeFor(rating)}</div>
+      ${hint ? `<p class="area-desc">${esc(hint)}</p>` : ""}
+      <p class="area-notes">${nl(note) || "No notes recorded."}</p>
+    </div>`;
+  const grip = a.grip || {};
+  const gripCards = GRIP_ITEMS.map(i => card(i.label, i.hint, (grip[i.key] || {}).rating, (grip[i.key] || {}).note)).join("");
+  const soc = a.sochangeit || {};
+  const socLetters = CET_SOCHANGEIT_ITEMS.map(i => `<span class="chip-slate" title="${esc(i.desc)}">${esc(i.letter)} · ${esc(i.label)}</span>`).join("");
+  const isDip = ["C", "B", "A"].includes(courseLevelFor(a.courseTitle));
+  const cp = a.coachingProcess || {};
+  const cpCards = isDip ? CP_ITEMS.map(i => card(i.label, i.hint, (cp[i.key] || {}).rating, (cp[i.key] || {}).evidence)).join("") : "";
+  const fb = a.feedback || {};
+  const outcomeClass = a.outcome === "Highly Competent" ? "outcome-highly" : a.outcome === "Competent" ? "outcome-competent" : "outcome-neutral";
+  const actions = (a.actionPlan || []).filter(r => r && (r.focus || r.action || r.support));
+  const actionRows = actions.map(r => `<tr><td style="padding:6px 8px;border:1px solid #ddd;vertical-align:top;">${nl(r.focus)}</td><td style="padding:6px 8px;border:1px solid #ddd;vertical-align:top;">${nl(r.action)}</td><td style="padding:6px 8px;border:1px solid #ddd;vertical-align:top;">${nl(r.support)}</td></tr>`).join("");
+  const fa = (MEMBER_FEDERATIONS.find(m => m.key === "FA") || {});
+  const mfLabel = (MEMBER_FEDERATIONS.find(m => m.key === a.memberFederation) || {}).label || "Football Victoria";
+  return `<html>
+    <head><title>${esc(a.cetName)} - CET Observation</title>${REPORT_STYLE_TAG}</head>
+    <body>
+      <div class="page">
+        <div class="header">
+          <div class="header-icon"><img src="${logo(memberFederationLogo(a.memberFederation))}" alt="${esc(mfLabel)} logo" /></div>
+          <div>
+            <h1>CET Observation</h1>
+            <p class="subtitle">${esc(a.cetName) || "—"}</p>
+          </div>
+          <span class="type-badge">${esc(a.courseTitle)}${a.courseNumber ? ` (#${esc(a.courseNumber)})` : ""}</span>
+          ${a.memberFederation !== "FA" ? `<div class="header-icon"><img src="${logo(fa.logoUrl)}" alt="Football Australia logo" /></div>` : ""}
+        </div>
+        <div class="meta-grid">
+          <div><p class="meta-label">CET observed</p><p class="meta-value">${esc(a.cetName) || "—"}</p></div>
+          <div><p class="meta-label">Assessor</p><p class="meta-value">${esc(a.assessorName) || "—"}</p></div>
+          <div><p class="meta-label">Date</p><p class="meta-value">${a.date ? new Date(a.date).toLocaleDateString("en-GB") : "—"}${a.time ? " · " + esc(a.time) : ""}</p></div>
+          ${a.venue ? `<div><p class="meta-label">Venue</p><p class="meta-value">${esc(a.venue)}</p></div>` : ""}
+        </div>
+        <div class="section">
+          <p class="section-title">GRIP — Coaching Conversation</p>
+          <div class="areas-grid">${gripCards}</div>
+        </div>
+        <div class="section">
+          <p class="section-title">SO CHANGE IT</p>
+          <div style="margin-bottom:8px;">${socLetters}</div>
+          <div class="areas-grid">${card("Referenced to coaches", "", soc.rating, soc.notes)}</div>
+        </div>
+        ${cpCards ? `<div class="section"><p class="section-title">Coaching Frameworks</p><div class="areas-grid">${cpCards}</div></div>` : ""}
+        <div class="section">
+          <p class="section-title">Feedback</p>
+          <div class="two-col" data-pdf-nosplit="1">
+            <div class="box box-green"><p class="box-title">WWW (What Went Well)</p><p style="margin:0;">${nl(fb.www) || "—"}</p></div>
+            <div class="box box-amber"><p class="box-title">EBI (Even Better If)</p><p style="margin:0;">${nl(fb.ebi) || "—"}</p></div>
+          </div>
+          ${fb.general ? `<div class="box box-slate" style="margin-top:10px;"><p class="box-title">General comments</p><p style="margin:0;">${nl(fb.general)}</p></div>` : ""}
+        </div>
+        ${a.outcome ? `<div class="outcome-box" data-pdf-nosplit="1"><p style="font-size:11px;color:#64748b;margin:0;">Overall Outcome</p><span class="outcome-badge ${outcomeClass}">${esc(a.outcome)}</span></div>` : ""}
+        ${actionRows ? `<div class="section" style="margin-top:16px;" data-pdf-nosplit="1"><p class="section-title">Action Plan</p>
+          <table style="width:100%;border-collapse:collapse;font-size:12.5px;"><tr style="background:#f1f5f9;"><th style="padding:6px 8px;border:1px solid #ddd;text-align:left;">Focus area</th><th style="padding:6px 8px;border:1px solid #ddd;text-align:left;">Action / steps</th><th style="padding:6px 8px;border:1px solid #ddd;text-align:left;">Support / resources</th></tr>${actionRows}</table></div>` : ""}
+        <div data-pdf-nosplit="1">
+          <div class="signature-row">
+            <div><p class="signature-label">Assessor</p><p class="signature-name">${esc(a.signAssessor || a.assessorName) || "—"}</p></div>
+            <div><p class="signature-label">Date signed</p><p class="signature-name">${a.signDate ? new Date(a.signDate).toLocaleDateString("en-GB") : "—"}</p></div>
+            <div><p class="signature-label">CET acknowledgement</p><p class="signature-name">${esc(a.signCET) || "—"}</p></div>
+          </div>
+          ${a.ackDiscussed ? `<p style="font-size:12px;color:#475569;margin:8px 0 0;">Feedback and action plan discussed with the CET.</p>` : ""}
+        </div>
+        <div class="footer-note">
+          CODA was created by Craig Moore. For additional information, suggested changes or any query contact craigianmoore@gmail.com
+        </div>
+      </div>
+    </body>
+  </html>`;
+}
+
 function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, saveCetAssessments, adminSettings, adminLockouts, recordAdminAttempt }) {
   const [form, setForm] = useState(emptyCetAssessmentForm());
   const [editingId, setEditingId] = useState(null);
   const [historySearch, setHistorySearch] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [savingPdfId, setSavingPdfId] = useState(null);
+  async function handleSaveCetPdf(a) {
+    setSavingPdfId(a.id);
+    try {
+      await saveHtmlAsPdf(buildCetAssessmentHtml(a, true), `${(a.cetName || "CET").replace(/[^a-z0-9]+/gi, "-")}-CET-observation-${a.date || "undated"}.pdf`);
+    } catch (e) {
+      alert("Couldn't generate the PDF file — try again.");
+    }
+    setSavingPdfId(null);
+  }
   const [savedMsg, setSavedMsg] = useState("");
 
   // Assessors and exports here are Member-Federation-scoped: a MF Admin
@@ -6973,6 +7067,8 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
                   <p className="text-xs text-slate-400">{a.courseTitle}{a.date ? ` · ${new Date(a.date).toLocaleDateString("en-GB")}` : ""}{a.outcome ? ` · ${a.outcome}` : ""}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => handleSaveCetPdf(a)} disabled={savingPdfId === a.id}
+                    className="flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 disabled:opacity-50"><FileText className="w-3.5 h-3.5" /> {savingPdfId === a.id ? "Saving..." : "PDF"}</button>
                   <button onClick={() => startEdit(a)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Open</button>
                   <button onClick={() => setConfirmDeleteId(a.id)} className="text-slate-300 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
