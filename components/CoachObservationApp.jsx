@@ -6688,7 +6688,8 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
       }
     } catch (e) {
       // Keep the form (and its autosaved copy) so nothing is lost.
-      setSaveError(`NOT SAVED — the database rejected the save (${(e && (e.message || e.code)) || "unknown error"}). Your entries are still on this form; please tell Craig/support.`);
+      const detail = e ? [e.code, e.message, e.details, e.hint].filter(Boolean).join(" | ") : "";
+      setSaveError(`NOT SAVED — the database rejected the save (${detail || "unknown error"}). Your entries are still on this form.`);
       return;
     }
     setSavedMsg(status === "draft" ? "Saved as draft." : "Submitted.");
@@ -6825,7 +6826,6 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
       )}
 
       {loadProblem && <p className="text-sm font-semibold text-red-800 bg-red-50 border border-red-300 rounded-lg px-3 py-2">CET Observations can't be read from the database ({loadProblem}). Saved assessments won't appear and new ones may not save.</p>}
-      {saveError && <p className="text-sm font-semibold text-red-800 bg-red-50 border border-red-300 rounded-lg px-3 py-2">{saveError}</p>}
       {savedMsg && <p className="text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{savedMsg}</p>}
       {editingId && (
         <div className="flex items-center justify-between gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
@@ -7064,6 +7064,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
             Save &amp; Submit
           </button>
         </div>
+        {saveError && <p className="text-sm font-semibold text-red-800 bg-red-50 border border-red-300 rounded-lg px-3 py-2 mt-3 text-left break-words">{saveError}</p>}
         <p className="text-xs text-slate-500 mt-2">Save &amp; Return keeps this as a draft — nothing needs to be complete yet. Save &amp; Submit finalises it and starts a fresh form.</p>
       </div>
 
