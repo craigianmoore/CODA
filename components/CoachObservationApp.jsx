@@ -5332,7 +5332,84 @@ function parseOnlineModulesCell(raw) {
 // styles don't interfere), then captures it to a real downloadable PDF
 // file via html2pdf.js. Used by both the single-observation Save PDF and
 // the combined candidate report below.
+// Preferred exporter: send the report HTML to /api/pdf, where Chromium prints
+// it to a real vector PDF (sharp, selectable text). Returns true on success;
+// false means "use the canvas fallback" (e.g. route unavailable or timed out).
+async function saveHtmlAsPdfOnServer(htmlContent, filename) {
+  const doc = new DOMParser().parseFromString(htmlContent, "text/html");
+  doc.querySelectorAll("script").forEach((n) => n.remove());
+  // External logos must come through the same-origin proxy.
+  doc.querySelectorAll("img").forEach((img) => {
+    const src = img.getAttribute("src") || "";
+    if (/^https?:\/\//i.test(src) && !src.startsWith(window.location.origin)) {
+      img.setAttribute("src", "/api/logo-proxy?url=" + encodeURIComponent(src));
+    }
+  });
+  // Repeat the report header on every page: move it into a table <thead>,
+  // which print engines repeat per page, with the rest of the body beneath.
+  const header = doc.querySelector(".header");
+  if (header) {
+    const table = doc.createElement("table");
+    table.className = "pdf-wrap";
+    const thead = doc.createElement("thead");
+    const htr = doc.createElement("tr"); const htd = doc.createElement("td");
+    htd.appendChild(header); htr.appendChild(htd); thead.appendChild(htr);
+    const tbody = doc.createElement("tbody");
+    const btr = doc.createElement("tr"); const btd = doc.createElement("td");
+    while (doc.body.firstChild) btd.appendChild(doc.body.firstChild);
+    btr.appendChild(btd); tbody.appendChild(btr);
+    table.appendChild(thead); table.appendChild(tbody);
+    doc.body.appendChild(table);
+  }
+  const printStyle = doc.createElement("style");
+  printStyle.textContent = `
+    @page { size: A4; margin: 12mm 12mm 14mm 12mm; }
+    html, body { background: #fff !important; }
+    body { zoom: 0.86; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    /* Pills carry lopsided padding as a workaround for the canvas exporter;
+       real browser printing centres text, so make it symmetric here. */
+    .badge { padding: 5px 9px !important; }
+    .chip-slate { padding: 5px 10px !important; }
+    .type-badge { padding: 7px 12px !important; }
+    .outcome-badge { padding: 7px 14px !important; }
+    .pathway-chip { padding: 6px 12px !important; }
+    table.pdf-wrap { width: 100%; border-collapse: collapse; }
+    table.pdf-wrap > thead { display: table-header-group; }
+    table.pdf-wrap > thead > tr > td, table.pdf-wrap > tbody > tr > td { padding: 0; border: 0; }
+    [data-pdf-nosplit] { break-inside: avoid; page-break-inside: avoid; }
+    .page { padding: 0 !important; max-width: none !important; }
+  `;
+  doc.head.appendChild(printStyle);
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 50000);
+  try {
+    const res = await fetch("/api/pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ html: "<!doctype html>" + doc.documentElement.outerHTML }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok || !(res.headers.get("content-type") || "").includes("application/pdf")) return false;
+    const blob = await res.blob();
+    if (blob.size < 1000) return false;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    return true;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function saveHtmlAsPdf(htmlContent, filename) {
+  try {
+    if (await saveHtmlAsPdfOnServer(htmlContent, filename)) return;
+  } catch (e) { /* fall through to the in-browser exporter */ }
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
     import("html2canvas"),
     import("jspdf"),
