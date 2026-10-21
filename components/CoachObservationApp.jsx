@@ -1934,6 +1934,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const [jumpTaskRef, setFocusTaskId] = useState(null);
   const [historyCetFilter, setHistoryCetFilter] = useState("");
   const [editingObservationId, setEditingObservationId] = useState(null);
+  const [pendingCetDraftId, setPendingCetDraftId] = useState(null);
   const [historyAdminAutoOpen, setHistoryAdminAutoOpen] = useState(false);
   const [expandedLogisticsSections, setExpandedLogisticsSections] = useState(() => new Set());
 
@@ -2279,6 +2280,8 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             onEditDraft={handleEditDraft}
             onSubmitDraft={handleSubmitDraft}
             onViewDraft={(id) => { setReportId(id); setTab("report"); }}
+            cetDrafts={cetAssessments.filter(a => a.status === "draft")}
+            onContinueCetDraft={(id) => { setPendingCetDraftId(id); setTab("cetAssessment"); }}
             session={codaSession}
           />
         )}
@@ -2315,6 +2318,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             educators={educators} saveEducators={saveEducators} courses={courses}
             cetAssessments={cetAssessments} saveCetAssessments={saveCetAssessments}
             adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
+            openDraftId={pendingCetDraftId} onOpenDraftHandled={() => setPendingCetDraftId(null)}
           />
         )}
         {tab === "rapa" && (
@@ -2628,7 +2632,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
   );
 }
 
-function Dashboard({ coaches, educators, observations, courses, drafts, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goNewObs, goHistory, openCompletedTaskFn, onEditDraft, onSubmitDraft, onViewDraft, session }) {
+function Dashboard({ coaches, educators, observations, courses, drafts, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goNewObs, goHistory, openCompletedTaskFn, onEditDraft, onSubmitDraft, onViewDraft, cetDrafts = [], onContinueCetDraft, session }) {
   const [draftsExpanded, setDraftsExpanded] = useState(false);
   const [draftsSortMode, setDraftsSortMode] = useState("name");
   useEffect(() => {
@@ -2694,13 +2698,13 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
         <StatCard label="Courses in Library" value={courses.length} icon={BookOpen} />
       </div>
 
-      {drafts && drafts.length > 0 && (
+      {((drafts ? drafts.length : 0) + cetDrafts.length) > 0 && (
         <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
           <button onClick={() => setDraftsExpanded(v => !v)} type="button"
             className="w-full flex items-center gap-2 text-left px-5 py-3 border-b border-amber-100 bg-amber-50 hover:bg-amber-100 transition-colors">
             <ChevronRight className={`w-4 h-4 text-amber-500 transition-transform shrink-0 ${draftsExpanded ? "rotate-90" : ""}`} />
             <h3 className="font-semibold text-amber-800 text-sm flex items-center gap-1.5 flex-1"><Clock className="w-4 h-4" /> Drafts</h3>
-            <span className="text-xs font-semibold text-amber-700">{drafts.length}</span>
+            <span className="text-xs font-semibold text-amber-700">{(drafts ? drafts.length : 0) + cetDrafts.length}</span>
             <p className="text-xs text-amber-600 hidden sm:block">Saved but not yet submitted</p>
           </button>
           {draftsExpanded && (
@@ -2730,6 +2734,22 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
                   </button>
                   <button onClick={() => onSubmitDraft(d.id)} className="flex items-center gap-1 text-xs font-semibold text-emerald-700 border border-emerald-300 px-2.5 py-1.5 rounded-lg hover:bg-emerald-50">
                     <Check className="w-3 h-3" /> Submit
+                  </button>
+                </div>
+              </div>
+            ))}
+            {cetDrafts.map(d => (
+              <div key={d.id} className="px-5 py-3 flex items-center justify-between gap-3 bg-sky-50">
+                <div onClick={() => onContinueCetDraft && onContinueCetDraft(d.id)} className="cursor-pointer flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800 truncate">
+                    <span className="text-[10px] font-bold text-sky-800 bg-sky-200 px-1.5 py-0.5 rounded-full mr-1.5 align-middle">CET OBSERVATION</span>
+                    {d.cetName ? <CetName name={d.cetName} /> : "No CET set"}
+                  </p>
+                  <p className="text-xs text-slate-500 truncate">{d.courseTitle || "No course"}{d.date ? ` · ${new Date(d.date).toLocaleDateString("en-GB")}` : ""}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => onContinueCetDraft && onContinueCetDraft(d.id)} className="flex items-center gap-1 text-xs font-semibold text-sky-800 border border-sky-300 px-2.5 py-1.5 rounded-lg hover:bg-sky-100">
+                    <Pencil className="w-3 h-3" /> Continue
                   </button>
                 </div>
               </div>
@@ -6665,7 +6685,7 @@ function readCetDraft() {
   } catch (e) { return null; }
 }
 
-function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, saveCetAssessments, adminSettings, adminLockouts, recordAdminAttempt }) {
+function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, saveCetAssessments, adminSettings, adminLockouts, recordAdminAttempt, openDraftId, onOpenDraftHandled }) {
   const [form, setForm] = useState(() => { const d = readCetDraft(); return d ? { ...emptyCetAssessmentForm(), ...d.form } : emptyCetAssessmentForm(); });
   const [editingId, setEditingId] = useState(() => { const d = readCetDraft(); return d ? (d.editingId || null) : null; });
   const [restoredDraft, setRestoredDraft] = useState(() => !!readCetDraft());
@@ -6828,6 +6848,15 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
     setEditingId(rec.id);
     setSavedMsg("");
   }
+
+  // Opened from the Dashboard's Drafts panel: load that draft into the form.
+  useEffect(() => {
+    if (!openDraftId) return;
+    const rec = cetAssessments.find(a => a.id === openDraftId);
+    if (rec) startEdit(rec);
+    if (onOpenDraftHandled) onOpenDraftHandled();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openDraftId]);
 
   function deleteRecord(id) {
     saveCetAssessments(cetAssessments.filter(a => a.id !== id));
@@ -7241,11 +7270,11 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
         ) : (
           <div className="space-y-1.5">
             {historyFiltered.map(a => (
-              <div key={a.id} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
+              <div key={a.id} className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 ${a.status === "draft" ? "bg-sky-100 border border-sky-200" : "bg-slate-50"}`}>
                 <div>
                   <p className="text-sm font-medium text-slate-800">
                     {a.cetName || "(no CET)"}
-                    {a.status === "draft" && <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full ml-1.5">DRAFT</span>}
+                    {a.status === "draft" && <span className="text-[10px] font-bold text-sky-800 bg-sky-200 px-1.5 py-0.5 rounded-full ml-1.5">DRAFT</span>}
                   </p>
                   <p className="text-xs text-slate-500">{a.courseTitle}{a.date ? ` · ${new Date(a.date).toLocaleDateString("en-GB")}` : ""}{a.outcome ? ` · ${a.outcome}` : ""}</p>
                 </div>
