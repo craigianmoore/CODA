@@ -6708,7 +6708,20 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
             <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course observed</label>
             <select value={form.courseId} onChange={e => selectCourse(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
               <option value="">Select course...</option>
-              {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+              {[
+                { label: "Foundation & MiniRoos", match: t => /miniroo/i.test(t) || ["FoF", "FoFu", "FoGK"].includes(courseLevelFor(t)) },
+                { label: "C Diploma", match: t => courseLevelFor(t) === "C" },
+                { label: "B Diploma", match: t => courseLevelFor(t) === "B" },
+                { label: "A Diploma", match: t => courseLevelFor(t) === "A" },
+                { label: "Other", match: () => true },
+              ].reduce((acc, g) => {
+                const list = acc.left.filter(c => g.match(c.title || "")).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+                acc.left = acc.left.filter(c => !list.includes(c));
+                if (list.length) acc.out.push(
+                  <optgroup key={g.label} label={g.label}>{list.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}</optgroup>
+                );
+                return acc;
+              }, { left: courses, out: [] }).out}
             </select>
             {form.courseTitle && <span className="inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{courseLevel === "Other" ? "Non-diploma" : courseLevel === "C" || courseLevel === "B" || courseLevel === "A" ? `${courseLevel} Diploma` : courseLevel}</span>}
           </div>
@@ -6754,7 +6767,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
                     }`}>{opt}</button>
                 ))}
               </div>
-              <textarea value={form.grip[item.key].note} onChange={e => setGripField(item.key, "note", e.target.value)} placeholder="Evidence..." rows={3}
+              <VoiceTextarea value={form.grip[item.key].note} onChange={e => setGripField(item.key, "note", e.target.value)} placeholder="Evidence..." rows={3}
                 className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-xs" />
             </div>
           ))}
@@ -6780,7 +6793,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
                 className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${form.sochangeit.rating === opt ? "bg-indigo-100 text-indigo-700 border-indigo-300" : "bg-white text-slate-400 border-slate-200"}`}>{opt}</button>
             ))}
           </div>
-          <textarea value={form.sochangeit.notes} onChange={e => setForm(prev => ({ ...prev, sochangeit: { ...prev.sochangeit, notes: e.target.value } }))} placeholder="Notes..." rows={3}
+          <VoiceTextarea value={form.sochangeit.notes} onChange={e => setForm(prev => ({ ...prev, sochangeit: { ...prev.sochangeit, notes: e.target.value } }))} placeholder="Notes..." rows={3}
             className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-xs" />
         </div>
       </div>
@@ -6799,7 +6812,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
                       className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${form.coachingProcess[item.key].rating === opt ? "bg-indigo-100 text-indigo-700 border-indigo-300" : "bg-white text-slate-400 border-slate-200"}`}>{opt}</button>
                   ))}
                 </div>
-                <textarea value={form.coachingProcess[item.key].evidence} onChange={e => setCpField(item.key, "evidence", e.target.value)} placeholder="Evidence..." rows={3}
+                <VoiceTextarea value={form.coachingProcess[item.key].evidence} onChange={e => setCpField(item.key, "evidence", e.target.value)} placeholder="Evidence..." rows={3}
                   className="w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-xs" />
               </div>
             ))}
@@ -6816,18 +6829,18 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-medium text-slate-500 mb-1.5 block">WWW (What Went Well)</label>
-            <textarea value={form.feedback.www} onChange={e => setForm(prev => ({ ...prev, feedback: { ...prev.feedback, www: e.target.value } }))}
+            <VoiceTextarea value={form.feedback.www} onChange={e => setForm(prev => ({ ...prev, feedback: { ...prev.feedback, www: e.target.value } }))}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" rows={2} />
           </div>
           <div>
             <label className="text-xs font-medium text-slate-500 mb-1.5 block">EBI (Even Better If)</label>
-            <textarea value={form.feedback.ebi} onChange={e => setForm(prev => ({ ...prev, feedback: { ...prev.feedback, ebi: e.target.value } }))}
+            <VoiceTextarea value={form.feedback.ebi} onChange={e => setForm(prev => ({ ...prev, feedback: { ...prev.feedback, ebi: e.target.value } }))}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" rows={2} />
           </div>
         </div>
         <div>
           <label className="text-xs font-medium text-slate-500 mb-1.5 block">General comments (optional)</label>
-          <textarea value={form.feedback.general} onChange={e => setForm(prev => ({ ...prev, feedback: { ...prev.feedback, general: e.target.value } }))}
+          <VoiceTextarea value={form.feedback.general} onChange={e => setForm(prev => ({ ...prev, feedback: { ...prev.feedback, general: e.target.value } }))}
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" rows={2} />
         </div>
       </div>
