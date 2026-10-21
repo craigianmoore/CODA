@@ -5423,7 +5423,7 @@ async function saveHtmlAsPdf(htmlContent, filename) {
       container.querySelectorAll("*").forEach((el) => {
         if (el.children.length || !el.textContent.trim()) return;
         const cs = getComputedStyle(el);
-        if (cs.display !== "inline-block" || parseFloat(cs.borderTopLeftRadius) < 50) return;
+        if (!/^(inline-block|block|flex|inline-flex)$/.test(cs.display) || parseFloat(cs.borderTopLeftRadius) < 50) return;
         const w = el.offsetWidth, h = el.offsetHeight;
         if (!w || !h || h > 60) return;
         const k = 4;
