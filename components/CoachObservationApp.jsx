@@ -2009,7 +2009,14 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
 
   const saveCoaches = async (v) => { setCoaches(v); await syncCollectionSb("coaches", coaches, v); };
   const saveCourses = async (v) => { setCourses(v); await syncCollectionSb("courses", courses, v); };
-  const saveCetAssessments = async (v) => { setCetAssessments(v); await syncCollectionSb("cet_assessments", cetAssessments, v); };
+  // Reverts the on-screen list and re-throws if the database write fails, so
+  // callers can tell the user instead of showing a false "saved".
+  const saveCetAssessments = async (v) => {
+    const prev = cetAssessments;
+    setCetAssessments(v);
+    try { await syncCollectionSb("cet_assessments", prev, v); }
+    catch (e) { setCetAssessments(prev); throw e; }
+  };
   const saveRapaAssessments = async (v) => { setRapaAssessments(v); await syncCollectionSb("rapa_assessments", rapaAssessments, v); };
   const saveRapaIncidents = async (v) => { setRapaIncidents(v); await syncCollectionSb("rapa_incidents", rapaIncidents, v); };
   const saveRapaProposals = async (v) => { setRapaProposals(v); await syncCollectionSb("rapa_proposals", rapaProposals, v); };
@@ -6567,6 +6574,17 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
     setSavingPdfId(null);
   }
   const [savedMsg, setSavedMsg] = useState("");
+  const [saveError, setSaveError] = useState("");
+  // Surface a failing load (the shared loader swallows errors and returns an
+  // empty list, which looks exactly like "no assessments yet").
+  const [loadProblem, setLoadProblem] = useState("");
+  useEffect(() => {
+    let alive = true;
+    supabase.from("cet_assessments").select("id", { count: "exact", head: true }).then(({ error }) => {
+      if (alive && error) setLoadProblem(`${error.message || error.code || "unknown error"}`);
+    });
+    return () => { alive = false; };
+  }, []);
 
   // Assessors and exports here are Member-Federation-scoped: a MF Admin
   // manages assessors and downloads data for their own MF only; Master
@@ -6659,12 +6677,19 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
     try { window.localStorage.removeItem(CET_DRAFT_KEY); } catch (e) { /* ignore */ }
   }
 
-  function saveRecord(status) {
+  async function saveRecord(status) {
     const record = { ...form, id: editingId || uid(), status, updatedAt: new Date().toISOString() };
-    if (editingId) {
-      saveCetAssessments(cetAssessments.map(a => a.id === editingId ? record : a));
-    } else {
-      saveCetAssessments([...cetAssessments, record]);
+    setSaveError("");
+    try {
+      if (editingId) {
+        await saveCetAssessments(cetAssessments.map(a => a.id === editingId ? record : a));
+      } else {
+        await saveCetAssessments([...cetAssessments, record]);
+      }
+    } catch (e) {
+      // Keep the form (and its autosaved copy) so nothing is lost.
+      setSaveError(`NOT SAVED — the database rejected the save (${(e && (e.message || e.code)) || "unknown error"}). Your entries are still on this form; please tell Craig/support.`);
+      return;
     }
     setSavedMsg(status === "draft" ? "Saved as draft." : "Submitted.");
     resetForm();
@@ -6799,6 +6824,8 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
         </div>
       )}
 
+      {loadProblem && <p className="text-sm font-semibold text-red-800 bg-red-50 border border-red-300 rounded-lg px-3 py-2">CET Observations can't be read from the database ({loadProblem}). Saved assessments won't appear and new ones may not save.</p>}
+      {saveError && <p className="text-sm font-semibold text-red-800 bg-red-50 border border-red-300 rounded-lg px-3 py-2">{saveError}</p>}
       {savedMsg && <p className="text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{savedMsg}</p>}
       {editingId && (
         <div className="flex items-center justify-between gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
