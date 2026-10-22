@@ -623,6 +623,33 @@ function ItemObsLink({ observations, record, label, text, onViewReport, onEditDr
   );
 }
 
+const CORRESPONDENCE_TYPES = ["Outstanding items", "Course completed", "Video resubmission", "Extension / deadline", "Other"];
+
+// Correspondence only opens once the course itself is over (attendance 100%).
+function correspondenceOpen(task) {
+  return (task?.attendancePercent || 0) >= 100;
+}
+
+// Which email the coach is due, based on where their record sits post-course.
+function suggestedCorrespondence(task, coachTopics) {
+  const { done, total } = courseworkProgress(task, coachTopics);
+  const items = total > 0 ? courseworkItems(task, coachTopics, task.team) : [];
+  const nyc = items.some(i => i.outcome === "Not Yet Competent") || task.practicalSessionOutcome === "Not Yet Competent";
+  const outstanding = items.filter(i => !i.done).map(i => i.label);
+  const course = `${task.courseTitle}${task.courseNumber ? ` (#${task.courseNumber})` : ""}`;
+  const first = (task.coachName || "").split(" ")[0] || "coach";
+  if (total > 0 && done < total) {
+    return { type: "Outstanding items", subject: `${course} - outstanding items`,
+      body: `Hi ${first},\n\nThanks for attending ${course}. To complete the course you still need to finish:\n\n${outstanding.map(l => `- ${l}`).join("\n")}\n\nPlease let me know if you have any questions.\n\nKind regards` };
+  }
+  if (nyc) {
+    return { type: "Video resubmission", subject: `${course} - resubmission required`,
+      body: `Hi ${first},\n\nThanks for attending ${course}. One of your assessed items was marked Not Yet Competent. Please record a 20-25 minute session at your club and submit the video.\n\nKind regards` };
+  }
+  return { type: "Course completed", subject: `${course} - completed`,
+    body: `Hi ${first},\n\nCongratulations, you have completed all requirements for ${course}.\n\nKind regards` };
+}
+
 function groupCoursesByNumber(completedTasks) {
   const map = {};
   completedTasks.forEach(t => {
@@ -7443,6 +7470,9 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [collapsedMfs, setCollapsedMfs] = useState(() => new Set());
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [idpExpandedTaskId, setIdpExpandedTaskId] = useState(null);
+  const [corrOpenTaskId, setCorrOpenTaskId] = useState(null);
+  const [corrDraft, setCorrDraft] = useState({ type: CORRESPONDENCE_TYPES[0], date: "", note: "" });
+  const [corrCopiedId, setCorrCopiedId] = useState(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState(() => new Set());
 
   // Jump-to-task: when the Dashboard's Outstanding Coaches list sends us a
@@ -7860,6 +7890,28 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
         setProgressAuthError(true);
       }
     }
+  }
+
+  function addCorrespondence(task) {
+    const note = corrDraft.note.trim();
+    const entry = { id: uid(), type: corrDraft.type, date: corrDraft.date || new Date().toISOString().slice(0, 10), note, by: session?.name || "" };
+    saveCompletedTasks(completedTasks.map(t => t.id === task.id
+      ? { ...t, correspondence: [...(t.correspondence || []), entry], updatedAt: new Date().toISOString() }
+      : t));
+    setCorrDraft({ type: CORRESPONDENCE_TYPES[0], date: "", note: "" });
+  }
+
+  function deleteCorrespondence(task, entryId) {
+    saveCompletedTasks(completedTasks.map(t => t.id === task.id
+      ? { ...t, correspondence: (t.correspondence || []).filter(e => e.id !== entryId), updatedAt: new Date().toISOString() }
+      : t));
+  }
+
+  function copyCorrespondenceDraft(task, suggestion) {
+    const text = `Subject: ${suggestion.subject}\n\n${suggestion.body}`;
+    try { navigator.clipboard.writeText(text); } catch (e) { /* clipboard unavailable */ }
+    setCorrCopiedId(task.id);
+    setTimeout(() => setCorrCopiedId(null), 2000);
   }
 
   function setBlockStatus(task, block, status) {
@@ -9441,6 +9493,71 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                           style={{ width: `${Math.min(100, t.onlineModulesPercent || 0)}%` }} />
                                       </div>
                                     </div>
+
+                                    {(() => {
+                                      const corrUnlocked = correspondenceOpen(t);
+                                      const corrLog = [...(t.correspondence || [])].sort((x, y) => (y.date || "").localeCompare(x.date || ""));
+                                      const corrOpen = corrOpenTaskId === t.id;
+                                      if (!corrUnlocked) {
+                                        return (
+                                          <div className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-400 bg-slate-50 rounded-lg px-2.5 py-1.5">
+                                            <Lock className="w-3 h-3 shrink-0" /> Correspondence opens when attendance reaches 100%
+                                          </div>
+                                        );
+                                      }
+                                      const suggestion = suggestedCorrespondence(t, cardCoach?.topics);
+                                      return (
+                                        <div className="mt-3">
+                                          <button type="button" onClick={() => setCorrOpenTaskId(corrOpen ? null : t.id)}
+                                            className="flex items-center gap-1 text-xs font-semibold text-sky-700 hover:text-sky-800">
+                                            <ChevronRight className={`w-3.5 h-3.5 transition-transform ${corrOpen ? "rotate-90" : ""}`} />
+                                            Correspondence{corrLog.length ? ` (${corrLog.length})` : ""}
+                                          </button>
+                                          {corrOpen && (
+                                            <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50 p-3 space-y-3">
+                                              <div className="rounded-lg bg-white border border-sky-100 px-2.5 py-2">
+                                                <p className="text-[10px] font-bold uppercase tracking-wide text-sky-700 mb-1">Suggested email: {suggestion.type}</p>
+                                                <p className="text-xs text-slate-600 whitespace-pre-wrap">{suggestion.body}</p>
+                                                <button type="button" onClick={() => copyCorrespondenceDraft(t, suggestion)}
+                                                  className="mt-2 text-xs font-semibold text-sky-700 bg-sky-100 hover:bg-sky-200 px-2.5 py-1 rounded-lg">
+                                                  {corrCopiedId === t.id ? "Copied" : "Copy email"}
+                                                </button>
+                                              </div>
+                                              <div className="space-y-1.5">
+                                                <p className="text-[10px] font-bold uppercase tracking-wide text-sky-700">Log email sent</p>
+                                                <div className="flex gap-1.5 flex-wrap">
+                                                  <select value={corrDraft.type} onChange={e => setCorrDraft(d => ({ ...d, type: e.target.value }))}
+                                                    className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white">
+                                                    {CORRESPONDENCE_TYPES.map(ty => <option key={ty} value={ty}>{ty}</option>)}
+                                                  </select>
+                                                  <input type="date" value={corrDraft.date} onChange={e => setCorrDraft(d => ({ ...d, date: e.target.value }))}
+                                                    className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white" />
+                                                </div>
+                                                <textarea value={corrDraft.note} onChange={e => setCorrDraft(d => ({ ...d, note: e.target.value }))} rows={2}
+                                                  placeholder="Note (optional)" className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white" />
+                                                <button type="button" onClick={() => addCorrespondence(t)}
+                                                  className="text-xs font-semibold text-white bg-sky-700 hover:bg-sky-800 px-3 py-1.5 rounded-lg">Log</button>
+                                              </div>
+                                              {corrLog.length > 0 && (
+                                                <ul className="space-y-1">
+                                                  {corrLog.map(e => (
+                                                    <li key={e.id} className="flex items-start justify-between gap-2 text-xs text-slate-600 bg-white border border-sky-100 rounded-lg px-2.5 py-1.5">
+                                                      <span>
+                                                        <strong>{e.type}</strong> · {e.date ? new Date(e.date).toLocaleDateString("en-GB") : ""}{e.by ? ` · ${e.by}` : ""}
+                                                        {e.note && <span className="block text-slate-500">{e.note}</span>}
+                                                      </span>
+                                                      <button type="button" onClick={() => deleteCorrespondence(t, e.id)} className="text-slate-300 hover:text-red-600 shrink-0" title="Remove entry">
+                                                        <X className="w-3 h-3" />
+                                                      </button>
+                                                    </li>
+                                                  ))}
+                                                </ul>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
 
                                     {total > 0 && (
                                       <button type="button" onClick={() => setExpandedTaskId(isDetailsExpanded ? null : t.id)}
