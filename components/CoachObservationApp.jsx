@@ -12315,6 +12315,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   }
 
   const [newAdminName, setNewAdminName] = useState("");
+  const [adminPickerOpen, setAdminPickerOpen] = useState(false);
   const [newAdminPin, setNewAdminPin] = useState("");
   const [addAdminError, setAddAdminError] = useState("");
   const [newAdminRole, setNewAdminRole] = useState("master");
@@ -13242,8 +13243,46 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   <p className="text-xs text-slate-500">Only a MA Admin or MF Admin can add or manage admins.</p>
                 ) : adminSettings.admins.length < maxAdmins ? (
                   <div className="space-y-2">
-                    <input value={newAdminName} onChange={e => { setNewAdminName(e.target.value); setAddAdminError(""); }}
-                      placeholder={`Name for Admin ${adminSettings.admins.length + 1}`} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                    {(() => {
+                      const typed = newAdminName.trim();
+                      const typedLc = typed.toLowerCase();
+                      const adminNames = new Set(adminSettings.admins.map(x => (x.name || "").trim().toLowerCase()));
+                      const cetMatches = (educators || [])
+                        .filter(c => c && c.name && !adminNames.has(c.name.trim().toLowerCase()) && (!typedLc || c.name.toLowerCase().includes(typedLc)))
+                        .sort((x, y) => x.name.localeCompare(y.name))
+                        .slice(0, 8);
+                      const exactCet = (educators || []).some(c => (c.name || "").trim().toLowerCase() === typedLc);
+                      const showNew = typed && !exactCet && !adminNames.has(typedLc);
+                      return (
+                        <div className="relative">
+                          <input value={newAdminName}
+                            onChange={e => { setNewAdminName(e.target.value); setAddAdminError(""); setAdminPickerOpen(true); }}
+                            onFocus={() => setAdminPickerOpen(true)}
+                            onBlur={() => setTimeout(() => setAdminPickerOpen(false), 150)}
+                            placeholder="Search CETs, or type a new name" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                          {adminPickerOpen && (cetMatches.length > 0 || showNew) && (
+                            <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                              {cetMatches.map(c => (
+                                <button key={c.id || c.name} type="button" onMouseDown={e => e.preventDefault()}
+                                  onClick={() => { setNewAdminName(c.name); setAddAdminError(""); setAdminPickerOpen(false); }}
+                                  className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center justify-between">
+                                  <span>{c.name}</span><span className="text-[10px] font-semibold text-slate-400">CET</span>
+                                </button>
+                              ))}
+                              {showNew && (
+                                <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => setAdminPickerOpen(false)}
+                                  className="w-full text-left px-3 py-2 text-sm text-sky-700 hover:bg-sky-50 border-t border-slate-100">
+                                  + Add "{typed}" as a new person (not a CET)
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {typed && !exactCet && !adminNames.has(typedLc) && !adminPickerOpen && (
+                            <p className="text-[11px] text-slate-400 mt-1">Not a current CET, so they'll be added as an admin only.</p>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {iAmMaster && (
                       <div className="flex gap-2 flex-wrap">
                         <button onClick={() => { setNewAdminRole("master"); setNewAdminMfSelection([]); setAddAdminError(""); }} type="button"
