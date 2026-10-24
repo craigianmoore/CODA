@@ -11209,6 +11209,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
               </div>
             ))}
 
+            {!(sessionType === "formal" && isCDiploma(formalCourseName)) && (
             <div>
               <p className="text-sm font-semibold text-slate-800 mb-1.5">Pitch Geography</p>
               <p className="text-xs text-slate-500 mb-2">Tap D3 / M3 / F3 to select all six zones in that third at once, or tap individual zones on the pitch below.</p>
@@ -11239,6 +11240,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 <p className="text-xs text-slate-500 mt-1.5">Selected zones: {sessionPlan.zonesUsed.join(", ")}</p>
               )}
             </div>
+            )}
           </div>
         )}
 
