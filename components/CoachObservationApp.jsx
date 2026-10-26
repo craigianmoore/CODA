@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { Users, BookOpen, ClipboardList, FileText, Plus, ChevronLeft, ChevronRight, Check, X, Calendar, Award, TrendingUp, ArrowRight, Loader2, ListChecks, Pencil, Upload, AlertCircle, PenLine, Search, Trash2, Settings, Clock, Smartphone, Tablet, Laptop, Lock, LogOut, Mic, ShieldAlert } from "lucide-react";
 import Papa from "papaparse";
+import QRCode from "qrcode";
 import * as mammoth from "mammoth";
 import { supabase } from "../lib/supabase";
 
@@ -2659,6 +2660,42 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
   );
 }
 
+// Share card: QR code + email/copy buttons pointing at this deployment's /app.
+function ShareCodaCard() {
+  const [link, setLink] = useState("");
+  const [qr, setQr] = useState("");
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    const url = `${window.location.origin}/app`;
+    setLink(url);
+    QRCode.toDataURL(url, { margin: 1, width: 320, color: { dark: "#004890", light: "#ffffff" } })
+      .then(setQr).catch(() => setQr(""));
+  }, []);
+  const mailto = `mailto:?subject=${encodeURIComponent("CODA - Coach Observation Development App")}&body=${encodeURIComponent(
+    `Hi,\n\nHere is the link to CODA:\n${link}\n\nSign in with your name and PIN.\n\nKind regards`)}`;
+  function copyLink() {
+    try { navigator.clipboard.writeText(link); } catch (e) { /* clipboard unavailable */ }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+  if (!link) return null;
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-center gap-4">
+      {qr && <img src={qr} alt="QR code linking to CODA" className="w-28 h-28 shrink-0 rounded-lg border border-slate-100" />}
+      <div className="flex-1 min-w-[200px] space-y-2">
+        <p className="text-sm font-semibold text-slate-800">Share CODA with CETs</p>
+        <p className="text-xs text-slate-500 break-all">{link}</p>
+        <div className="flex flex-wrap gap-2">
+          <a href={mailto} className="text-xs font-semibold text-white px-3 py-1.5 rounded-lg" style={{ backgroundColor: "#004890" }}>Share by email</a>
+          <button type="button" onClick={copyLink} className="text-xs font-semibold text-slate-700 border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50">
+            {copied ? "Copied" : "Copy link"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({ coaches, educators, observations, courses, drafts, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goNewObs, goHistory, openCompletedTaskFn, onEditDraft, onSubmitDraft, onViewDraft, cetDrafts = [], onContinueCetDraft, session }) {
   const [draftsExpanded, setDraftsExpanded] = useState(false);
   const [draftsSortMode, setDraftsSortMode] = useState("name");
@@ -2724,6 +2761,8 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
         <StatCard label="Observations Logged" value={observations.length} icon={ClipboardList} />
         <StatCard label="Courses in Library" value={courses.length} icon={BookOpen} />
       </div>
+
+      <ShareCodaCard />
 
       {((drafts ? drafts.length : 0) + cetDrafts.length) > 0 && (
         <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
