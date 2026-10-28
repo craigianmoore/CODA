@@ -1126,7 +1126,7 @@ function roleBtnProps(role, selected, disabled) {
     ? { className: base, style: { border: `2px solid ${st.c}`, color: st.c, background: st.bg } }
     : { className: base, style: { border: `1px solid ${st.c}66`, color: st.c, background: "#fff" } };
 }
-const SLOT_ROLE_LABELS = { lead: "MF Admin", coordinator: "MF Coordinator", course: "Course Admin" };
+const SLOT_ROLE_LABELS = { lead: "MF Admin (TD/CEM)", coordinator: "MF Coordinator", course: "Course Admin" };
 // Slots per Member Federation for one role. Saved overrides live in
 // adminSettings.mfSlots[mfKey][role]; otherwise MF Admin and MF Coordinator
 // default to 1 and Course Admin to the older single setting (4).
@@ -2449,7 +2449,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
               <div>
                 <RemoveAllBar
                   label="Remove All Coaches" count={coaches.length} onClear={() => saveCoaches([])} masterOnly
-                  warningText={`This will permanently delete all ${coaches.length} coach${coaches.length === 1 ? "" : "es"}. Past observations will remain in History but will no longer show a linked coach profile. This cannot be undone and is restricted to MA Admins — coach profiles aren't tagged to a Member Federation, so this action can't be safely scoped to a Federation Admin.`}
+                  warningText={`This will permanently delete all ${coaches.length} coach${coaches.length === 1 ? "" : "es"}. Past observations will remain in History but will no longer show a linked coach profile. This cannot be undone and is restricted to FA Admins — coach profiles aren't tagged to a Member Federation, so this action can't be safely scoped to a Federation Admin.`}
                   adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
                 />
                 <CoachesTab
@@ -2661,7 +2661,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
           {session && (
             <div className="flex items-center gap-1.5 ml-2 text-xs text-slate-500 shrink-0">
               <span className="hidden sm:inline">
-                {session.kind === "cet" ? session.name : `${session.name} · ${{ master: "MA Admin", lead: "MF Admin", coordinator: "MF Coordinator", course: "Course Admin" }[session.tier] || "Admin"}`}
+                {session.kind === "cet" ? session.name : `${session.name} · ${{ master: "FA Admin", lead: "MF Admin (TD/CEM)", coordinator: "MF Coordinator", course: "Course Admin" }[session.tier] || "Admin"}`}
               </span>
               <button onClick={onSignOut} className="font-semibold text-slate-500 hover:text-slate-600">Sign Out</button>
             </div>
@@ -3363,17 +3363,17 @@ function RemoveAllBar({ label, count, onClear, warningText, adminSettings, admin
     }
     if (masterOnly && !isMasterAdmin(match)) {
       recordAdminAttempt(adminName, true);
-      setScopeError("Only a MA Admin can do this.");
+      setScopeError("Only an FA Admin can do this.");
       return;
     }
     if (!masterOnly && isCourseAdmin(match)) {
       recordAdminAttempt(adminName, true);
-      setScopeError("Course Admins can't remove CETs — this needs a MF Admin or MA Admin.");
+      setScopeError("Course Admins can't remove CETs — this needs a MF Admin or FA Admin.");
       return;
     }
     if (!masterOnly && isCoordinatorAdmin(match)) {
       recordAdminAttempt(adminName, true);
-      setScopeError("MF Coordinators can't remove CETs — this needs a MF Admin or MA Admin.");
+      setScopeError("MF Coordinators can't remove CETs — this needs a MF Admin or FA Admin.");
       return;
     }
     recordAdminAttempt(adminName, true);
@@ -3610,7 +3610,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
     if (!isMasterAdmin(match)) {
       recordAdminAttempt(mergeAuthName, true);
       setMergeAuthError(false);
-      setMergeAuthScopeError("Only a MA Admin can merge coach profiles — coach profiles aren't tagged to a Member Federation.");
+      setMergeAuthScopeError("Only an FA Admin can merge coach profiles — coach profiles aren't tagged to a Member Federation.");
       return;
     }
     recordAdminAttempt(mergeAuthName, true);
@@ -3882,7 +3882,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
           <p className="text-sm font-semibold text-indigo-900">Assign Member Federation from Course History</p>
           <p className="text-xs text-indigo-700">
             For the {coachesBackfillableCount} coach{coachesBackfillableCount === 1 ? "" : "es"} with no Member Federation set, this looks at their existing Coaches Progress and observation records
-            and assigns whichever federation(s) those show — i.e. wherever they actually did the course. Coaches with no record at all to derive from are left unchanged. MA Admin only.
+            and assigns whichever federation(s) those show — i.e. wherever they actually did the course. Coaches with no record at all to derive from are left unchanged. FA Admin only.
           </p>
           {bulkCoachMfMsg && <p className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{bulkCoachMfMsg}</p>}
           <div className="grid sm:grid-cols-2 gap-2">
@@ -3901,7 +3901,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
             <p className="text-xs text-red-600">
               {isLockedOut(adminLockouts, backfillAuthName)
                 ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, backfillAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, backfillAuthName) === 1 ? "" : "s"}.`
-                : "Incorrect admin name or PIN, or not a MA Admin."}
+                : "Incorrect admin name or PIN, or not an FA Admin."}
             </p>
           )}
         </div>
@@ -4387,13 +4387,13 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
     if (isCourseAdmin(match)) {
       recordAdminAttempt(mergeAuthName, true);
       setMergeAuthError(false);
-      setMergeAuthScopeError("Course Admins can't merge duplicate CETs — this needs a MF Admin or MA Admin.");
+      setMergeAuthScopeError("Course Admins can't merge duplicate CETs — this needs a MF Admin or FA Admin.");
       return;
     }
     if (isCoordinatorAdmin(match)) {
       recordAdminAttempt(mergeAuthName, true);
       setMergeAuthError(false);
-      setMergeAuthScopeError("MF Coordinators can't merge duplicate CETs — this needs a MF Admin or MA Admin.");
+      setMergeAuthScopeError("MF Coordinators can't merge duplicate CETs — this needs a MF Admin or FA Admin.");
       return;
     }
     recordAdminAttempt(mergeAuthName, true);
@@ -4889,7 +4889,7 @@ function CoursesTab({ courses, saveCourses, adminSettings, adminLockouts, record
     if (!isMasterAdmin(match)) {
       recordAdminAttempt(dupAuthName, true);
       setDupAuthError(false);
-      setDupResultMsg("Only a MA Admin can remove duplicate courses.");
+      setDupResultMsg("Only an FA Admin can remove duplicate courses.");
       return;
     }
     recordAdminAttempt(dupAuthName, true);
@@ -6578,7 +6578,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
           {!masterAuthed ? (
             <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
               <p className="text-sm font-semibold text-slate-800">Executive Manager Access</p>
-              <p className="text-xs text-slate-500">Enter a MA Admin name and PIN to review proposals, incidents, assessments, and the hazard catalogue.</p>
+              <p className="text-xs text-slate-500">Enter an FA Admin name and PIN to review proposals, incidents, assessments, and the hazard catalogue.</p>
               <div className="grid sm:grid-cols-2 gap-2">
                 <input value={masterAuthName} onChange={e => { setMasterAuthName(e.target.value); setMasterAuthError(false); }} placeholder="Admin name" className={`border rounded-lg px-3 py-2 text-sm ${masterAuthError ? "border-red-400" : "border-slate-300"}`} />
                 <input type="password" inputMode="numeric" maxLength={4} value={masterAuthPin}
@@ -6591,7 +6591,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
                 <p className="text-xs text-red-600">
                   {isLockedOut(adminLockouts, masterAuthName)
                     ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, masterAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, masterAuthName) === 1 ? "" : "s"}.`
-                    : "Incorrect admin name or PIN, or not a MA Admin."}
+                    : "Incorrect admin name or PIN, or not an FA Admin."}
                 </p>
               )}
             </div>
@@ -7024,7 +7024,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
 
       {adminAuthFor === "assessors" && (
         <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-          <p className="text-xs text-indigo-700">Managing assessors needs a MF Admin, MF Coordinator, or MA Admin name and PIN. A MF Admin or MF Coordinator manages assessors for their own Member Federation only.</p>
+          <p className="text-xs text-indigo-700">Managing assessors needs a MF Admin, MF Coordinator, or FA Admin name and PIN. A MF Admin or MF Coordinator manages assessors for their own Member Federation only.</p>
           <div className="grid sm:grid-cols-2 gap-2">
             <input value={adminAuthName} onChange={e => { setAdminAuthName(e.target.value); setAdminAuthError(false); }} placeholder="Admin name"
               className={`border rounded-lg px-3 py-2 text-sm ${adminAuthError ? "border-red-400" : "border-indigo-300"}`} />
@@ -7353,7 +7353,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
         </div>
         {adminAuthFor === "export" && (
           <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-            <p className="text-xs text-indigo-700">Exporting needs a MF Admin, MF Coordinator, or MA Admin name and PIN. A MF Admin or MF Coordinator's export is limited to their own Member Federation.</p>
+            <p className="text-xs text-indigo-700">Exporting needs a MF Admin, MF Coordinator, or FA Admin name and PIN. A MF Admin or MF Coordinator's export is limited to their own Member Federation.</p>
             <div className="grid sm:grid-cols-2 gap-2">
               <input value={adminAuthName} onChange={e => { setAdminAuthName(e.target.value); setAdminAuthError(false); }} placeholder="Admin name"
                 className={`border rounded-lg px-3 py-2 text-sm ${adminAuthError ? "border-red-400" : "border-indigo-300"}`} />
@@ -7457,7 +7457,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     if (!isMasterAdmin(match)) {
       recordAdminAttempt(dupTaskAuthName, true);
       setDupTaskAuthError(false);
-      setDupTaskScopeError("Only a MA Admin can merge Coaches Progress records — they aren't tagged to a Member Federation.");
+      setDupTaskScopeError("Only an FA Admin can merge Coaches Progress records — they aren't tagged to a Member Federation.");
       return;
     }
     recordAdminAttempt(dupTaskAuthName, true);
@@ -8943,7 +8943,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             </div>
             {!nycRepairAuthed ? (
               <div className="space-y-2 pt-1">
-                <p className="text-xs text-red-700">Enter a MA Admin name and PIN to repair these.</p>
+                <p className="text-xs text-red-700">Enter an FA Admin name and PIN to repair these.</p>
                 <div className="grid sm:grid-cols-2 gap-2">
                   <input value={nycRepairAuthName} onChange={e => { setNycRepairAuthName(e.target.value); setNycRepairAuthError(false); }} placeholder="Admin name"
                     className={`border rounded-lg px-3 py-2 text-sm ${nycRepairAuthError ? "border-red-400" : "border-red-300"}`} />
@@ -8957,7 +8957,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                   <p className="text-xs text-red-600">
                     {isLockedOut(adminLockouts, nycRepairAuthName)
                       ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, nycRepairAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, nycRepairAuthName) === 1 ? "" : "s"}.`
-                      : "Incorrect admin name or PIN, or not a MA Admin."}
+                      : "Incorrect admin name or PIN, or not an FA Admin."}
                   </p>
                 )}
               </div>
@@ -9809,7 +9809,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                       <p className="text-[10px] font-semibold text-violet-600">{block}{locked ? " (locked)" : ""}</p>
                                                       {locked && (
                                                         <button onClick={() => requestReopenBlock(t, block)} className="text-[10px] font-semibold text-violet-500 hover:text-violet-700 flex items-center gap-0.5">
-                                                          <Lock className="w-2.5 h-2.5" /> Reopen (MA Admin)
+                                                          <Lock className="w-2.5 h-2.5" /> Reopen (FA Admin)
                                                         </button>
                                                       )}
                                                     </div>
@@ -9868,9 +9868,9 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                               )}
                                               {reopenAuthForTaskBlock && reopenAuthForTaskBlock.taskId === t.id && (
                                                 <div className="border-t border-violet-200 pt-2 space-y-1.5">
-                                                  <p className="text-[10px] text-violet-700">Reopening {reopenAuthForTaskBlock.block} needs a MA Admin name and PIN.</p>
+                                                  <p className="text-[10px] text-violet-700">Reopening {reopenAuthForTaskBlock.block} needs an FA Admin name and PIN.</p>
                                                   <div className="flex gap-1.5">
-                                                    <input value={progressAuthName} onChange={e => { setProgressAuthName(e.target.value); setProgressAuthError(false); }} placeholder="MA Admin name"
+                                                    <input value={progressAuthName} onChange={e => { setProgressAuthName(e.target.value); setProgressAuthError(false); }} placeholder="FA Admin name"
                                                       className={`flex-1 border rounded-lg px-2 py-1.5 text-xs ${progressAuthError ? "border-red-400" : "border-violet-300"}`} />
                                                     <input type="password" inputMode="numeric" maxLength={4} value={progressAuthPin}
                                                       onChange={e => { setProgressAuthPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setProgressAuthError(false); }}
@@ -9883,7 +9883,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                     <p className="text-[10px] text-red-600">
                                                       {isLockedOut(adminLockouts, progressAuthName)
                                                         ? `Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, progressAuthName)} more minute${lockoutRemainingMinutes(adminLockouts, progressAuthName) === 1 ? "" : "s"}.`
-                                                        : "Incorrect admin name or PIN, or this admin isn't a MA Admin."}
+                                                        : "Incorrect admin name or PIN, or this admin isn't an FA Admin."}
                                                     </p>
                                                   )}
                                                 </div>
@@ -11822,7 +11822,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
       }
       if (!adminHasCourseAccess(match, obs.courseNumber, obs.memberFederation)) {
         await kvSet("adminLockouts", { ...lockouts, [key]: { failCount: 0, lockedUntil: 0 } });
-        setReopenError("You don't have access to reopen this report — check with a MF Admin or MA Admin for your federation.");
+        setReopenError("You don't have access to reopen this report — check with a MF Admin or FA Admin for your federation.");
         setReopening(false);
         return;
       }
@@ -12701,7 +12701,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     if (!name) { setSessionHostError("Enter the name of the admin to make Session Host."); return; }
     const targetAdmin = adminSettings.admins.find(a => a.name.trim().toLowerCase() === name.trim().toLowerCase());
     if (!targetAdmin) { setSessionHostError("That name doesn't match any admin currently on file."); return; }
-    if (!isMasterAdmin(targetAdmin)) { setSessionHostError("Session Host can only be a MA Admin."); return; }
+    if (!isMasterAdmin(targetAdmin)) { setSessionHostError("Session Host can only be an FA Admin."); return; }
     saveAdminSettings({ ...adminSettings, sessionHostName: targetAdmin.name });
     setSessionHostError("");
     setSessionHostSuccess(true);
@@ -12859,7 +12859,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     if (!target) return { ok: false, reason: "Admin not found." };
     if (adminTier(target) === "master") {
       const masterCount = adminSettings.admins.filter(a => adminTier(a) === "master").length;
-      if (masterCount <= 1) return { ok: false, reason: "This is the last MA Admin — add another Master before removing this one." };
+      if (masterCount <= 1) return { ok: false, reason: "This is the last FA Admin — add another Master before removing this one." };
     }
     if (iAmMaster) return { ok: true };
     if (iAmLead && target.role === "course" && (target.memberFederations || []).some(mf => (signedInAdminMatch.memberFederations || []).includes(mf))) {
@@ -12894,7 +12894,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   function handleAddAdmin() {
     const iAmLead = adminTier(signedInAdminMatch) === "lead";
     if (!iAmMaster && !iAmLead) {
-      setAddAdminError("Only a MA Admin or MF Admin can add admins.");
+      setAddAdminError("Only an FA Admin or MF Admin can add admins.");
       return;
     }
     // A MF Admin's role picker is hidden entirely (they only ever add
@@ -12904,7 +12904,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     const effectiveRole = iAmLead ? (newAdminRole === "coordinator" ? "coordinator" : "course") : newAdminRole;
     const name = newAdminName.trim();
     if (adminSettings.admins.length >= maxAdmins) {
-      setAddAdminError(`Only ${maxAdmins} admin${maxAdmins === 1 ? "" : "s"} allowed — a MA Admin can raise this limit in settings below.`);
+      setAddAdminError(`Only ${maxAdmins} admin${maxAdmins === 1 ? "" : "s"} allowed — an FA Admin can raise this limit in settings below.`);
       return;
     }
     if (!name) {
@@ -13114,7 +13114,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
               {!iAmMaster && (
                 <p className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
                   {iAmLead
-                    ? "You're a MF Admin — Clear History, Remove All CETs, Reopen Report, Merge Duplicate CETs, and PDF export below are scoped to your Member Federation(s) only. You can also add Course Admins and one MF Coordinator for your federation. Data export/import and Coach-related admin actions are MA Admin only."
+                    ? "You're an MF Admin (TD/CEM) — Clear History, Remove All CETs, Reopen Report, Merge Duplicate CETs, and PDF export below are scoped to your Member Federation(s) only. You can also add Course Admins and one MF Coordinator for your federation. Data export/import and Coach-related admin actions are FA Admin only."
                     : iAmCoordinator
                     ? "You're an MF Coordinator — Reopen Report, PDF export, RAPA assessor management, and the Bin below are scoped to your Member Federation only. Unlike a MF Admin, you can't Clear History, Remove All CETs, Merge Duplicate CETs, or add/remove other admins."
                     : "You're a Course Admin — Reopen Report and PDF export below are scoped to your assigned course number(s) only. Clear History, Remove All CETs, Merge Duplicates, Data export/import, and Coach-related admin actions are not available at this level."}
@@ -13238,12 +13238,12 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                       {a.name}
                       {isSessionHost(adminSettings, a.name) && <Lock className="w-3 h-3 text-amber-600" />}
                       {a.role === "lead"
-                        ? <span className="text-[10px] font-bold text-indigo-600">· Lead: {(a.memberFederations || []).join(", ")}</span>
+                        ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.lead.c }}>{ROLE_STYLE.lead.sym} MF Admin (TD/CEM): {(a.memberFederations || []).join(", ")}</span>
                         : a.role === "coordinator"
-                        ? <span className="text-[10px] font-bold text-teal-600">· Coordinator: {(a.memberFederations || []).join(", ")}</span>
+                        ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.coordinator.c }}>{ROLE_STYLE.coordinator.sym} MF Coordinator: {(a.memberFederations || []).join(", ")}</span>
                         : a.role === "course"
-                        ? <span className="text-[10px] font-bold text-violet-600">· Course: {(a.memberFederations || []).join(", ")} (#{(a.assignedCourseNumbers || []).join(", #")})</span>
-                        : <span className="text-[10px] font-bold text-slate-500">· Master</span>}
+                        ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.course.c }}>{ROLE_STYLE.course.sym} Course Admin: {(a.memberFederations || []).join(", ")} (#{(a.assignedCourseNumbers || []).join(", #")})</span>
+                        : <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.master.c }}>{ROLE_STYLE.master.sym} FA Admin</span>}
                       {iAmMaster && (
                         <button onClick={() => editingAdminPinName === a.name ? setEditingAdminPinName(null) : startEditAdminPin(a.name)}
                           className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 ml-1">
@@ -13353,7 +13353,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   </div>
                 )}
                 {!canManageAdmins ? (
-                  <p className="text-xs text-slate-500">Only a MA Admin or MF Admin can add or manage admins.</p>
+                  <p className="text-xs text-slate-500">Only an FA Admin or MF Admin can add or manage admins.</p>
                 ) : adminSettings.admins.length < maxAdmins ? (
                   <div className="space-y-2">
                     {(() => {
@@ -13401,12 +13401,12 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         <button onClick={() => { setNewAdminRole("master"); setNewAdminMfSelection([]); setAddAdminError(""); }} type="button"
                           {...roleBtnProps("master", newAdminRole === "master", false)}>
                           
-                          {ROLE_STYLE.master.sym} MA Admin{newAdminRole === "master" ? " \u2713" : ""}
+                          {ROLE_STYLE.master.sym} FA Admin{newAdminRole === "master" ? " \u2713" : ""}
                         </button>
                         <button onClick={() => { setNewAdminRole("lead"); setAddAdminError(""); }} type="button"
                           {...roleBtnProps("lead", newAdminRole === "lead", false)}>
                           
-                          {ROLE_STYLE.lead.sym} MF Admin{newAdminRole === "lead" ? " \u2713" : ""}
+                          {ROLE_STYLE.lead.sym} MF Admin (TD/CEM){newAdminRole === "lead" ? " \u2713" : ""}
                         </button>
                         <button onClick={() => { setNewAdminRole("coordinator"); setAddAdminError(""); }} type="button"
                           {...roleBtnProps("coordinator", newAdminRole === "coordinator", false)}>
@@ -13616,7 +13616,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
 
               {iAmMaster && (
                 <div className="border-t border-slate-100 pt-3">
-                  <p className="text-sm font-semibold text-slate-800 mb-1">Admin Slots (MA Admin only)</p>
+                  <p className="text-sm font-semibold text-slate-800 mb-1">Admin Slots (FA Admin only)</p>
                   <p className="text-xs text-slate-500 mb-2">Set how many admin slots this app allows in total (currently {maxAdmins}).</p>
                   <div className="flex items-center gap-2 mb-1">
                     <input type="number" min="1" value={maxAdminsInput}
@@ -13639,8 +13639,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   <div className="border-t border-slate-100 pt-3">
                     <p className="text-sm font-semibold text-slate-800 mb-1">Slots per Member Federation</p>
                     <p className="text-xs text-slate-500 mb-2">
-                      {iAmMaster ? "As MA Admin you can change every slot count."
-                        : iAmLead ? "As MF Admin you can change MF Coordinator and Course Admin slots for your federation."
+                      {iAmMaster ? "As FA Admin you can change every slot count."
+                        : iAmLead ? "As MF Admin (TD/CEM) you can change MF Coordinator and Course Admin slots for your federation."
                         : "As MF Coordinator you can change Course Admin slots for your federation."}
                       {" "}The total admin slots limit above still applies.
                     </p>
@@ -13685,7 +13685,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
 
               {iAmMaster && (
                 <div className="border-t border-slate-100 pt-3">
-                  <p className="text-sm font-semibold text-slate-800 mb-1">Full PIN Reset (MA Admin only)</p>
+                  <p className="text-sm font-semibold text-slate-800 mb-1">Full PIN Reset (FA Admin only)</p>
                   <p className="text-xs text-slate-500 mb-2">Sets this same PIN for every admin on the list at once — use if a PIN's been forgotten or you want to start fresh.</p>
                   <div className="grid sm:grid-cols-2 gap-2 mb-2">
                     <input type="password" inputMode="numeric" maxLength={4} value={resetAllPin}
