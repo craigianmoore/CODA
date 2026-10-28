@@ -1107,6 +1107,29 @@ const ADMIN_LOCKOUT_MS = 30 * 60 * 1000;
 const DEFAULT_ADMIN_SETTINGS = { admins: [{ name: "Craig Moore", pin: "8938", role: "master" }], maxAdmins: 2, sessionHostName: "Craig Moore" };
 const MAX_ADMINS = 2;
 const MAX_COURSE_ADMINS_PER_MF = 4;
+const DEFAULT_MF_SLOTS = { lead: 1, coordinator: 1 };
+const SLOT_ROLE_LABELS = { lead: "MF Admin", coordinator: "MF Coordinator", course: "Course Admin" };
+// Slots per Member Federation for one role. Saved overrides live in
+// adminSettings.mfSlots[mfKey][role]; otherwise MF Admin and MF Coordinator
+// default to 1 and Course Admin to the older single setting (4).
+function mfSlotLimit(settings, mfKey, role) {
+  const v = settings?.mfSlots?.[mfKey]?.[role];
+  if (Number.isInteger(v) && v >= 1) return v;
+  if (role === "course") return settings?.maxCourseAdminsPerMf || MAX_COURSE_ADMINS_PER_MF;
+  return DEFAULT_MF_SLOTS[role] || 1;
+}
+function mfSlotCount(settings, mfKey, role) {
+  return (settings?.admins || []).filter(a => a.role === role && (a.memberFederations || []).includes(mfKey)).length;
+}
+// Which roles' slot numbers this tier may change: MA all, MF Admin
+// Coordinator + Course, MF Coordinator Course only. Non-master tiers are
+// further limited to their own Member Federation(s) by the caller.
+function slotRolesEditableBy(tier) {
+  if (tier === "master") return ["lead", "coordinator", "course"];
+  if (tier === "lead") return ["coordinator", "course"];
+  if (tier === "coordinator") return ["course"];
+  return [];
+}
 
 function migrateAdminSettings(raw) {
   if (!raw) return DEFAULT_ADMIN_SETTINGS;
@@ -1127,6 +1150,7 @@ function migrateAdminSettings(raw) {
     admins: migratedAdmins.length ? migratedAdmins : DEFAULT_ADMIN_SETTINGS.admins,
     maxAdmins: raw.maxAdmins || MAX_ADMINS,
     maxCourseAdminsPerMf: raw.maxCourseAdminsPerMf || MAX_COURSE_ADMINS_PER_MF,
+    mfSlots: raw.mfSlots && typeof raw.mfSlots === "object" ? raw.mfSlots : {},
     sessionHostName: raw.sessionHostName || (migratedAdmins[0] && migratedAdmins[0].name) || DEFAULT_ADMIN_SETTINGS.sessionHostName,
   };
 }
@@ -12380,10 +12404,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   const [sessionHostSuccess, setSessionHostSuccess] = useState(false);
 
   const maxAdmins = adminSettings.maxAdmins || MAX_ADMINS;
-  const maxCourseAdminsPerMf = adminSettings.maxCourseAdminsPerMf || MAX_COURSE_ADMINS_PER_MF;
-  const [maxCourseInput, setMaxCourseInput] = useState("");
-  const [maxCourseError, setMaxCourseError] = useState("");
-  const [maxCourseSuccess, setMaxCourseSuccess] = useState(false);
+  const [slotEdits, setSlotEdits] = useState({});
+  const [slotMessage, setSlotMessage] = useState({ mf: "", error: "", ok: false });
   const iAmSessionHost = panelAuthed && isSessionHost(adminSettings, signedInAdminName);
   const iAmMaster = panelAuthed && isMasterAdmin(signedInAdminMatch);
   const iAmLead = panelAuthed && adminTier(signedInAdminMatch) === "lead";
@@ -12623,22 +12645,36 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setMaxAdminsSuccess(true);
   }
 
-  function handleSaveMaxCourseAdmins() {
-    setMaxCourseSuccess(false);
-    const n = parseInt(maxCourseInput, 10);
-    if (isNaN(n) || n < 1) {
-      setMaxCourseError("Enter a whole number of at least 1.");
+  function handleSaveMfSlots(mfKey) {
+    const tier = adminTier(signedInAdminMatch);
+    const editable = slotRolesEditableBy(tier);
+    if (tier !== "master" && !(signedInAdminMatch.memberFederations || []).includes(mfKey)) {
+      setSlotMessage({ mf: mfKey, error: "You can only change slots for your own Member Federation.", ok: false });
       return;
     }
-    const mostInAnyMf = Math.max(0, ...MEMBER_FEDERATIONS.map(m =>
-      adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(m.key)).length));
-    if (n < mostInAnyMf) {
-      setMaxCourseError(`Can't be lower than the ${mostInAnyMf} Course Admin(s) a federation already has.`);
-      return;
+    const nextForMf = { ...(adminSettings.mfSlots?.[mfKey] || {}) };
+    for (const role of editable) {
+      const raw = slotEdits[`${mfKey}:${role}`];
+      if (raw === undefined) continue;
+      const n = parseInt(raw, 10);
+      if (isNaN(n) || n < 1) {
+        setSlotMessage({ mf: mfKey, error: `${SLOT_ROLE_LABELS[role]} slots must be a whole number of at least 1.`, ok: false });
+        return;
+      }
+      const used = mfSlotCount(adminSettings, mfKey, role);
+      if (n < used) {
+        setSlotMessage({ mf: mfKey, error: `Can't set ${SLOT_ROLE_LABELS[role]} slots below the ${used} already in use.`, ok: false });
+        return;
+      }
+      nextForMf[role] = n;
     }
-    saveAdminSettings({ ...adminSettings, maxCourseAdminsPerMf: n });
-    setMaxCourseError("");
-    setMaxCourseSuccess(true);
+    saveAdminSettings({ ...adminSettings, mfSlots: { ...(adminSettings.mfSlots || {}), [mfKey]: nextForMf } });
+    setSlotEdits(prev => {
+      const next = { ...prev };
+      editable.forEach(r => delete next[`${mfKey}:${r}`]);
+      return next;
+    });
+    setSlotMessage({ mf: mfKey, error: "", ok: true });
   }
 
   function handleSetSessionHost() {
@@ -12688,7 +12724,6 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setSignedInAdminName(match.name);
     setSignedInAdminMatch(match);
     setMaxAdminsInput(String(adminSettings.maxAdmins || MAX_ADMINS));
-    setMaxCourseInput(String(adminSettings.maxCourseAdminsPerMf || MAX_COURSE_ADMINS_PER_MF));
     setPanelAuthError(false);
     setSessionHostBlockedMessage("");
     setKickedOutMessage("");
@@ -12777,12 +12812,10 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     }
     const currentMfs = (adminSettings.admins.find(a => a.name.trim().toLowerCase() === editingAdminCoursesName.trim().toLowerCase())?.memberFederations) || [];
     const newlyAddedMfs = editAdminMfSelection.filter(mf => !currentMfs.includes(mf));
-    const fullMf = newlyAddedMfs.find(mf =>
-      adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mf)).length >= maxCourseAdminsPerMf
-    );
+    const fullMf = newlyAddedMfs.find(mf => mfSlotCount(adminSettings, mf, "course") >= mfSlotLimit(adminSettings, mf, "course"));
     if (fullMf) {
       const fullMfLabel = (MEMBER_FEDERATIONS.find(m => m.key === fullMf) || {}).label || fullMf;
-      setEditAdminCoursesError(`${fullMfLabel} already has ${maxCourseAdminsPerMf} Course Admins — the maximum.`);
+      setEditAdminCoursesError(`${fullMfLabel} already has ${mfSlotLimit(adminSettings, fullMf, "course")} Course Admins — the maximum.`);
       return;
     }
     const updatedAdmins = adminSettings.admins.map(a =>
@@ -12869,11 +12902,10 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
         setAddAdminError("Select a Member Federation for this MF Admin.");
         return;
       }
-      const claimedMfs = new Set(adminSettings.admins.filter(a => a.role === "lead").flatMap(a => a.memberFederations || []));
-      const alreadyClaimed = newAdminMfSelection.filter(mf => claimedMfs.has(mf));
+      const alreadyClaimed = newAdminMfSelection.filter(mf => mfSlotCount(adminSettings, mf, "lead") >= mfSlotLimit(adminSettings, mf, "lead"));
       if (alreadyClaimed.length > 0) {
         const labels = alreadyClaimed.map(k => (MEMBER_FEDERATIONS.find(m => m.key === k) || {}).label || k);
-        setAddAdminError(`${labels.join(", ")} already ${alreadyClaimed.length === 1 ? "has" : "have"} a MF Admin — each federation gets exactly one.`);
+        setAddAdminError(`${labels.join(", ")} ${alreadyClaimed.length === 1 ? "has" : "have"} no free MF Admin slots — raise the slot count in Admin Slots first.`);
         return;
       }
     }
@@ -12886,11 +12918,10 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
         setAddAdminError("You can only add an MF Coordinator for your own Member Federation.");
         return;
       }
-      const claimedMfs = new Set(adminSettings.admins.filter(a => a.role === "coordinator").flatMap(a => a.memberFederations || []));
-      const alreadyClaimed = newAdminMfSelection.filter(mf => claimedMfs.has(mf));
+      const alreadyClaimed = newAdminMfSelection.filter(mf => mfSlotCount(adminSettings, mf, "coordinator") >= mfSlotLimit(adminSettings, mf, "coordinator"));
       if (alreadyClaimed.length > 0) {
         const labels = alreadyClaimed.map(k => (MEMBER_FEDERATIONS.find(m => m.key === k) || {}).label || k);
-        setAddAdminError(`${labels.join(", ")} already ${alreadyClaimed.length === 1 ? "has" : "have"} an MF Coordinator — each federation gets exactly one.`);
+        setAddAdminError(`${labels.join(", ")} ${alreadyClaimed.length === 1 ? "has" : "have"} no free MF Coordinator slots — raise the slot count in Admin Slots first.`);
         return;
       }
     }
@@ -12907,12 +12938,10 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
         setAddAdminError("Select at least one course number for this Course Admin.");
         return;
       }
-      const fullMf = newAdminCourseMfSelection.find(mf =>
-        adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mf)).length >= maxCourseAdminsPerMf
-      );
+      const fullMf = newAdminCourseMfSelection.find(mf => mfSlotCount(adminSettings, mf, "course") >= mfSlotLimit(adminSettings, mf, "course"));
       if (fullMf) {
         const fullMfLabel = (MEMBER_FEDERATIONS.find(m => m.key === fullMf) || {}).label || fullMf;
-        setAddAdminError(`${fullMfLabel} already has ${maxCourseAdminsPerMf} Course Admins — the maximum. Remove one before adding another.`);
+        setAddAdminError(`${fullMfLabel} already has ${mfSlotLimit(adminSettings, fullMf, "course")} Course Admins — the maximum. Remove one before adding another.`);
         return;
       }
     }
@@ -13371,7 +13400,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                     )}
                     {iAmLead && (() => {
                       const myMfKey = (signedInAdminMatch.memberFederations || [])[0];
-                      const coordinatorTaken = adminSettings.admins.some(a => a.role === "coordinator" && (a.memberFederations || []).includes(myMfKey));
+                      const coordinatorTaken = !!myMfKey && mfSlotCount(adminSettings, myMfKey, "coordinator") >= mfSlotLimit(adminSettings, myMfKey, "coordinator");
                       return (
                         <div className="space-y-1.5">
                           <p className="text-xs text-slate-500">As a MF Admin, you can add Course Admins for your own Member Federation, and one MF Coordinator.</p>
@@ -13392,10 +13421,10 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                       );
                     })()}
                     {formEffectiveRole === "lead" && iAmMaster && (() => {
-                      const claimedMfs = new Set(adminSettings.admins.filter(a => a.role === "lead").flatMap(a => a.memberFederations || []));
+                      const claimedMfs = new Set(MEMBER_FEDERATIONS.filter(m => mfSlotCount(adminSettings, m.key, "lead") >= mfSlotLimit(adminSettings, m.key, "lead")).map(m => m.key));
                       return (
                         <div>
-                          <p className="text-xs font-medium text-slate-500 mb-1">Member Federation — one MF Admin per federation</p>
+                          <p className="text-xs font-medium text-slate-500 mb-1">Member Federation — MF Admin slots per federation are set in Admin Slots</p>
                           <div className="flex gap-1.5 flex-wrap">
                             {MEMBER_FEDERATIONS.map(mf => {
                               const taken = claimedMfs.has(mf.key);
@@ -13406,7 +13435,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                                     taken ? "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
                                     : newAdminMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-500 border-slate-200"
                                   }`}>
-                                  {mf.label}{taken ? " (taken)" : ""}
+                                  {mf.label}{taken ? " (full)" : ""}
                                 </button>
                               );
                             })}
@@ -13415,10 +13444,10 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                       );
                     })()}
                     {formEffectiveRole === "coordinator" && iAmMaster && (() => {
-                      const claimedMfs = new Set(adminSettings.admins.filter(a => a.role === "coordinator").flatMap(a => a.memberFederations || []));
+                      const claimedMfs = new Set(MEMBER_FEDERATIONS.filter(m => mfSlotCount(adminSettings, m.key, "coordinator") >= mfSlotLimit(adminSettings, m.key, "coordinator")).map(m => m.key));
                       return (
                         <div>
-                          <p className="text-xs font-medium text-slate-500 mb-1">Member Federation — one MF Coordinator per federation</p>
+                          <p className="text-xs font-medium text-slate-500 mb-1">Member Federation — MF Coordinator slots per federation are set in Admin Slots</p>
                           <p className="text-xs text-slate-500 mb-1">Can view and manage things for their federation (Reopen Report, Export PDF, RAPA assessors, Bin) but not Clear History, Remove All CETs, or Merge Duplicate CETs.</p>
                           <div className="flex gap-1.5 flex-wrap">
                             {MEMBER_FEDERATIONS.map(mf => {
@@ -13430,7 +13459,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                                     taken ? "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
                                     : newAdminMfSelection.includes(mf.key) ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-white text-slate-500 border-slate-200"
                                   }`}>
-                                  {mf.label}{taken ? " (taken)" : ""}
+                                  {mf.label}{taken ? " (full)" : ""}
                                 </button>
                               );
                             })}
@@ -13472,7 +13501,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           return (
                             <div key={mfKey}>
                               <p className="text-xs font-medium text-slate-500 mb-1">
-                                {mfLabel} course number(s) — {adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mfKey)).length}/{maxCourseAdminsPerMf} Course Admins already set for this federation
+                                {mfLabel} course number(s) — {adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mfKey)).length}/{mfSlotLimit(adminSettings, mfKey, "course")} Course Admins already set for this federation
                               </p>
                               {options.length === 0 ? (
                                 <p className="text-xs text-slate-500">No courses tagged to this federation yet in Coaches Progress.</p>
@@ -13578,17 +13607,62 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   </div>
                   {maxAdminsError && <p className="text-xs text-red-600 mt-1">{maxAdminsError}</p>}
                   {maxAdminsSuccess && <p className="text-xs text-emerald-600 mt-1">Admin limit updated.</p>}
-                  <p className="text-xs text-slate-500 mt-3 mb-2">Course Admins allowed per Member Federation (currently {maxCourseAdminsPerMf}). The total admin slots above still apply.</p>
-                  <div className="flex items-center gap-2 mb-1">
-                    <input type="number" min="1" value={maxCourseInput}
-                      onChange={e => { setMaxCourseInput(e.target.value); setMaxCourseError(""); setMaxCourseSuccess(false); }}
-                      className="w-24 border border-slate-300 rounded-lg px-3 py-2 text-sm text-center" />
-                    <button onClick={handleSaveMaxCourseAdmins} className="text-sm font-semibold text-indigo-600 hover:text-indigo-700">Save Limit</button>
-                  </div>
-                  {maxCourseError && <p className="text-xs text-red-600 mt-1">{maxCourseError}</p>}
-                  {maxCourseSuccess && <p className="text-xs text-emerald-600 mt-1">Course Admin limit updated.</p>}
                 </div>
               )}
+
+              {(iAmMaster || iAmLead || iAmCoordinator) && (() => {
+                const tier = adminTier(signedInAdminMatch);
+                const editableRoles = slotRolesEditableBy(tier);
+                const myMfs = signedInAdminMatch.memberFederations || [];
+                const visibleMfs = iAmMaster ? MEMBER_FEDERATIONS : MEMBER_FEDERATIONS.filter(m => myMfs.includes(m.key));
+                const shownRoles = ["lead", "coordinator", "course"];
+                return (
+                  <div className="border-t border-slate-100 pt-3">
+                    <p className="text-sm font-semibold text-slate-800 mb-1">Slots per Member Federation</p>
+                    <p className="text-xs text-slate-500 mb-2">
+                      {iAmMaster ? "As MA Admin you can change every slot count."
+                        : iAmLead ? "As MF Admin you can change MF Coordinator and Course Admin slots for your federation."
+                        : "As MF Coordinator you can change Course Admin slots for your federation."}
+                      {" "}The total admin slots limit above still applies.
+                    </p>
+                    <div className="space-y-2">
+                      {visibleMfs.map(mf => (
+                        <div key={mf.key} className="rounded-lg border border-slate-200 p-2.5">
+                          <p className="text-xs font-semibold text-slate-700 mb-1.5">{mf.label}</p>
+                          <div className="flex flex-wrap gap-3 items-end">
+                            {shownRoles.map(role => {
+                              const canEdit = editableRoles.includes(role) && (iAmMaster || myMfs.includes(mf.key));
+                              const used = mfSlotCount(adminSettings, mf.key, role);
+                              const limit = mfSlotLimit(adminSettings, mf.key, role);
+                              const key = `${mf.key}:${role}`;
+                              return (
+                                <div key={role}>
+                                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-0.5">{SLOT_ROLE_LABELS[role]}</p>
+                                  {canEdit ? (
+                                    <div className="flex items-center gap-1.5">
+                                      <input type="number" min="1" value={slotEdits[key] ?? String(limit)}
+                                        onChange={e => { setSlotEdits(prev => ({ ...prev, [key]: e.target.value })); setSlotMessage({ mf: "", error: "", ok: false }); }}
+                                        className="w-16 border border-slate-300 rounded-lg px-2 py-1 text-sm text-center" />
+                                      <span className="text-xs text-slate-400">{used} used</span>
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-slate-500">{used}/{limit} used</p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {shownRoles.some(r => editableRoles.includes(r) && slotEdits[`${mf.key}:${r}`] !== undefined) && (
+                              <button onClick={() => handleSaveMfSlots(mf.key)} className="text-sm font-semibold text-indigo-600 hover:text-indigo-700">Save</button>
+                            )}
+                          </div>
+                          {slotMessage.mf === mf.key && slotMessage.error && <p className="text-xs text-red-600 mt-1">{slotMessage.error}</p>}
+                          {slotMessage.mf === mf.key && slotMessage.ok && <p className="text-xs text-emerald-600 mt-1">Slots updated.</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {iAmMaster && (
                 <div className="border-t border-slate-100 pt-3">
