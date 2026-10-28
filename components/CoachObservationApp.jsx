@@ -1106,6 +1106,7 @@ const ADMIN_LOCKOUT_THRESHOLD = 3;
 const ADMIN_LOCKOUT_MS = 30 * 60 * 1000;
 const DEFAULT_ADMIN_SETTINGS = { admins: [{ name: "Craig Moore", pin: "8938", role: "master" }], maxAdmins: 2, sessionHostName: "Craig Moore" };
 const MAX_ADMINS = 2;
+const MAX_COURSE_ADMINS_PER_MF = 4;
 
 function migrateAdminSettings(raw) {
   if (!raw) return DEFAULT_ADMIN_SETTINGS;
@@ -1125,6 +1126,7 @@ function migrateAdminSettings(raw) {
   return {
     admins: migratedAdmins.length ? migratedAdmins : DEFAULT_ADMIN_SETTINGS.admins,
     maxAdmins: raw.maxAdmins || MAX_ADMINS,
+    maxCourseAdminsPerMf: raw.maxCourseAdminsPerMf || MAX_COURSE_ADMINS_PER_MF,
     sessionHostName: raw.sessionHostName || (migratedAdmins[0] && migratedAdmins[0].name) || DEFAULT_ADMIN_SETTINGS.sessionHostName,
   };
 }
@@ -12378,6 +12380,10 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   const [sessionHostSuccess, setSessionHostSuccess] = useState(false);
 
   const maxAdmins = adminSettings.maxAdmins || MAX_ADMINS;
+  const maxCourseAdminsPerMf = adminSettings.maxCourseAdminsPerMf || MAX_COURSE_ADMINS_PER_MF;
+  const [maxCourseInput, setMaxCourseInput] = useState("");
+  const [maxCourseError, setMaxCourseError] = useState("");
+  const [maxCourseSuccess, setMaxCourseSuccess] = useState(false);
   const iAmSessionHost = panelAuthed && isSessionHost(adminSettings, signedInAdminName);
   const iAmMaster = panelAuthed && isMasterAdmin(signedInAdminMatch);
   const iAmLead = panelAuthed && adminTier(signedInAdminMatch) === "lead";
@@ -12617,6 +12623,24 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setMaxAdminsSuccess(true);
   }
 
+  function handleSaveMaxCourseAdmins() {
+    setMaxCourseSuccess(false);
+    const n = parseInt(maxCourseInput, 10);
+    if (isNaN(n) || n < 1) {
+      setMaxCourseError("Enter a whole number of at least 1.");
+      return;
+    }
+    const mostInAnyMf = Math.max(0, ...MEMBER_FEDERATIONS.map(m =>
+      adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(m.key)).length));
+    if (n < mostInAnyMf) {
+      setMaxCourseError(`Can't be lower than the ${mostInAnyMf} Course Admin(s) a federation already has.`);
+      return;
+    }
+    saveAdminSettings({ ...adminSettings, maxCourseAdminsPerMf: n });
+    setMaxCourseError("");
+    setMaxCourseSuccess(true);
+  }
+
   function handleSetSessionHost() {
     setSessionHostSuccess(false);
     const name = sessionHostNameInput.trim();
@@ -12664,6 +12688,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setSignedInAdminName(match.name);
     setSignedInAdminMatch(match);
     setMaxAdminsInput(String(adminSettings.maxAdmins || MAX_ADMINS));
+    setMaxCourseInput(String(adminSettings.maxCourseAdminsPerMf || MAX_COURSE_ADMINS_PER_MF));
     setPanelAuthError(false);
     setSessionHostBlockedMessage("");
     setKickedOutMessage("");
@@ -12753,11 +12778,11 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     const currentMfs = (adminSettings.admins.find(a => a.name.trim().toLowerCase() === editingAdminCoursesName.trim().toLowerCase())?.memberFederations) || [];
     const newlyAddedMfs = editAdminMfSelection.filter(mf => !currentMfs.includes(mf));
     const fullMf = newlyAddedMfs.find(mf =>
-      adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mf)).length >= 4
+      adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mf)).length >= maxCourseAdminsPerMf
     );
     if (fullMf) {
       const fullMfLabel = (MEMBER_FEDERATIONS.find(m => m.key === fullMf) || {}).label || fullMf;
-      setEditAdminCoursesError(`${fullMfLabel} already has 4 Course Admins — the maximum.`);
+      setEditAdminCoursesError(`${fullMfLabel} already has ${maxCourseAdminsPerMf} Course Admins — the maximum.`);
       return;
     }
     const updatedAdmins = adminSettings.admins.map(a =>
@@ -12883,11 +12908,11 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
         return;
       }
       const fullMf = newAdminCourseMfSelection.find(mf =>
-        adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mf)).length >= 4
+        adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mf)).length >= maxCourseAdminsPerMf
       );
       if (fullMf) {
         const fullMfLabel = (MEMBER_FEDERATIONS.find(m => m.key === fullMf) || {}).label || fullMf;
-        setAddAdminError(`${fullMfLabel} already has 4 Course Admins — the maximum. Remove one before adding another.`);
+        setAddAdminError(`${fullMfLabel} already has ${maxCourseAdminsPerMf} Course Admins — the maximum. Remove one before adding another.`);
         return;
       }
     }
@@ -13447,7 +13472,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           return (
                             <div key={mfKey}>
                               <p className="text-xs font-medium text-slate-500 mb-1">
-                                {mfLabel} course number(s) — {adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mfKey)).length}/4 Course Admins already set for this federation
+                                {mfLabel} course number(s) — {adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mfKey)).length}/{maxCourseAdminsPerMf} Course Admins already set for this federation
                               </p>
                               {options.length === 0 ? (
                                 <p className="text-xs text-slate-500">No courses tagged to this federation yet in Coaches Progress.</p>
@@ -13553,6 +13578,15 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   </div>
                   {maxAdminsError && <p className="text-xs text-red-600 mt-1">{maxAdminsError}</p>}
                   {maxAdminsSuccess && <p className="text-xs text-emerald-600 mt-1">Admin limit updated.</p>}
+                  <p className="text-xs text-slate-500 mt-3 mb-2">Course Admins allowed per Member Federation (currently {maxCourseAdminsPerMf}). The total admin slots above still apply.</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <input type="number" min="1" value={maxCourseInput}
+                      onChange={e => { setMaxCourseInput(e.target.value); setMaxCourseError(""); setMaxCourseSuccess(false); }}
+                      className="w-24 border border-slate-300 rounded-lg px-3 py-2 text-sm text-center" />
+                    <button onClick={handleSaveMaxCourseAdmins} className="text-sm font-semibold text-indigo-600 hover:text-indigo-700">Save Limit</button>
+                  </div>
+                  {maxCourseError && <p className="text-xs text-red-600 mt-1">{maxCourseError}</p>}
+                  {maxCourseSuccess && <p className="text-xs text-emerald-600 mt-1">Course Admin limit updated.</p>}
                 </div>
               )}
 
