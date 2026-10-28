@@ -1108,6 +1108,24 @@ const DEFAULT_ADMIN_SETTINGS = { admins: [{ name: "Craig Moore", pin: "8938", ro
 const MAX_ADMINS = 2;
 const MAX_COURSE_ADMINS_PER_MF = 4;
 const DEFAULT_MF_SLOTS = { lead: 1, coordinator: 1 };
+// Role colours follow the Okabe-Ito colour-blind-safe palette (blue, orange,
+// bluish-green, reddish-purple), darkened for text contrast. Colour is never
+// the only cue: each role also has its own shape symbol and a heavier border
+// plus a tick when selected.
+const ROLE_STYLE = {
+  master:      { c: "#0072B2", bg: "#E3F0F8", sym: "\u25C6" },
+  lead:        { c: "#A85F00", bg: "#FCEFD6", sym: "\u25B2" },
+  coordinator: { c: "#00694F", bg: "#DCF1EA", sym: "\u25A0" },
+  course:      { c: "#9A3F78", bg: "#F6E5EF", sym: "\u25CF" },
+};
+function roleBtnProps(role, selected, disabled) {
+  const st = ROLE_STYLE[role];
+  const base = "flex-1 text-xs font-semibold px-3 py-2 rounded-lg transition-colors";
+  if (disabled) return { className: base + " cursor-not-allowed", style: { border: "1px solid #e2e8f0", color: "#cbd5e1", background: "#fff" } };
+  return selected
+    ? { className: base, style: { border: `2px solid ${st.c}`, color: st.c, background: st.bg } }
+    : { className: base, style: { border: `1px solid ${st.c}66`, color: st.c, background: "#fff" } };
+}
 const SLOT_ROLE_LABELS = { lead: "MF Admin", coordinator: "MF Coordinator", course: "Course Admin" };
 // Slots per Member Federation for one role. Saved overrides live in
 // adminSettings.mfSlots[mfKey][role]; otherwise MF Admin and MF Coordinator
@@ -13381,20 +13399,24 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                     {iAmMaster && (
                       <div className="flex gap-2 flex-wrap">
                         <button onClick={() => { setNewAdminRole("master"); setNewAdminMfSelection([]); setAddAdminError(""); }} type="button"
-                          className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "master" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
-                          MA Admin
+                          {...roleBtnProps("master", newAdminRole === "master", false)}>
+                          
+                          {ROLE_STYLE.master.sym} MA Admin{newAdminRole === "master" ? " \u2713" : ""}
                         </button>
                         <button onClick={() => { setNewAdminRole("lead"); setAddAdminError(""); }} type="button"
-                          className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "lead" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
-                          MF Admin ({adminSettings.admins.filter(a => a.role === "lead").length}/MF)
+                          {...roleBtnProps("lead", newAdminRole === "lead", false)}>
+                          
+                          {ROLE_STYLE.lead.sym} MF Admin{newAdminRole === "lead" ? " \u2713" : ""}
                         </button>
                         <button onClick={() => { setNewAdminRole("coordinator"); setAddAdminError(""); }} type="button"
-                          className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "coordinator" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
-                          MF Coordinator ({adminSettings.admins.filter(a => a.role === "coordinator").length}/MF)
+                          {...roleBtnProps("coordinator", newAdminRole === "coordinator", false)}>
+                          
+                          {ROLE_STYLE.coordinator.sym} MF Coordinator{newAdminRole === "coordinator" ? " \u2713" : ""}
                         </button>
                         <button onClick={() => { setNewAdminRole("course"); setAddAdminError(""); }} type="button"
-                          className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${newAdminRole === "course" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
-                          Course Admin
+                          {...roleBtnProps("course", newAdminRole === "course", false)}>
+                          
+                          {ROLE_STYLE.course.sym} Course Admin{newAdminRole === "course" ? " \u2713" : ""}
                         </button>
                       </div>
                     )}
@@ -13406,15 +13428,12 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           <p className="text-xs text-slate-500">As a MF Admin, you can add Course Admins for your own Member Federation, and one MF Coordinator.</p>
                           <div className="flex gap-2">
                             <button onClick={() => { setNewAdminRole("course"); setAddAdminError(""); }} type="button"
-                              className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${formEffectiveRole === "course" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"}`}>
-                              Course Admin
+                              {...roleBtnProps("course", formEffectiveRole === "course", false)}>
+                              {ROLE_STYLE.course.sym} Course Admin{formEffectiveRole === "course" ? " \u2713" : ""}
                             </button>
                             <button onClick={() => { if (!coordinatorTaken) { setNewAdminRole("coordinator"); setNewAdminMfSelection(myMfKey ? [myMfKey] : []); setAddAdminError(""); } }} type="button" disabled={coordinatorTaken}
-                              className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${
-                                coordinatorTaken ? "border-slate-100 text-slate-300 cursor-not-allowed"
-                                : formEffectiveRole === "coordinator" ? "border-slate-900 bg-slate-50 text-slate-800" : "border-slate-200 text-slate-500"
-                              }`}>
-                              MF Coordinator{coordinatorTaken ? " (already set)" : ""}
+                              {...roleBtnProps("coordinator", formEffectiveRole === "coordinator", coordinatorTaken)}>
+                              {ROLE_STYLE.coordinator.sym} MF Coordinator{coordinatorTaken ? " (slots full)" : formEffectiveRole === "coordinator" ? " \u2713" : ""}
                             </button>
                           </div>
                         </div>
@@ -13615,7 +13634,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                 const editableRoles = slotRolesEditableBy(tier);
                 const myMfs = signedInAdminMatch.memberFederations || [];
                 const visibleMfs = iAmMaster ? MEMBER_FEDERATIONS : MEMBER_FEDERATIONS.filter(m => myMfs.includes(m.key));
-                const shownRoles = ["lead", "coordinator", "course"];
+                const shownRoles = editableRoles;
                 return (
                   <div className="border-t border-slate-100 pt-3">
                     <p className="text-sm font-semibold text-slate-800 mb-1">Slots per Member Federation</p>
@@ -13637,7 +13656,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                               const key = `${mf.key}:${role}`;
                               return (
                                 <div key={role}>
-                                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-0.5">{SLOT_ROLE_LABELS[role]}</p>
+                                  <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: ROLE_STYLE[role].c }}>{ROLE_STYLE[role].sym} {SLOT_ROLE_LABELS[role]}</p>
                                   {canEdit ? (
                                     <div className="flex items-center gap-1.5">
                                       <input type="number" min="1" value={slotEdits[key] ?? String(limit)}
