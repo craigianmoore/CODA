@@ -3368,12 +3368,12 @@ function RemoveAllBar({ label, count, onClear, warningText, adminSettings, admin
     }
     if (!masterOnly && isCourseAdmin(match)) {
       recordAdminAttempt(adminName, true);
-      setScopeError("Course Admins can't remove CETs — this needs a MF Admin or FA Admin.");
+      setScopeError("Course Admins can't remove CETs — this needs an MF Admin (TD/CEM) or FA Admin.");
       return;
     }
     if (!masterOnly && isCoordinatorAdmin(match)) {
       recordAdminAttempt(adminName, true);
-      setScopeError("MF Coordinators can't remove CETs — this needs a MF Admin or FA Admin.");
+      setScopeError("MF Coordinators can't remove CETs — this needs an MF Admin (TD/CEM) or FA Admin.");
       return;
     }
     recordAdminAttempt(adminName, true);
@@ -4387,13 +4387,13 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
     if (isCourseAdmin(match)) {
       recordAdminAttempt(mergeAuthName, true);
       setMergeAuthError(false);
-      setMergeAuthScopeError("Course Admins can't merge duplicate CETs — this needs a MF Admin or FA Admin.");
+      setMergeAuthScopeError("Course Admins can't merge duplicate CETs — this needs an MF Admin (TD/CEM) or FA Admin.");
       return;
     }
     if (isCoordinatorAdmin(match)) {
       recordAdminAttempt(mergeAuthName, true);
       setMergeAuthError(false);
-      setMergeAuthScopeError("MF Coordinators can't merge duplicate CETs — this needs a MF Admin or FA Admin.");
+      setMergeAuthScopeError("MF Coordinators can't merge duplicate CETs — this needs an MF Admin (TD/CEM) or FA Admin.");
       return;
     }
     recordAdminAttempt(mergeAuthName, true);
@@ -7024,7 +7024,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
 
       {adminAuthFor === "assessors" && (
         <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-          <p className="text-xs text-indigo-700">Managing assessors needs a MF Admin, MF Coordinator, or FA Admin name and PIN. A MF Admin or MF Coordinator manages assessors for their own Member Federation only.</p>
+          <p className="text-xs text-indigo-700">Managing assessors needs an MF Admin (TD/CEM), MF Coordinator, or FA Admin name and PIN. An MF Admin (TD/CEM) or MF Coordinator manages assessors for their own Member Federation only.</p>
           <div className="grid sm:grid-cols-2 gap-2">
             <input value={adminAuthName} onChange={e => { setAdminAuthName(e.target.value); setAdminAuthError(false); }} placeholder="Admin name"
               className={`border rounded-lg px-3 py-2 text-sm ${adminAuthError ? "border-red-400" : "border-indigo-300"}`} />
@@ -7353,7 +7353,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
         </div>
         {adminAuthFor === "export" && (
           <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-            <p className="text-xs text-indigo-700">Exporting needs a MF Admin, MF Coordinator, or FA Admin name and PIN. A MF Admin or MF Coordinator's export is limited to their own Member Federation.</p>
+            <p className="text-xs text-indigo-700">Exporting needs an MF Admin (TD/CEM), MF Coordinator, or FA Admin name and PIN. An MF Admin (TD/CEM) or MF Coordinator's export is limited to their own Member Federation.</p>
             <div className="grid sm:grid-cols-2 gap-2">
               <input value={adminAuthName} onChange={e => { setAdminAuthName(e.target.value); setAdminAuthError(false); }} placeholder="Admin name"
                 className={`border rounded-lg px-3 py-2 text-sm ${adminAuthError ? "border-red-400" : "border-indigo-300"}`} />
@@ -11822,7 +11822,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
       }
       if (!adminHasCourseAccess(match, obs.courseNumber, obs.memberFederation)) {
         await kvSet("adminLockouts", { ...lockouts, [key]: { failCount: 0, lockedUntil: 0 } });
-        setReopenError("You don't have access to reopen this report — check with a MF Admin or FA Admin for your federation.");
+        setReopenError("You don't have access to reopen this report — check with an MF Admin (TD/CEM) or FA Admin for your federation.");
         setReopening(false);
         return;
       }
@@ -12894,7 +12894,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   function handleAddAdmin() {
     const iAmLead = adminTier(signedInAdminMatch) === "lead";
     if (!iAmMaster && !iAmLead) {
-      setAddAdminError("Only an FA Admin or MF Admin can add admins.");
+      setAddAdminError("Only an FA Admin or MF Admin (TD/CEM) can add admins.");
       return;
     }
     // A MF Admin's role picker is hidden entirely (they only ever add
@@ -12917,13 +12917,13 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     }
     if (effectiveRole === "lead") {
       if (newAdminMfSelection.length === 0) {
-        setAddAdminError("Select a Member Federation for this MF Admin.");
+        setAddAdminError("Select a Member Federation for this MF Admin (TD/CEM).");
         return;
       }
       const alreadyClaimed = newAdminMfSelection.filter(mf => mfSlotCount(adminSettings, mf, "lead") >= mfSlotLimit(adminSettings, mf, "lead"));
       if (alreadyClaimed.length > 0) {
         const labels = alreadyClaimed.map(k => (MEMBER_FEDERATIONS.find(m => m.key === k) || {}).label || k);
-        setAddAdminError(`${labels.join(", ")} ${alreadyClaimed.length === 1 ? "has" : "have"} no free MF Admin slots — raise the slot count in Admin Slots first.`);
+        setAddAdminError(`${labels.join(", ")} ${alreadyClaimed.length === 1 ? "has" : "have"} no free MF Admin (TD/CEM) slots — raise the slot count in Admin Slots first.`);
         return;
       }
     }
@@ -13116,7 +13116,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   {iAmLead
                     ? "You're an MF Admin (TD/CEM) — Clear History, Remove All CETs, Reopen Report, Merge Duplicate CETs, and PDF export below are scoped to your Member Federation(s) only. You can also add Course Admins and one MF Coordinator for your federation. Data export/import and Coach-related admin actions are FA Admin only."
                     : iAmCoordinator
-                    ? "You're an MF Coordinator — Reopen Report, PDF export, RAPA assessor management, and the Bin below are scoped to your Member Federation only. Unlike a MF Admin, you can't Clear History, Remove All CETs, Merge Duplicate CETs, or add/remove other admins."
+                    ? "You're an MF Coordinator — Reopen Report, PDF export, RAPA assessor management, and the Bin below are scoped to your Member Federation only. Unlike an MF Admin (TD/CEM), you can't Clear History, Remove All CETs, Merge Duplicate CETs, or add/remove other admins."
                     : "You're a Course Admin — Reopen Report and PDF export below are scoped to your assigned course number(s) only. Clear History, Remove All CETs, Merge Duplicates, Data export/import, and Coach-related admin actions are not available at this level."}
                 </p>
               )}
@@ -13353,7 +13353,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   </div>
                 )}
                 {!canManageAdmins ? (
-                  <p className="text-xs text-slate-500">Only an FA Admin or MF Admin can add or manage admins.</p>
+                  <p className="text-xs text-slate-500">Only an FA Admin or MF Admin (TD/CEM) can add or manage admins.</p>
                 ) : adminSettings.admins.length < maxAdmins ? (
                   <div className="space-y-2">
                     {(() => {
@@ -13425,7 +13425,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                       const coordinatorTaken = !!myMfKey && mfSlotCount(adminSettings, myMfKey, "coordinator") >= mfSlotLimit(adminSettings, myMfKey, "coordinator");
                       return (
                         <div className="space-y-1.5">
-                          <p className="text-xs text-slate-500">As a MF Admin, you can add Course Admins for your own Member Federation, and one MF Coordinator.</p>
+                          <p className="text-xs text-slate-500">As an MF Admin (TD/CEM), you can add Course Admins for your own Member Federation, and one MF Coordinator.</p>
                           <div className="flex gap-2">
                             <button onClick={() => { setNewAdminRole("course"); setAddAdminError(""); }} type="button"
                               {...roleBtnProps("course", formEffectiveRole === "course", false)}>
@@ -13443,7 +13443,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                       const claimedMfs = new Set(MEMBER_FEDERATIONS.filter(m => mfSlotCount(adminSettings, m.key, "lead") >= mfSlotLimit(adminSettings, m.key, "lead")).map(m => m.key));
                       return (
                         <div>
-                          <p className="text-xs font-medium text-slate-500 mb-1">Member Federation — MF Admin slots per federation are set in Admin Slots</p>
+                          <p className="text-xs font-medium text-slate-500 mb-1">Member Federation — MF Admin (TD/CEM) slots per federation are set in Admin Slots</p>
                           <div className="flex gap-1.5 flex-wrap">
                             {MEMBER_FEDERATIONS.map(mf => {
                               const taken = claimedMfs.has(mf.key);
@@ -13488,7 +13488,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                     })()}
                     {formEffectiveRole === "coordinator" && iAmLead && (
                       <p className="text-xs text-slate-500">
-                        This MF Coordinator will be scoped to {(MEMBER_FEDERATIONS.find(m => m.key === (signedInAdminMatch.memberFederations || [])[0]) || {}).label || "your Member Federation"} — the same one you're MF Admin for.
+                        This MF Coordinator will be scoped to {(MEMBER_FEDERATIONS.find(m => m.key === (signedInAdminMatch.memberFederations || [])[0]) || {}).label || "your Member Federation"} — the same one you're MF Admin (TD/CEM) for.
                       </p>
                     )}
                     {formEffectiveRole === "course" && (
