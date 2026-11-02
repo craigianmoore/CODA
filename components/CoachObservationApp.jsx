@@ -9396,11 +9396,11 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                             </button>
                           )}
                           {g.courseNumber && (isBDiploma(g.courseTitle) || isADiploma(g.courseTitle)) && (
-                            <label onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap cursor-pointer" title="Show 'Presentation' and numbered 'Session 1, 2, 3…' names for this course">
+                            <label onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap cursor-pointer" title="Use the numbered checklist for this course: 'Presentation' and 'Session 1 – topic' to 'Session 4 – topic', instead of 'Goalscoring Presentation' and the plain topic names">
                               <input type="checkbox" checked={!!(newLabelCourses || {})[g.courseNumber]}
                                 onChange={() => saveNewLabelCourses({ ...(newLabelCourses || {}), [g.courseNumber]: !(newLabelCourses || {})[g.courseNumber] })}
                                 className="rounded border-slate-300" />
-                              New names
+                              Numbered sessions
                             </label>
                           )}
                           {(() => {
