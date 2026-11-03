@@ -1465,6 +1465,12 @@ const TYPE_OF_SESSION_OPTIONS = [
 const PROGRESSIVE_SUBOPTIONS = ["Positioning Game (PG)", "Game Training (GT)"];
 const PPP_SUBOPTIONS = ["Play / Practice", "Practice / Play"];
 
+// Today's date as YYYY-MM-DD in the user's own timezone. (toISOString() is
+// UTC, which is a day behind for anyone ahead of UTC until the afternoon.)
+function todayLocalISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
 function downloadCsv(rows, filename) {
@@ -5992,7 +5998,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
       category: hzCategory, desc: hzAccount, controls: "",
       suggestedRating1: hzSuggest1, suggestedRating2: hzSuggest2,
       proposedById: raForm.leadCetId, proposedByName: raForm.leadCetName || raForm.assessorName || "",
-      date: new Date().toISOString().slice(0, 10), status: "pending",
+      date: todayLocalISO(), status: "pending",
       relatedHazardNote: hzIdentified,
     };
     saveRapaProposals([...rapaProposals, proposal]);
@@ -7977,7 +7983,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
 
   function addCorrespondence(task) {
     const note = corrDraft.note.trim();
-    const entry = { id: uid(), type: corrDraft.type, date: corrDraft.date || new Date().toISOString().slice(0, 10), note, by: session?.name || "" };
+    const entry = { id: uid(), type: corrDraft.type, date: corrDraft.date || todayLocalISO(), note, by: session?.name || "" };
     saveCompletedTasks(completedTasks.map(t => t.id === task.id
       ? { ...t, correspondence: [...(t.correspondence || []), entry], updatedAt: new Date().toISOString() }
       : t));
@@ -10107,7 +10113,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     return initialEducatorMatch ? "" : (existingObservation.coachEducatorName || "");
   });
 
-  const [date, setDate] = useState(() => existingObservation?.date || new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => existingObservation?.date || todayLocalISO());
   const [memberFederation, setMemberFederation] = useState(() => existingObservation?.memberFederation || defaultMemberFederation || DEFAULT_MEMBER_FEDERATION);
   const [sessionType, setSessionType] = useState(() => existingObservation?.sessionType || "formal");
 
