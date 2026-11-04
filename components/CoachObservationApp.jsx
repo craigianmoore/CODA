@@ -5859,13 +5859,17 @@ function buildOutstandingCandidateHtml(task, coach) {
   </body></html>`;
 }
 
+// Drawn as SVG / CSS rather than emoji glyphs, which come out blank in the
+// server-rendered PDF (no emoji font on the headless browser).
+const PDF_TICK_SVG = '<svg width="14" height="14" viewBox="0 0 14 14" style="vertical-align:-2px"><path d="M2 7.5l3.2 3.2L12 3.8" fill="none" stroke="#059669" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const PDF_EMPTY_BOX = '<span style="display:inline-block;width:11px;height:11px;border:1.5px solid #94a3b8;border-radius:2px;vertical-align:-1px"></span>';
 function buildCandidateHtml(task, coach, observations, proxyLogos = false) {
   const logoSrc = (u) => proxyLogos ? `/api/logo-proxy?url=${encodeURIComponent(u || "")}` : (u || "");
   const esc = (s) => (s || "").toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const { done, total } = courseworkProgress(task, coach?.topics);
   const items = total > 0 ? courseworkItems(task, coach?.topics, task.team) : [];
   const checklistRows = items.map(i =>
-    `<tr><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${i.done ? "✅" : "☐"} ${itemLabelHtml(i)}${i.done ? "" : itemNoteHtml(task, i.label)}</td><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;${i.outcome === "Not Yet Competent" ? "color:#64748b;" : ""}">${esc(i.outcome) || "—"}</td></tr>`
+    `<tr><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${i.done ? PDF_TICK_SVG : PDF_EMPTY_BOX} ${itemLabelHtml(i)}${i.done ? "" : itemNoteHtml(task, i.label)}</td><td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;${i.outcome === "Not Yet Competent" ? "color:#64748b;" : ""}">${esc(i.outcome) || (i.done ? PDF_TICK_SVG : "—")}</td></tr>`
   ).join("");
   const cnTask = (task.courseNumber || "").trim();
   const forThisCourse = (observations || []).filter(o =>
