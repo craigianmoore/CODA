@@ -8242,7 +8242,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             : headers.find(h => /goalscoring/i.test(h)) || ""
         );
         setCourseworkTopicHeaders([1, 2, 3, 4].map(n => guessTopicHeader(headers, n)));
-        setCourseworkSkipHeaders(headers.filter(h => /comment|note|email|phone|mobile|dob|birth|address|timestamp|^id$|gender|suburb|postcode/i.test(h)));
+        setCourseworkSkipHeaders(headers.filter(h => /comment|note|email|phone|mobile|dob|birth|address|timestamp|^id$|gender|suburb|postcode|external system|^username$|^courses?$|^course\s*#|candidate\s*#|^department$|group\s*number|^person(first|last)name$/i.test(h)));
         setCourseworkDetectedAttendanceHeaders([]);
       },
       error: () => setCourseworkError("Could not read file. Make sure it's a valid CSV."),
@@ -8265,19 +8265,10 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       return;
     }
     const nameMapped = courseworkNameHeader === "__firstlast__" ? !!(courseworkFirstNameHeader && courseworkLastNameHeader) : !!courseworkNameHeader;
-    if (courseworkSheetDriven) {
-      const missing = [];
-      if (!nameMapped) missing.push("Name");
-      if (!courseworkClubHeader) missing.push("Club");
-      if (!courseworkFaHeader) missing.push("FA Number");
-      if (!courseworkCetHeader) missing.push("CET");
-      if (!courseworkOnlineModulesHeader) missing.push("Online Modules");
-      if (courseworkDiplomaType !== "C") courseworkTopicHeaders.forEach((h, i) => { if (!h) missing.push(`Session ${i + 1} Topic`); });
-      if (missing.length) {
-        setCourseworkError(`Required column${missing.length === 1 ? "" : "s"} not matched: ${missing.join(", ")}. Match each one above (or fix the sheet), or untick "Sheet-driven checklist" to use the original import.`);
-        setCourseworkPreview(null);
-        return;
-      }
+    if (courseworkSheetDriven && !nameMapped) {
+      setCourseworkError("Course specific needs a Name column (or First + Last Name) matched above. Everything else is optional and comes from whatever columns your sheet has.");
+      setCourseworkPreview(null);
+      return;
     }
     const extraHeaders = courseworkSheetDriven
       ? courseworkHeaders.filter(h => h && h.trim() && !excluded.has(h) && !attendanceHeaders.includes(h) && !courseworkSkipHeaders.includes(h))
@@ -8301,8 +8292,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       const topics = courseworkDiplomaType !== "C"
         ? courseworkTopicHeaders.map((h, i) => {
             const val = h ? (r[h] || "").toString().trim() : "";
-            return val || `Session Topic ${i + 1}`;
-          })
+            return val || (courseworkSheetDriven ? "" : `Session Topic ${i + 1}`);
+          }).filter(Boolean)
         : [];
       const customItems = extraHeaders.map(h => ({ label: h.trim(), done: isTickedCell(r[h]) }));
       return { coachName, club, faNumber, cetName, goalscoringTeam, onlineModulesPct, attended, total, pct, matchedCoach, topics, customItems };
@@ -9156,7 +9147,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               </div>
               {courseworkDiplomaType !== "C" && (
                 <div>
-                  <p className="text-xs font-medium text-slate-600 mb-1.5">{courseworkSheetDriven ? "Session Topic columns (required)" : 'Session Topic columns (optional — leave as None to use "Session Topic 1–4")'}</p>
+                  <p className="text-xs font-medium text-slate-600 mb-1.5">{courseworkSheetDriven ? "Session Topic columns (optional — only those your sheet has)" : 'Session Topic columns (optional — leave as None to use "Session Topic 1–4")'}</p>
                   <div className="grid sm:grid-cols-2 gap-3">
                     {[0, 1, 2, 3].map(i => (
                       <div key={i}>
@@ -9191,12 +9182,18 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 );
               })()}
               <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
-                <label className="flex items-start gap-2 text-sm font-medium text-slate-700 cursor-pointer">
-                  <input type="checkbox" checked={courseworkSheetDriven} onChange={() => { setCourseworkSheetDriven(v => !v); setCourseworkPreview(null); }} className="rounded border-slate-300 mt-0.5" />
-                  <span>Sheet-driven checklist (new format)
-                    <span className="block text-xs font-normal text-slate-500">Name, Club, FA Number, CET, Online Modules{courseworkDiplomaType !== "C" ? ", Session Topics 1–4" : ""} and the attendance dates are required. Every other column becomes a tick item titled with its header. Existing coaches already on the old checklist keep it.</span>
-                  </span>
-                </label>
+                <p className="text-sm font-medium text-slate-700">Checklist columns</p>
+                <div className="grid sm:grid-cols-2 gap-2">
+                  {[
+                    [false, "Original columns", "The standard fixed checklist (Goalscoring Presentation, Game Plan, Annual Plan, 6 Week Cycles, etc.)."],
+                    [true, "Course specific (from the spreadsheet)", "The checklist is built from this sheet's columns. Only Name and the attendance dates are required; every other column left ticked below becomes a tick item titled with its header. Coaches already on the old checklist keep it."],
+                  ].map(([val, title, desc]) => (
+                    <label key={title} className={`flex items-start gap-2 rounded-lg border p-2 text-sm cursor-pointer ${courseworkSheetDriven === val ? "border-[#004890] bg-blue-50" : "border-slate-200"}`}>
+                      <input type="radio" name="cw-checklist-mode" checked={courseworkSheetDriven === val} onChange={() => { setCourseworkSheetDriven(val); setCourseworkPreview(null); }} className="mt-0.5" />
+                      <span className="font-medium text-slate-700">{title}<span className="block text-xs font-normal text-slate-500">{desc}</span></span>
+                    </label>
+                  ))}
+                </div>
                 {courseworkSheetDriven && (() => {
                   const used = new Set([courseworkNameHeader, courseworkFirstNameHeader, courseworkLastNameHeader, courseworkClubHeader, courseworkFaHeader, courseworkCetHeader, courseworkOnlineModulesHeader, ...courseworkTopicHeaders].filter(Boolean));
                   const extras = (courseworkHeaders || []).filter(h => h && h.trim() && !used.has(h) && !isDateColumnHeader(h, courseworkDiplomaType));
