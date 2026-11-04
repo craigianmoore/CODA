@@ -7556,6 +7556,16 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [expandedCourses, setExpandedCourses] = useState(() => new Set());
+  const [columnsPanelCourse, setColumnsPanelCourse] = useState(null);
+  const [columnToRemove, setColumnToRemove] = useState(null);
+  async function removeCourseColumn(records, label) {
+    const ids = new Set(records.map(r => r.id));
+    const next = completedTasks.map(t => ids.has(t.id) && t.sheetDriven
+      ? { ...t, customItems: (t.customItems || []).filter(ci => ci.label !== label), updatedAt: new Date().toISOString() }
+      : t);
+    await saveCompletedTasks(next);
+    setColumnToRemove(null);
+  }
   const [expandedMfs, setExpandedMfs] = useState(() => new Set());
   // While a search or "incomplete only" filter is active every group is open
   // by default; these sets record groups the user has manually closed.
@@ -9440,12 +9450,46 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                               </button>
                             );
                           })()}
+                          {g.records.some(t => t.sheetDriven && (t.customItems || []).length > 0) && (
+                            <button type="button" onClick={e => { e.stopPropagation(); setColumnToRemove(null); setColumnsPanelCourse(columnsPanelCourse === (g.courseNumber || "none") ? null : (g.courseNumber || "none")); }}
+                              className="text-xs font-semibold text-slate-600 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 whitespace-nowrap">
+                              Checklist columns
+                            </button>
+                          )}
                           <label onClick={e => e.stopPropagation()} className="flex items-center gap-1.5 text-xs font-medium text-slate-500 cursor-pointer whitespace-nowrap">
                             <input type="checkbox" checked={groupAllSelected} onChange={() => toggleSelectAllInGroup(g.records)} className="rounded border-slate-300" />
                             Select all
                           </label>
                         </div>
                       </div>
+                      {columnsPanelCourse === (g.courseNumber || "none") && (() => {
+                        const labels = [];
+                        g.records.forEach(t => { if (t.sheetDriven) (t.customItems || []).forEach(ci => { if (!labels.includes(ci.label)) labels.push(ci.label); }); });
+                        return (
+                          <div className="px-4 pb-3">
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+                              <p className="text-xs font-semibold text-slate-700">Checklist columns for this course</p>
+                              <p className="text-xs text-slate-500">Remove a column from every coach on this course. Anything ticked under it is lost; re-importing the sheet brings it back.</p>
+                              {labels.length === 0 ? <p className="text-xs text-slate-500">No columns left.</p> : (
+                                <div className="flex flex-wrap gap-2">
+                                  {labels.map(l => columnToRemove === l ? (
+                                    <span key={l} className="flex items-center gap-2 text-xs bg-red-50 border border-red-200 rounded-full pl-3 pr-1 py-1 text-red-700">
+                                      Remove “{l}”?
+                                      <button type="button" onClick={() => removeCourseColumn(g.records, l)} className="font-semibold bg-red-600 text-white rounded-full px-2 py-0.5">Remove</button>
+                                      <button type="button" onClick={() => setColumnToRemove(null)} className="px-1.5 py-0.5 text-slate-500">Cancel</button>
+                                    </span>
+                                  ) : (
+                                    <span key={l} className="flex items-center gap-1 text-xs bg-white border border-slate-300 rounded-full pl-3 pr-1 py-1 text-slate-700">
+                                      {l}
+                                      <button type="button" aria-label={`Remove ${l}`} onClick={() => setColumnToRemove(l)} className="w-5 h-5 rounded-full hover:bg-slate-100 text-slate-500 leading-none">×</button>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
                       {groupSomeSelected && !g.courseNumber && (
                         <div className="px-4 pb-3 -mt-1">
                           <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-2.5 flex items-center gap-2 flex-wrap">
