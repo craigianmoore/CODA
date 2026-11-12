@@ -108,3 +108,28 @@ rather the app live at the root again, swap `app/page.js` (landing) and
 import paths in whichever file ends up at `/app` (`../../lib/supabase`
 and `../../components/CoachObservationApp` one level down from root,
 `../lib/supabase` etc. at the root itself).
+
+## FIFA Mentoring (admin-only area)
+
+A separate **FIFA Mentoring** tab (the FIFA Coach Educators' Mentoring Programme
+tracker) sits behind its own permission, independent of CODA admin rights:
+
+| Login | Sees |
+|---|---|
+| FA Admin (master) | CODA and FIFA Mentoring |
+| MF Admin / Coordinator / Course Admin | CODA only, unless an FA Admin switches **FIFA: on** next to their name (History -> Admin) |
+| **FIFA Mentor** (new role, added by an FA Admin) | FIFA Mentoring only |
+
+Same named per-person PIN as the rest of CODA. The page, its data and the FIFA
+toolkit PDFs are served only by `/api/fifa/*`, which re-checks the permission on
+every request, so removing access or changing a PIN takes effect immediately.
+
+One-off setup:
+
+1. Run `supabase-migrations/2026-11-12-fifa-mentoring.sql` in the Supabase SQL editor
+   (creates `fifa_mentees`, closed to the anon key, and a private `fifa-mentoring` bucket).
+2. Upload `tracker.html` and `meeting-1.pdf` ... `meeting-5.pdf` to that bucket
+   (Storage -> fifa-mentoring). They are deliberately not in this repo, which is public.
+3. Add `SUPABASE_SERVICE_ROLE_KEY` (server-only, no `NEXT_PUBLIC_` prefix) in Vercel and redeploy.
+
+Each admin only ever sees their own mentees and notes.

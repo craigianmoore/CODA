@@ -137,3 +137,18 @@ begin
     execute format('grant select, insert, update, delete on public.%I to anon, authenticated, service_role', t);
   end loop;
 end $$;
+
+-- FIFA Mentoring (admin-only). Closed to anon: RLS on, no policy, no anon grant.
+-- Only the server (service_role, /api/fifa/*) can touch it. See
+-- supabase-migrations/2026-11-12-fifa-mentoring.sql for the full migration
+-- (also creates the private 'fifa-mentoring' storage bucket).
+create table if not exists public.fifa_mentees (
+  owner text not null,
+  id text not null,
+  data jsonb not null,
+  updated_at timestamptz not null default now(),
+  primary key (owner, id)
+);
+alter table public.fifa_mentees enable row level security;
+revoke all on public.fifa_mentees from anon, authenticated;
+grant select, insert, update, delete on public.fifa_mentees to service_role;
