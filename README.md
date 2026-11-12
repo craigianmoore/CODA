@@ -39,9 +39,9 @@ person, e.g.:
 | Jane Smith   | 1357 | false    |
 
 This is separate from CODA's own internal Admin Settings (the
-name+PIN pairs stored in `kv_settings` under `adminSettings`, used for
-Clear History, Admin export, and Reopen Report) — `trial_users` just
-decides who can open the app at all.
+name+PIN pairs, used for Clear History, Admin export, and Reopen Report)
+— `trial_users` just decides who can open the app at all. Admin PINs are
+checked on the server; see "Admin PINs are server-side" below.
 
 ## 3. Set environment variables
 
@@ -133,3 +133,33 @@ One-off setup:
 3. Add `SUPABASE_SERVICE_ROLE_KEY` (server-only, no `NEXT_PUBLIC_` prefix) in Vercel and redeploy.
 
 Each admin only ever sees their own mentees and notes.
+
+## Admin PINs are server-side
+
+Admin names, PINs and sign-in lockouts are no longer readable or writable with the
+public anon key. The browser only gets a PIN-free list (`/api/admin/directory`) and asks
+the server to check a PIN (`/api/admin/verify`) or to save a change
+(`/api/admin/settings`, which re-checks that the signed-in admin is allowed to make
+that exact change: only an FA Admin can change roles, other admins' PINs, FIFA access
+or limits; an MF Admin can manage Course Admins/Coordinators in their own federation;
+anyone can change their own PIN).
+
+Needs `SUPABASE_SERVICE_ROLE_KEY` (already required for FIFA Mentoring). Optional:
+
+- `SUPPORT_ACCESS_KEY` - the recovery PIN that signs in as FA Admin. Still works with the
+  old `NEXT_PUBLIC_SUPPORT_ACCESS_KEY` name; prefer the new name so it is not exposed to
+  the browser.
+- `CODA_BOOTSTRAP_ADMIN_NAME` / `CODA_BOOTSTRAP_ADMIN_PIN` - only used if no admin
+  settings have ever been saved, to seed the first FA Admin.
+
+Rollout order matters:
+
+1. Deploy this version (Vercel). Confirm you can still sign in as an admin.
+2. Then run `supabase-migrations/2026-11-13-private-admin-settings.sql`. Running it before
+   the deploy would break sign-in on the old version.
+3. Change your admin PIN (History -> Admin -> Edit PIN) if you have not since the repo went
+   public: old PINs stay in git history.
+
+What this does not change: CODA's other tables (coaches, observations, courses...) are
+still open to the anon key, and destructive actions still go from the browser to Supabase
+after the server says the PIN is OK.

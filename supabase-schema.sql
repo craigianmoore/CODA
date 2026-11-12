@@ -51,7 +51,11 @@ create table if not exists kv_settings (
   updated_at timestamptz not null default now()
 );
 alter table kv_settings enable row level security;
-create policy "public read/write kv_settings" on kv_settings for all using (true) with check (true);
+-- Admin PINs/lockouts are server-only (see supabase-migrations/2026-11-13-private-admin-settings.sql).
+create policy "kv_settings open except admin keys" on kv_settings
+  for all
+  using (key not in ('adminSettings', 'adminLockouts'))
+  with check (key not in ('adminSettings', 'adminLockouts'));
 
 -- Trial users: named PIN access for your CET trial group.
 -- You add/remove rows here any time — no redeploy needed.

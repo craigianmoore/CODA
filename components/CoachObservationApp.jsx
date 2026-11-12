@@ -1105,7 +1105,9 @@ const EDUCATOR_ROLES = {
 
 const ADMIN_LOCKOUT_THRESHOLD = 3;
 const ADMIN_LOCKOUT_MS = 30 * 60 * 1000;
-const DEFAULT_ADMIN_SETTINGS = { admins: [{ name: "Craig Moore", pin: "8938", role: "master" }], maxAdmins: 2, sessionHostName: "Craig Moore" };
+// Admin PINs are never in the browser: the real admin list (with PINs) lives server-side and
+// the browser only gets a PIN-free directory from /api/admin/directory.
+const DEFAULT_ADMIN_SETTINGS = { admins: [], maxAdmins: 2, sessionHostName: "" };
 const MAX_ADMINS = 2;
 const MAX_COURSE_ADMINS_PER_MF = 4;
 const DEFAULT_MF_SLOTS = { lead: 1, coordinator: 1 };
@@ -1153,13 +1155,13 @@ function slotRolesEditableBy(tier) {
 
 function migrateAdminSettings(raw) {
   if (!raw) return DEFAULT_ADMIN_SETTINGS;
-  const admins = Array.isArray(raw.admins) ? raw.admins : DEFAULT_ADMIN_SETTINGS.admins;
+  const admins = Array.isArray(raw.admins) ? raw.admins : [];
   const migratedAdmins = admins.map(a => {
     // Every admin from before the Master/Federation split becomes Master —
     // preserves exactly the full access they already had, nobody currently
     // working loses anything on this migration. The old "mf" role becomes
     // "lead" (MF Admin), same scope and behaviour, just renamed.
-    if (typeof a === "string") return { name: a, pin: raw.pin || DEFAULT_ADMIN_SETTINGS.admins[0].pin, role: "master" };
+    if (typeof a === "string") return { name: a, pin: "", role: "master" };
     const role = (a.role === "mf" || a.role === "lead") ? "lead" : (a.role === "course" ? "course" : a.role === "coordinator" ? "coordinator" : a.role === "fifa" ? "fifa" : "master");
     const fifaFlag = a.fifaMentoring === true ? { fifaMentoring: true } : {};
     if (role === "fifa") return { name: a.name || "", pin: a.pin || "", role };
@@ -1169,11 +1171,11 @@ function migrateAdminSettings(raw) {
     return { name: a.name || "", pin: a.pin || "", role: "master" };
   }).filter(a => a.name);
   return {
-    admins: migratedAdmins.length ? migratedAdmins : DEFAULT_ADMIN_SETTINGS.admins,
+    admins: migratedAdmins,
     maxAdmins: raw.maxAdmins || MAX_ADMINS,
     maxCourseAdminsPerMf: raw.maxCourseAdminsPerMf || MAX_COURSE_ADMINS_PER_MF,
     mfSlots: raw.mfSlots && typeof raw.mfSlots === "object" ? raw.mfSlots : {},
-    sessionHostName: raw.sessionHostName || (migratedAdmins[0] && migratedAdmins[0].name) || DEFAULT_ADMIN_SETTINGS.sessionHostName,
+    sessionHostName: raw.sessionHostName || (migratedAdmins[0] && migratedAdmins[0].name) || "",
   };
 }
 
@@ -1233,24 +1235,50 @@ function adminHasCourseAccess(adminMatch, courseNumber, mfKey) {
   return false;
 }
 
-function findAdminMatch(admins, name, pin) {
-  const trimmedName = (name || "").trim().toLowerCase();
-  const trimmedPin = (pin || "").trim();
-  if (!trimmedName || !trimmedPin) return null;
-  // Support access: a PIN set only via Vercel env var (never committed
-  // to the repo) that always logs in as MA Admin, independent of
-  // adminSettings entirely. This exists so access is never permanently
-  // lost even if every real admin account is removed or locked out.
-  // Not a secret in the strong sense — it's inlined into the client
-  // bundle at build time, so anyone reading the deployed JS closely
-  // enough could find it — but it's never in git history or the
-  // source code itself, and can be rotated any time from Vercel
-  // without a code change.
-  const supportKey = process.env.NEXT_PUBLIC_SUPPORT_ACCESS_KEY;
-  if (supportKey && trimmedPin === supportKey) {
-    return { name: (name || "").trim() || "Support Access", pin: trimmedPin, role: "master" };
+// Admin PIN checks run on the server (/api/admin/verify): it holds the PINs, the
+// support key and the lockout. Resolves { match } (the admin's role and scope,
+// never a PIN) or { match: null, error, status }.
+async function verifyAdmin(name, pin) {
+  const n = (name || "").trim();
+  const p = (pin || "").trim();
+  if (!n || !p) return { match: null, error: "Enter your name and PIN.", status: 400 };
+  try {
+    const res = await fetch("/api/admin/verify", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: n, pin: p }),
+    });
+    const j = await res.json().catch(() => ({}));
+    const lockKey = n.toLowerCase();
+    if (res.ok && j.admin) { delete SERVER_LOCKS[lockKey]; return { match: j.admin }; }
+    if (j.lockedUntil) SERVER_LOCKS[lockKey] = { lockedUntil: j.lockedUntil };
+    return { match: null, error: j.error || "Incorrect admin name or PIN.", status: res.status };
+  } catch (e) {
+    return { match: null, error: "Could not reach the server — check your connection and try again.", status: 0 };
   }
-  return (admins || []).find(a => a.name.trim().toLowerCase() === trimmedName && a.pin === trimmedPin) || null;
+}
+
+// The admin list as the server allows the browser to see it (no PINs).
+async function loadAdminDirectory() {
+  try {
+    const res = await fetch("/api/admin/directory", { credentials: "same-origin", cache: "no-store" });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j.settings || null;
+  } catch (e) { return null; }
+}
+// Saves an admin-list change. The server re-checks who is asking and whether
+// they may make this change. `pins` holds only NEW 4-digit PINs (lower-cased
+// name -> PIN); existing PINs never come back to the browser.
+async function postAdminSettings(creds, settings, pins) {
+  const res = await fetch("/api/admin/settings", {
+    method: "POST", credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: creds.name, pin: creds.pin, settings, pins: pins || {} }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error || "Could not save admin settings.");
+  return j.settings;
 }
 
 // CODA-wide sign-in session. Persisted in localStorage so people aren't
@@ -1304,16 +1332,19 @@ function sessionCanSeeRecord(session, courseNumber, mfKey) {
   return true;
 }
 
+// Lockouts are decided by the server. When it says a name is locked we remember
+// that here so the existing "locked for N minutes" messages keep working.
+const SERVER_LOCKS = {};
 function isLockedOut(adminLockouts, name) {
   const key = (name || "").trim().toLowerCase();
   if (!key) return false;
-  const entry = adminLockouts[key];
+  const entry = SERVER_LOCKS[key] || adminLockouts[key];
   return !!(entry && entry.lockedUntil > Date.now());
 }
 
 function lockoutRemainingMinutes(adminLockouts, name) {
   const key = (name || "").trim().toLowerCase();
-  const entry = adminLockouts[key];
+  const entry = SERVER_LOCKS[key] || adminLockouts[key];
   if (!entry || !entry.lockedUntil) return 0;
   return Math.max(1, Math.ceil((entry.lockedUntil - Date.now()) / 60000));
 }
@@ -1824,7 +1855,8 @@ const COLLECTION_TABLE_MAP = {
   observations: "observations",
   completedTasks: "completed_tasks",
 };
-const CODA_STORAGE_KEYS = ["coaches", "courses", "educators", "observations", "completedTasks", "closedCourseNumbers", "adminLockouts", "adminSettings"];
+const CODA_STORAGE_KEYS = ["coaches", "courses", "educators", "observations", "completedTasks", "closedCourseNumbers"];
+// adminSettings / adminLockouts (admin PINs) are deliberately not here: they are server-only, so backups and imports never carry or overwrite PINs.
 
 async function loadCollectionSb(table) {
   const { data, error } = await supabase.from(table).select("id, data");
@@ -2042,7 +2074,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     setLoading(true);
     setError(null);
     try {
-      const [c, co, ed, ob, ct, ca, ra, ri, rp, rcat, cc, cb, nlc, al, adm] = await Promise.all([
+      const [c, co, ed, ob, ct, ca, ra, ri, rp, rcat, cc, cb, nlc, adm] = await Promise.all([
         loadCollectionSb("coaches"),
         loadCollectionSb("courses"),
         loadCollectionSb("cets"),
@@ -2056,8 +2088,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
         kvGet("closedCourseNumbers"),
         kvGet("closedCourseBlocks"),
         kvGet("newLabelCourses"),
-        kvGet("adminLockouts"),
-        kvGet("adminSettings"),
+        loadAdminDirectory(),
       ]);
       setCoaches(c || []);
       setCourses(co || []);
@@ -2072,12 +2103,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
       setClosedCourseNumbers(cc || []);
       setClosedCourseBlocks(cb || {});
       setNewLabelCoursesState(nlc || {});
-      setAdminLockouts(al || {});
-      try {
-        setAdminSettings(migrateAdminSettings(adm));
-      } catch (e) {
-        setAdminSettings(DEFAULT_ADMIN_SETTINGS);
-      }
+      setAdminSettings(adm ? migrateAdminSettings(adm) : DEFAULT_ADMIN_SETTINGS);
     } catch (e) {
       setError("Could not load data.");
     }
@@ -2127,26 +2153,20 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const saveClosedCourseNumbers = async (v) => { setClosedCourseNumbers(v); await kvSet("closedCourseNumbers", v); };
   const saveNewLabelCourses = async (v) => { setNewLabelCoursesState(v); await kvSet("newLabelCourses", v); };
   const saveClosedCourseBlocks = async (v) => { setClosedCourseBlocks(v); await kvSet("closedCourseBlocks", v); };
-  const saveAdminLockouts = async (v) => { setAdminLockouts(v); await kvSet("adminLockouts", v); };
-  const saveAdminSettings = async (v) => { setAdminSettings(v); await kvSet("adminSettings", v); };
+  // Admin settings are saved through the server, which re-checks the caller.
+  // Resolves once saved; throws (and rolls the screen back) if the server refuses.
+  const saveAdminSettings = async (next, pins, creds) => {
+    const prev = adminSettings;
+    setAdminSettings(next);
+    try {
+      const saved = await postAdminSettings(creds, next, pins);
+      setAdminSettings(migrateAdminSettings(saved));
+    } catch (e) { setAdminSettings(prev); throw e; }
+  };
 
-  async function recordAdminAttempt(name, success) {
-    const key = (name || "").trim().toLowerCase();
-    if (!key) return;
-    const current = adminLockouts[key] || { failCount: 0, lockedUntil: 0 };
-    let next;
-    if (success) {
-      next = { failCount: 0, lockedUntil: 0 };
-    } else {
-      const failCount = current.failCount + 1;
-      if (failCount >= ADMIN_LOCKOUT_THRESHOLD) {
-        next = { failCount: 0, lockedUntil: Date.now() + ADMIN_LOCKOUT_MS };
-      } else {
-        next = { failCount, lockedUntil: current.lockedUntil };
-      }
-    }
-    await saveAdminLockouts({ ...adminLockouts, [key]: next });
-  }
+  // Lockouts are enforced by the server now (/api/admin/verify), so there is
+  // nothing to record here. Kept so existing props stay valid.
+  async function recordAdminAttempt() {}
 
   const visibleObservations = observations.filter(o => o.status !== "draft");
   const drafts = observations.filter(o => o.status === "draft");
@@ -2540,18 +2560,13 @@ function SignInGate({ educators, adminSettings, adminLockouts, recordAdminAttemp
     onSignedIn({ kind: "cet", cetId: cet.id, name: cet.name });
   }
 
-  function signInAsAdmin() {
-    if (isLockedOut(adminLockouts, adminName)) {
-      setError(`Too many incorrect attempts — locked for ${lockoutRemainingMinutes(adminLockouts, adminName)} more minute${lockoutRemainingMinutes(adminLockouts, adminName) === 1 ? "" : "s"}.`);
-      return;
-    }
-    const match = findAdminMatch(adminSettings.admins, adminName, adminPin);
+  async function signInAsAdmin() {
+    setError("");
+    const { match, error: verifyError } = await verifyAdmin(adminName, adminPin);
     if (!match) {
-      recordAdminAttempt(adminName, false);
-      setError("Incorrect admin name or PIN.");
+      setError(verifyError || "Incorrect admin name or PIN.");
       return;
     }
-    recordAdminAttempt(adminName, true);
     const tier = adminTier(match);
     onSignedIn({
       kind: "admin", tier, name: match.name,
@@ -3388,33 +3403,28 @@ function RemoveAllBar({ label, count, onClear, warningText, adminSettings, admin
     setScopeError("");
   }
 
-  function handleConfirmClear() {
+  async function handleConfirmClear() {
     if (isLockedOut(adminLockouts, adminName)) {
       setClearError(true);
       return;
     }
-    const match = findAdminMatch(adminSettings.admins, adminName, pin);
+    const { match } = await verifyAdmin(adminName, pin);
     if (!match) {
-      recordAdminAttempt(adminName, false);
       setClearError(true);
       return;
     }
     if (masterOnly && !isMasterAdmin(match)) {
-      recordAdminAttempt(adminName, true);
       setScopeError("Only an FA Admin can do this.");
       return;
     }
     if (!masterOnly && isCourseAdmin(match)) {
-      recordAdminAttempt(adminName, true);
       setScopeError("Course Admins can't remove CETs — this needs an MF Admin (TD/CEM) or FA Admin.");
       return;
     }
     if (!masterOnly && isCoordinatorAdmin(match)) {
-      recordAdminAttempt(adminName, true);
       setScopeError("MF Coordinators can't remove CETs — this needs an MF Admin (TD/CEM) or FA Admin.");
       return;
     }
-    recordAdminAttempt(adminName, true);
     onClear(match);
     setConfirmClear(false);
     setAdminName("");
@@ -3575,18 +3585,16 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
     setBulkCoachMfMsg(`Assigned Member Federation(s) to ${updatedCount} coach${updatedCount === 1 ? "" : "es"} from their course history. ${coachesBackfillableCount - updatedCount} coach${(coachesBackfillableCount - updatedCount) === 1 ? "" : "es"} had no Coaches Progress or observation record to derive a federation from.`);
   }
 
-  function handleBackfillAuth() {
+  async function handleBackfillAuth() {
     if (isLockedOut(adminLockouts, backfillAuthName)) {
       setBackfillAuthError(true);
       return;
     }
-    const match = findAdminMatch(adminSettings.admins, backfillAuthName, backfillAuthPin);
+    const { match } = await verifyAdmin(backfillAuthName, backfillAuthPin);
     if (!match || !isMasterAdmin(match)) {
-      recordAdminAttempt(backfillAuthName, !!match);
       setBackfillAuthError(true);
       return;
     }
-    recordAdminAttempt(backfillAuthName, true);
     backfillCoachMfFromHistory();
     setShowBackfillAuth(false);
     setBackfillAuthName(""); setBackfillAuthPin(""); setBackfillAuthError(false);
@@ -3634,24 +3642,21 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
     return score;
   }
 
-  function handleMergeAuth() {
+  async function handleMergeAuth() {
     if (isLockedOut(adminLockouts, mergeAuthName)) {
       setMergeAuthError(true);
       return;
     }
-    const match = findAdminMatch(adminSettings.admins, mergeAuthName, mergeAuthPin);
+    const { match } = await verifyAdmin(mergeAuthName, mergeAuthPin);
     if (!match) {
-      recordAdminAttempt(mergeAuthName, false);
       setMergeAuthError(true);
       return;
     }
     if (!isMasterAdmin(match)) {
-      recordAdminAttempt(mergeAuthName, true);
       setMergeAuthError(false);
       setMergeAuthScopeError("Only an FA Admin can merge coach profiles — coach profiles aren't tagged to a Member Federation.");
       return;
     }
-    recordAdminAttempt(mergeAuthName, true);
     setMergeAuthed(true);
     setMergeAuthError(false);
     setMergeAuthScopeError("");
@@ -4411,30 +4416,26 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
     return score;
   }
 
-  function handleMergeAuth() {
+  async function handleMergeAuth() {
     if (isLockedOut(adminLockouts, mergeAuthName)) {
       setMergeAuthError(true);
       return;
     }
-    const match = findAdminMatch(adminSettings.admins, mergeAuthName, mergeAuthPin);
+    const { match } = await verifyAdmin(mergeAuthName, mergeAuthPin);
     if (!match) {
-      recordAdminAttempt(mergeAuthName, false);
       setMergeAuthError(true);
       return;
     }
     if (isCourseAdmin(match)) {
-      recordAdminAttempt(mergeAuthName, true);
       setMergeAuthError(false);
       setMergeAuthScopeError("Course Admins can't merge duplicate CETs — this needs an MF Admin (TD/CEM) or FA Admin.");
       return;
     }
     if (isCoordinatorAdmin(match)) {
-      recordAdminAttempt(mergeAuthName, true);
       setMergeAuthError(false);
       setMergeAuthScopeError("MF Coordinators can't merge duplicate CETs — this needs an MF Admin (TD/CEM) or FA Admin.");
       return;
     }
-    recordAdminAttempt(mergeAuthName, true);
     setMergeAuthed(true);
     setMergeAuthMatch(match);
     setMergeAuthError(false);
@@ -4913,24 +4914,21 @@ function CoursesTab({ courses, saveCourses, adminSettings, adminLockouts, record
     return score;
   }
 
-  function handleDupAuth() {
+  async function handleDupAuth() {
     if (isLockedOut(adminLockouts, dupAuthName)) {
       setDupAuthError(true);
       return;
     }
-    const match = findAdminMatch(adminSettings.admins, dupAuthName, dupAuthPin);
+    const { match } = await verifyAdmin(dupAuthName, dupAuthPin);
     if (!match) {
-      recordAdminAttempt(dupAuthName, false);
       setDupAuthError(true);
       return;
     }
     if (!isMasterAdmin(match)) {
-      recordAdminAttempt(dupAuthName, true);
       setDupAuthError(false);
       setDupResultMsg("Only an FA Admin can remove duplicate courses.");
       return;
     }
-    recordAdminAttempt(dupAuthName, true);
     setDupAuthed(true);
     setDupAuthError(false);
   }
@@ -5008,18 +5006,16 @@ function CoursesTab({ courses, saveCourses, adminSettings, adminLockouts, record
     setExportError(false);
   }
 
-  function handleConfirmExport() {
+  async function handleConfirmExport() {
     if (isLockedOut(adminLockouts, exportAdminName)) {
       setExportError(true);
       return;
     }
-    const match = findAdminMatch(adminSettings.admins, exportAdminName, exportPin);
+    const { match } = await verifyAdmin(exportAdminName, exportPin);
     if (!match) {
-      recordAdminAttempt(exportAdminName, false);
       setExportError(true);
       return;
     }
-    recordAdminAttempt(exportAdminName, true);
     downloadGenericCsv(coursesToCsvRows(courses), "course-library.csv");
     setShowExportAuth(false);
     setExportAdminName("");
@@ -5966,15 +5962,13 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
   const [masterAuthPin, setMasterAuthPin] = useState("");
   const [masterAuthError, setMasterAuthError] = useState(false);
 
-  function handleMasterAuth() {
+  async function handleMasterAuth() {
     if (isLockedOut(adminLockouts, masterAuthName)) { setMasterAuthError(true); return; }
-    const match = findAdminMatch(adminSettings.admins, masterAuthName, masterAuthPin);
+    const { match } = await verifyAdmin(masterAuthName, masterAuthPin);
     if (!match || !isMasterAdmin(match)) {
-      recordAdminAttempt(masterAuthName, !!match);
       setMasterAuthError(true);
       return;
     }
-    recordAdminAttempt(masterAuthName, true);
     setMasterAuthed(true);
     setMasterAuthMatch(match);
     setMasterAuthError(false);
@@ -6893,18 +6887,16 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
   const iAmLead = adminAuthed && (adminTier(adminAuthMatch) === "lead" || adminTier(adminAuthMatch) === "coordinator");
   const myMf = iAmLead ? (adminAuthMatch.memberFederations || [])[0] : null;
 
-  function handleAdminAuth() {
+  async function handleAdminAuth() {
     if (isLockedOut(adminLockouts, adminAuthName)) {
       setAdminAuthError(true);
       return;
     }
-    const match = findAdminMatch(adminSettings.admins, adminAuthName, adminAuthPin);
+    const { match } = await verifyAdmin(adminAuthName, adminAuthPin);
     if (!match || isCourseAdmin(match)) {
-      recordAdminAttempt(adminAuthName, !!match);
       setAdminAuthError(true);
       return;
     }
-    recordAdminAttempt(adminAuthName, true);
     setAdminAuthed(true);
     setAdminAuthMatch(match);
     setAdminAuthError(false);
@@ -7485,24 +7477,21 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     return Object.values(byKey).filter(g => g.length > 1).sort((a, b) => a[0].coachName.localeCompare(b[0].coachName));
   })();
 
-  function handleDupTaskAuth() {
+  async function handleDupTaskAuth() {
     if (isLockedOut(adminLockouts, dupTaskAuthName)) {
       setDupTaskAuthError(true);
       return;
     }
-    const match = findAdminMatch(adminSettings.admins, dupTaskAuthName, dupTaskAuthPin);
+    const { match } = await verifyAdmin(dupTaskAuthName, dupTaskAuthPin);
     if (!match) {
-      recordAdminAttempt(dupTaskAuthName, false);
       setDupTaskAuthError(true);
       return;
     }
     if (!isMasterAdmin(match)) {
-      recordAdminAttempt(dupTaskAuthName, true);
       setDupTaskAuthError(false);
       setDupTaskScopeError("Only an FA Admin can merge Coaches Progress records — they aren't tagged to a Member Federation.");
       return;
     }
-    recordAdminAttempt(dupTaskAuthName, true);
     setDupTaskAuthed(true);
     setDupTaskAuthError(false);
     setDupTaskScopeError("");
@@ -7988,18 +7977,16 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     return opts.find(b => !statuses[b] && !closedForCourse.has(b)) || opts[opts.length - 1];
   }
 
-  function handleProgressAuth() {
+  async function handleProgressAuth() {
     if (isLockedOut(adminLockouts, progressAuthName)) {
       setProgressAuthError(true);
       return;
     }
-    const match = findAdminMatch(adminSettings.admins, progressAuthName, progressAuthPin);
+    const { match } = await verifyAdmin(progressAuthName, progressAuthPin);
     if (!match) {
-      recordAdminAttempt(progressAuthName, false);
       setProgressAuthError(true);
       return;
     }
-    recordAdminAttempt(progressAuthName, true);
     setProgressAuthed(true);
     setProgressAuthMatch(match);
     setProgressAuthError(false);
@@ -8159,18 +8146,16 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [nycRepairAuthed, setNycRepairAuthed] = useState(false);
   const [nycRepairDone, setNycRepairDone] = useState(0);
 
-  function handleNycRepairAuth() {
+  async function handleNycRepairAuth() {
     if (isLockedOut(adminLockouts, nycRepairAuthName)) {
       setNycRepairAuthError(true);
       return;
     }
-    const match = findAdminMatch(adminSettings.admins, nycRepairAuthName, nycRepairAuthPin);
+    const { match } = await verifyAdmin(nycRepairAuthName, nycRepairAuthPin);
     if (!match || !isMasterAdmin(match)) {
-      recordAdminAttempt(nycRepairAuthName, !!match);
       setNycRepairAuthError(true);
       return;
     }
-    recordAdminAttempt(nycRepairAuthName, true);
     setNycRepairAuthed(true);
     setNycRepairAuthError(false);
   }
@@ -11884,32 +11869,17 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
     setReopenError("");
     setReopening(true);
     try {
-      const settingsRaw = await kvGet("adminSettings");
-      const settings = migrateAdminSettings(settingsRaw);
-      const lockouts = (await kvGet("adminLockouts")) || {};
-      if (isLockedOut(lockouts, reopenName)) {
-        setReopenError(`Too many incorrect attempts — locked for ${lockoutRemainingMinutes(lockouts, reopenName)} more minute${lockoutRemainingMinutes(lockouts, reopenName) === 1 ? "" : "s"}.`);
-        setReopening(false);
-        return;
-      }
-      const match = findAdminMatch(settings.admins, reopenName, reopenPin);
-      const key = (reopenName || "").trim().toLowerCase();
-      const current = lockouts[key] || { failCount: 0, lockedUntil: 0 };
+      const { match, error: verifyError } = await verifyAdmin(reopenName, reopenPin);
       if (!match) {
-        const failCount = current.failCount + 1;
-        const nextEntry = failCount >= ADMIN_LOCKOUT_THRESHOLD ? { failCount: 0, lockedUntil: Date.now() + ADMIN_LOCKOUT_MS } : { failCount, lockedUntil: current.lockedUntil };
-        await kvSet("adminLockouts", { ...lockouts, [key]: nextEntry });
-        setReopenError("Incorrect admin name or PIN.");
+        setReopenError(verifyError || "Incorrect admin name or PIN.");
         setReopening(false);
         return;
       }
       if (!adminHasCourseAccess(match, obs.courseNumber, obs.memberFederation)) {
-        await kvSet("adminLockouts", { ...lockouts, [key]: { failCount: 0, lockedUntil: 0 } });
         setReopenError("You don't have access to reopen this report — check with an MF Admin (TD/CEM) or FA Admin for your federation.");
         setReopening(false);
         return;
       }
-      await kvSet("adminLockouts", { ...lockouts, [key]: { failCount: 0, lockedUntil: 0 } });
       resetReopenAuth();
       onEditDraft(obs);
     } catch (e) {
@@ -12395,6 +12365,18 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     }
   }, [autoOpenAdmin]);
   const [panelAuthed, setPanelAuthed] = useState(false);
+  // Credentials the admin used to unlock this panel. Kept only in memory and sent
+  // with each save so the server can re-check who is changing what.
+  const panelCredsRef = useRef(null);
+  const [adminSaveError, setAdminSaveError] = useState("");
+  useEffect(() => { if (!panelAuthed) panelCredsRef.current = null; }, [panelAuthed]);
+  async function commitAdminSettings(next, pins) {
+    setAdminSaveError("");
+    const c = panelCredsRef.current;
+    if (!c) { setAdminSaveError("Your Admin Settings session has expired — lock the panel and unlock it again, then retry."); return false; }
+    try { await saveAdminSettings(next, pins, c); return true; }
+    catch (e) { setAdminSaveError(e.message || "Could not save admin settings."); return false; }
+  }
   const [signedInAdminName, setSignedInAdminName] = useState("");
   const [signedInAdminMatch, setSignedInAdminMatch] = useState(null);
   const [panelName, setPanelName] = useState("");
@@ -12714,7 +12696,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     } catch (e) { /* best-effort — a stale session just gets overwritten by the next claim anyway */ }
   }
 
-  function handleFullPinReset() {
+  async function handleFullPinReset() {
     setResetAllSuccess(false);
     if (!/^\d{4}$/.test(resetAllPin)) {
       setResetAllError("PIN must be exactly 4 digits.");
@@ -12724,13 +12706,16 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       setResetAllError("PINs do not match.");
       return;
     }
-    saveAdminSettings({ ...adminSettings, admins: adminSettings.admins.map(a => ({ ...a, pin: resetAllPin })) });
+    const pinsForAll = {};
+    adminSettings.admins.forEach(a => { pinsForAll[a.name.trim().toLowerCase()] = resetAllPin; });
+    if (!(await commitAdminSettings(adminSettings, pinsForAll))) return;
+    if (panelCredsRef.current && pinsForAll[panelCredsRef.current.name.trim().toLowerCase()]) panelCredsRef.current = { ...panelCredsRef.current, pin: resetAllPin };
     setResetAllError("");
     setResetAllSuccess(true);
     setResetAllPin(""); setResetAllPinConfirm("");
   }
 
-  function handleSaveMaxAdmins() {
+  async function handleSaveMaxAdmins() {
     setMaxAdminsSuccess(false);
     const n = parseInt(maxAdminsInput, 10);
     if (isNaN(n) || n < 1) {
@@ -12741,12 +12726,12 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       setMaxAdminsError(`Can't be lower than the ${adminSettings.admins.length} admin(s) already on file.`);
       return;
     }
-    saveAdminSettings({ ...adminSettings, maxAdmins: n });
+    if (!(await commitAdminSettings({ ...adminSettings, maxAdmins: n }))) return;
     setMaxAdminsError("");
     setMaxAdminsSuccess(true);
   }
 
-  function handleSaveMfSlots(mfKey) {
+  async function handleSaveMfSlots(mfKey) {
     const tier = adminTier(signedInAdminMatch);
     const editable = slotRolesEditableBy(tier);
     if (tier !== "master" && !(signedInAdminMatch.memberFederations || []).includes(mfKey)) {
@@ -12769,7 +12754,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       }
       nextForMf[role] = n;
     }
-    saveAdminSettings({ ...adminSettings, mfSlots: { ...(adminSettings.mfSlots || {}), [mfKey]: nextForMf } });
+    if (!(await commitAdminSettings({ ...adminSettings, mfSlots: { ...(adminSettings.mfSlots || {}), [mfKey]: nextForMf } }))) return;
     setSlotEdits(prev => {
       const next = { ...prev };
       editable.forEach(r => delete next[`${mfKey}:${r}`]);
@@ -12778,14 +12763,14 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setSlotMessage({ mf: mfKey, error: "", ok: true });
   }
 
-  function handleSetSessionHost() {
+  async function handleSetSessionHost() {
     setSessionHostSuccess(false);
     const name = sessionHostNameInput.trim();
     if (!name) { setSessionHostError("Enter the name of the admin to make Session Host."); return; }
     const targetAdmin = adminSettings.admins.find(a => a.name.trim().toLowerCase() === name.trim().toLowerCase());
     if (!targetAdmin) { setSessionHostError("That name doesn't match any admin currently on file."); return; }
     if (!isMasterAdmin(targetAdmin)) { setSessionHostError("Session Host can only be an FA Admin."); return; }
-    saveAdminSettings({ ...adminSettings, sessionHostName: targetAdmin.name });
+    if (!(await commitAdminSettings({ ...adminSettings, sessionHostName: targetAdmin.name }))) return;
     setSessionHostError("");
     setSessionHostSuccess(true);
     setSessionHostNameInput("");
@@ -12796,13 +12781,11 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       setPanelAuthError(true);
       return;
     }
-    const match = findAdminMatch(adminSettings.admins, panelName, panelPin);
+    const { match } = await verifyAdmin(panelName, panelPin);
     if (!match) {
-      recordAdminAttempt(panelName, false);
       setPanelAuthError(true);
       return;
     }
-    recordAdminAttempt(panelName, true);
 
     // The exclusive "Session Host locks everyone else out" session applies
     // only among MA admins — MF-scoped admins work on disjoint slices
@@ -12821,6 +12804,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       } catch (e) { /* if this fails, worst case is the kick-out feature doesn't engage this session — access itself still works */ }
     }
 
+    panelCredsRef.current = { name: panelName, pin: panelPin };
     setPanelAuthed(true);
     setSignedInAdminName(match.name);
     setSignedInAdminMatch(match);
@@ -12848,7 +12832,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   }, [panelAuthed, iAmSessionHost, iAmMaster, signedInAdminName]);
 
 
-  function handleChangePin() {
+  async function handleChangePin() {
     setPinChangeSuccess(false);
     if (!/^\d{4}$/.test(newPin)) {
       setPinChangeError("PIN must be exactly 4 digits.");
@@ -12858,10 +12842,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       setPinChangeError("PINs do not match.");
       return;
     }
-    const updatedAdmins = adminSettings.admins.map(a =>
-      a.name.trim().toLowerCase() === signedInAdminName.trim().toLowerCase() ? { ...a, pin: newPin } : a
-    );
-    saveAdminSettings({ ...adminSettings, admins: updatedAdmins });
+    if (!(await commitAdminSettings(adminSettings, { [signedInAdminName.trim().toLowerCase()]: newPin }))) return;
+    if (panelCredsRef.current) panelCredsRef.current = { ...panelCredsRef.current, pin: newPin };
     setPinChangeError("");
     setPinChangeSuccess(true);
     setNewPin(""); setNewPinConfirm("");
@@ -12875,7 +12857,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setEditAdminPinSuccessName("");
   }
 
-  function handleSaveAdminPin() {
+  async function handleSaveAdminPin() {
     if (!/^\d{4}$/.test(editAdminPinValue)) {
       setEditAdminPinError("PIN must be exactly 4 digits.");
       return;
@@ -12884,10 +12866,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       setEditAdminPinError("PINs do not match.");
       return;
     }
-    const updatedAdmins = adminSettings.admins.map(a =>
-      a.name.trim().toLowerCase() === editingAdminPinName.trim().toLowerCase() ? { ...a, pin: editAdminPinValue } : a
-    );
-    saveAdminSettings({ ...adminSettings, admins: updatedAdmins });
+    if (!(await commitAdminSettings(adminSettings, { [editingAdminPinName.trim().toLowerCase()]: editAdminPinValue }))) return;
+    if (panelCredsRef.current && panelCredsRef.current.name.trim().toLowerCase() === editingAdminPinName.trim().toLowerCase()) panelCredsRef.current = { ...panelCredsRef.current, pin: editAdminPinValue };
     setEditAdminPinSuccessName(editingAdminPinName);
     setEditingAdminPinName(null);
     setEditAdminPinValue(""); setEditAdminPinConfirm(""); setEditAdminPinError("");
@@ -12902,7 +12882,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setEditAdminCoursesSuccessName("");
   }
 
-  function handleSaveAdminCourses() {
+  async function handleSaveAdminCourses() {
     if (editAdminMfSelection.length === 0) {
       setEditAdminCoursesError("Select at least one Member Federation for this Course Admin.");
       return;
@@ -12922,7 +12902,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     const updatedAdmins = adminSettings.admins.map(a =>
       a.name.trim().toLowerCase() === editingAdminCoursesName.trim().toLowerCase() ? { ...a, memberFederations: editAdminMfSelection, assignedCourseNumbers: editAdminCourseNumbers } : a
     );
-    saveAdminSettings({ ...adminSettings, admins: updatedAdmins });
+    if (!(await commitAdminSettings({ ...adminSettings, admins: updatedAdmins }))) return;
     setEditAdminCoursesSuccessName(editingAdminCoursesName);
     setEditingAdminCoursesName(null);
     setEditAdminMfSelection([]);
@@ -12954,7 +12934,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     return { ok: false, reason: "You don't have permission to remove this admin." };
   }
 
-  function handleRemoveAdmin(targetName) {
+  async function handleRemoveAdmin(targetName) {
     const check = canRemoveAdmin(targetName);
     if (!check.ok) {
       setRemoveAdminError(check.reason);
@@ -12969,17 +12949,17 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       const fallbackMaster = remainingAdmins.find(a => adminTier(a) === "master");
       nextSettings.sessionHostName = fallbackMaster ? fallbackMaster.name : "";
     }
-    saveAdminSettings(nextSettings);
+    if (!(await commitAdminSettings(nextSettings))) return;
     setConfirmRemoveAdminName(null);
     setRemoveAdminError("");
   }
 
-  function toggleFifaAccess(name) {
+  async function toggleFifaAccess(name) {
     if (!iAmMaster) return;
-    saveAdminSettings({ ...adminSettings, admins: adminSettings.admins.map(a => a.name === name ? { ...a, fifaMentoring: !a.fifaMentoring } : a) });
+    await commitAdminSettings({ ...adminSettings, admins: adminSettings.admins.map(a => a.name === name ? { ...a, fifaMentoring: !a.fifaMentoring } : a) });
   }
 
-  function handleAddAdmin() {
+  async function handleAddAdmin() {
     const iAmLead = adminTier(signedInAdminMatch) === "lead";
     if (!iAmMaster && !iAmLead) {
       setAddAdminError("Only an FA Admin or MF Admin (TD/CEM) can add admins.");
@@ -13070,15 +13050,15 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       pinToUse = newAdminPin;
     }
     const newAdmin = effectiveRole === "lead"
-      ? { name, pin: pinToUse, role: "lead", memberFederations: newAdminMfSelection }
+      ? { name, role: "lead", memberFederations: newAdminMfSelection }
       : effectiveRole === "coordinator"
-      ? { name, pin: pinToUse, role: "coordinator", memberFederations: newAdminMfSelection }
+      ? { name, role: "coordinator", memberFederations: newAdminMfSelection }
       : effectiveRole === "course"
-      ? { name, pin: pinToUse, role: "course", memberFederations: newAdminCourseMfSelection, assignedCourseNumbers: newAdminCourseNumbers }
+      ? { name, role: "course", memberFederations: newAdminCourseMfSelection, assignedCourseNumbers: newAdminCourseNumbers }
       : effectiveRole === "fifa"
-      ? { name, pin: pinToUse, role: "fifa" }
-      : { name, pin: pinToUse, role: "master" };
-    saveAdminSettings({ ...adminSettings, admins: [...adminSettings.admins, newAdmin] });
+      ? { name, role: "fifa" }
+      : { name, role: "master" };
+    if (!(await commitAdminSettings({ ...adminSettings, admins: [...adminSettings.admins, newAdmin] }, { [name.trim().toLowerCase()]: pinToUse }))) return;
     setNewAdminName("");
     setNewAdminPin("");
     setNewAdminPinSelf("");
@@ -13093,6 +13073,12 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
 
   return (
     <div className="space-y-4">
+      {adminSaveError && (
+        <div role="alert" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md w-[calc(100%-2rem)] bg-red-600 text-white text-sm rounded-lg shadow-lg px-4 py-3 flex items-start gap-3">
+          <span className="flex-1">{adminSaveError}</span>
+          <button onClick={() => setAdminSaveError("")} className="font-semibold underline">Dismiss</button>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="text-xl font-bold text-slate-900">Observation History</h2>
         {filtersActive && (
