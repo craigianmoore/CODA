@@ -6,6 +6,7 @@ import Papa from "papaparse";
 import QRCode from "qrcode";
 import * as mammoth from "mammoth";
 import { supabase } from "../lib/supabase";
+import FifaMentoringTab from "./FifaMentoringTab";
 
 // Turns one PDF page's text items ({str,x,y,w,h}) into text that follows the
 // page's visual layout. Items sharing a baseline form a line; wide gaps inside
@@ -1117,6 +1118,7 @@ const ROLE_STYLE = {
   lead:        { c: "#A85F00", bg: "#FCEFD6", sym: "\u25B2" },
   coordinator: { c: "#00694F", bg: "#DCF1EA", sym: "\u25A0" },
   course:      { c: "#9A3F78", bg: "#F6E5EF", sym: "\u25CF" },
+  fifa:        { c: "#004890", bg: "#E1EBF7", sym: "\u25C7" },
 };
 function roleBtnProps(role, selected, disabled) {
   const st = ROLE_STYLE[role];
@@ -1158,10 +1160,12 @@ function migrateAdminSettings(raw) {
     // working loses anything on this migration. The old "mf" role becomes
     // "lead" (MF Admin), same scope and behaviour, just renamed.
     if (typeof a === "string") return { name: a, pin: raw.pin || DEFAULT_ADMIN_SETTINGS.admins[0].pin, role: "master" };
-    const role = (a.role === "mf" || a.role === "lead") ? "lead" : (a.role === "course" ? "course" : a.role === "coordinator" ? "coordinator" : "master");
-    if (role === "lead") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || [] };
-    if (role === "coordinator") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || [] };
-    if (role === "course") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || (a.memberFederation ? [a.memberFederation] : []), assignedCourseNumbers: a.assignedCourseNumbers || [] };
+    const role = (a.role === "mf" || a.role === "lead") ? "lead" : (a.role === "course" ? "course" : a.role === "coordinator" ? "coordinator" : a.role === "fifa" ? "fifa" : "master");
+    const fifaFlag = a.fifaMentoring === true ? { fifaMentoring: true } : {};
+    if (role === "fifa") return { name: a.name || "", pin: a.pin || "", role };
+    if (role === "lead") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || [], ...fifaFlag };
+    if (role === "coordinator") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || [], ...fifaFlag };
+    if (role === "course") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || (a.memberFederation ? [a.memberFederation] : []), assignedCourseNumbers: a.assignedCourseNumbers || [], ...fifaFlag };
     return { name: a.name || "", pin: a.pin || "", role: "master" };
   }).filter(a => a.name);
   return {
@@ -1180,10 +1184,22 @@ function migrateAdminSettings(raw) {
 // specific course numbers within one federation — narrower than Lead.
 function adminTier(adminMatch) {
   if (!adminMatch) return "master";
+  if (adminMatch.role === "fifa") return "fifa";
   if (adminMatch.role === "lead") return "lead";
   if (adminMatch.role === "coordinator") return "coordinator";
   if (adminMatch.role === "course") return "course";
   return "master";
+}
+// FIFA Mentoring is a separate permission from CODA admin rights. FA Admins
+// (master) and FIFA Mentors (tier "fifa", no CODA access) always have it; any
+// other admin only if an FA Admin switched it on for them. This only decides
+// what the UI shows: /api/fifa/* re-checks it on the server for every request.
+function sessionHasFifa(session) {
+  if (!session || session.kind !== "admin") return false;
+  return session.tier === "master" || session.tier === "fifa" || session.fifaMentoring === true;
+}
+function sessionIsFifaOnly(session) {
+  return !!session && session.kind === "admin" && session.tier === "fifa";
 }
 function isMasterAdmin(adminMatch) {
   return adminTier(adminMatch) === "master";
@@ -1905,10 +1921,13 @@ async function kvDelete(key) {
 }
 
 export default function CoachObservationApp({ initialMemberFederation } = {}) {
-  const [tab, setTab] = useState(initialMemberFederation ? "newObs" : "dashboard");
+  const [tabState, setTab] = useState(initialMemberFederation ? "newObs" : "dashboard");
   // Every tab opens at the top of the page, not wherever the previous tab was scrolled to.
-  useEffect(() => { try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {} }, [tab]);
+  useEffect(() => { try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {} }, [tabState]);
   const [codaSession, setCodaSession] = useState(() => loadCodaSession());
+  // A FIFA Mentor (no CODA rights) only ever sees the FIFA Mentoring tab.
+  const fifaOnly = sessionIsFifaOnly(codaSession);
+  const tab = fifaOnly ? "fifa" : tabState;
   function handleSignedIn(session) {
     setCodaSession(session);
     saveCodaSession(session);
@@ -1999,9 +2018,10 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     const tier = adminTier(me);
     const same = tier === codaSession.tier
       && JSON.stringify(mfs) === JSON.stringify(codaSession.memberFederations || [])
-      && JSON.stringify(courses) === JSON.stringify(codaSession.assignedCourseNumbers || []);
+      && JSON.stringify(courses) === JSON.stringify(codaSession.assignedCourseNumbers || [])
+      && (me.fifaMentoring === true) === (codaSession.fifaMentoring === true);
     if (same) return;
-    const next = { ...codaSession, tier, memberFederations: mfs, assignedCourseNumbers: courses };
+    const next = { ...codaSession, tier, memberFederations: mfs, assignedCourseNumbers: courses, fifaMentoring: me.fifaMentoring === true };
     setCodaSession(next);
     saveCodaSession(next);
   }, [adminSettings]);
@@ -2333,7 +2353,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
         }}
       >
       <Header tab={tab} setTab={setTab} viewMode={viewMode} onViewModeChange={handleViewModeChange} fontScale={fontScale} onFontScaleChange={handleFontScaleChange}
-        onAdminClick={() => { setTab("history"); setHistoryAdminAutoOpen(true); }}
+        onAdminClick={fifaOnly ? undefined : () => { setTab("history"); setHistoryAdminAutoOpen(true); }}
         session={codaSession} onSignOut={handleSignOut} />
       {error && (
         <div className={`${maxWidthForViewMode(viewMode)} mx-auto px-4 pt-3`}>
@@ -2408,6 +2428,9 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             rapaProposals={rapaProposals} saveRapaProposals={saveRapaProposals}
             rapaCatalogue={rapaCatalogue} saveRapaCatalogue={saveRapaCatalogue}
           />
+        )}
+        {tab === "fifa" && sessionHasFifa(codaSession) && (
+          <FifaMentoringTab session={codaSession} />
         )}
         {tab === "logistics" && (
           <div className="space-y-8">
@@ -2535,7 +2558,14 @@ function SignInGate({ educators, adminSettings, adminLockouts, recordAdminAttemp
       memberFederations: match.memberFederations || [],
       memberFederation: match.memberFederation || "",
       assignedCourseNumbers: match.assignedCourseNumbers || [],
+      fifaMentoring: match.fifaMentoring === true,
     });
+    if (tier === "master" || tier === "fifa" || match.fifaMentoring === true) {
+      // Best effort: opens the FIFA Mentoring session so there is no second PIN prompt.
+      try {
+        fetch("/api/fifa/login", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: match.name, pin: adminPin }) }).catch(() => {});
+      } catch {}
+    }
   }
 
   return (
@@ -2609,6 +2639,8 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
     { id: "cetAssessment", label: "CET Observation", icon: Award },
     { id: "rapa", label: "RAPA", icon: ShieldAlert },
   ];
+  const fifaItem = { id: "fifa", label: "FIFA Mentoring", icon: BookOpen };
+  const visibleItems = sessionIsFifaOnly(session) ? [fifaItem] : (sessionHasFifa(session) ? [...items, fifaItem] : items);
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
       <div className={`${maxWidthForViewMode(viewMode)} mx-auto px-4`}>
@@ -2667,7 +2699,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
           {session && (
             <div className="flex items-center gap-1.5 ml-2 text-xs text-slate-500 shrink-0">
               <span className="hidden sm:inline">
-                {session.kind === "cet" ? session.name : `${session.name} · ${{ master: "FA Admin", lead: "MF Admin (TD/CEM)", coordinator: "MF Coordinator", course: "Course Admin" }[session.tier] || "Admin"}`}
+                {session.kind === "cet" ? session.name : `${session.name} · ${{ master: "FA Admin", lead: "MF Admin (TD/CEM)", coordinator: "MF Coordinator", course: "Course Admin", fifa: "FIFA Mentor" }[session.tier] || "Admin"}`}
               </span>
               <button onClick={onSignOut} className="font-semibold text-slate-500 hover:text-slate-600">Sign Out</button>
             </div>
@@ -2675,13 +2707,13 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
         </div>
         <nav className="flex items-center gap-2 pb-2 -mb-px">
           <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">
-          {items.map(it => {
+          {visibleItems.map(it => {
             const Icon = it.icon;
             const active = tab === it.id || (tab === "report" && it.id === "history");
             return (
               <Fragment key={it.id}>
                 {/* Divider: CET Observation and RAPA are a separate operational area from the course tabs */}
-                {it.id === "cetAssessment" && <span aria-hidden="true" className="self-center h-6 w-0.5 bg-slate-500 mx-1.5 shrink-0" />}
+                {(it.id === "cetAssessment" || it.id === "fifa") && !sessionIsFifaOnly(session) && <span aria-hidden="true" className="self-center h-6 w-0.5 bg-slate-500 mx-1.5 shrink-0" />}
                 <button
                   onClick={() => setTab(it.id)}
                   title={it.fullLabel || it.label}
@@ -12942,6 +12974,11 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setRemoveAdminError("");
   }
 
+  function toggleFifaAccess(name) {
+    if (!iAmMaster) return;
+    saveAdminSettings({ ...adminSettings, admins: adminSettings.admins.map(a => a.name === name ? { ...a, fifaMentoring: !a.fifaMentoring } : a) });
+  }
+
   function handleAddAdmin() {
     const iAmLead = adminTier(signedInAdminMatch) === "lead";
     if (!iAmMaster && !iAmLead) {
@@ -13038,6 +13075,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       ? { name, pin: pinToUse, role: "coordinator", memberFederations: newAdminMfSelection }
       : effectiveRole === "course"
       ? { name, pin: pinToUse, role: "course", memberFederations: newAdminCourseMfSelection, assignedCourseNumbers: newAdminCourseNumbers }
+      : effectiveRole === "fifa"
+      ? { name, pin: pinToUse, role: "fifa" }
       : { name, pin: pinToUse, role: "master" };
     saveAdminSettings({ ...adminSettings, admins: [...adminSettings.admins, newAdmin] });
     setNewAdminName("");
@@ -13280,7 +13319,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
               <div className="border-t border-slate-100 pt-3">
                 <p className="text-sm font-semibold text-slate-800 mb-1">Admins</p>
                 <p className="text-xs text-slate-500 mb-2">
-                  Maximum {maxAdmins} admin{maxAdmins === 1 ? "" : "s"}, each with their own individual PIN.
+                  Maximum {maxAdmins} admin{maxAdmins === 1 ? "" : "s"}, each with their own individual PIN. FA Admins and FIFA Mentors always have FIFA Mentoring access; other admins only when switched on.
                   {" "}Session Host: <strong>{adminSettings.sessionHostName || "—"}</strong>.
                 </p>
                 <div className="flex flex-wrap gap-2 mb-2">
@@ -13294,7 +13333,16 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.coordinator.c }}>{ROLE_STYLE.coordinator.sym} MF Coordinator: {(a.memberFederations || []).join(", ")}</span>
                         : a.role === "course"
                         ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.course.c }}>{ROLE_STYLE.course.sym} Course Admin: {(a.memberFederations || []).join(", ")} (#{(a.assignedCourseNumbers || []).join(", #")})</span>
+                        : a.role === "fifa"
+                        ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.fifa.c }}>{ROLE_STYLE.fifa.sym} FIFA Mentor (FIFA Mentoring only)</span>
                         : <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.master.c }}>{ROLE_STYLE.master.sym} FA Admin</span>}
+                      {iAmMaster && a.role !== "master" && a.role !== "fifa" && (
+                        <button onClick={() => toggleFifaAccess(a.name)}
+                          title="Lets this admin open the FIFA Mentoring tab as well as their CODA access"
+                          className="text-[10px] font-bold text-sky-700 hover:text-sky-900 ml-1">
+                          FIFA: {a.fifaMentoring ? "on" : "off"}
+                        </button>
+                      )}
                       {iAmMaster && (
                         <button onClick={() => editingAdminPinName === a.name ? setEditingAdminPinName(null) : startEditAdminPin(a.name)}
                           className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 ml-1">
@@ -13468,6 +13516,11 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           {...roleBtnProps("course", newAdminRole === "course", false)}>
                           
                           {ROLE_STYLE.course.sym} Course Admin{newAdminRole === "course" ? " \u2713" : ""}
+                        </button>
+                        <button onClick={() => { setNewAdminRole("fifa"); setNewAdminMfSelection([]); setAddAdminError(""); }} type="button"
+                          title="Can only open the FIFA Mentoring tab. No access to CODA courses, coaches or observations."
+                          {...roleBtnProps("fifa", newAdminRole === "fifa", false)}>
+                          {ROLE_STYLE.fifa.sym} FIFA Mentor{newAdminRole === "fifa" ? " \u2713" : ""}
                         </button>
                       </div>
                     )}
