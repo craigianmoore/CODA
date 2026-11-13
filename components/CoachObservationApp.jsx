@@ -2280,6 +2280,8 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
         date: obs.date, memberFederation: obs.memberFederation, sessionType: obs.sessionType,
         formalCourseName: obs.formalCourseName, diplomaBlock: obs.diplomaBlock, courseNumber: obs.courseNumber,
         ageGroup: obs.ageGroup, keyOutcomesFocus: obs.keyOutcomesFocus, coachingActivity: obs.coachingActivity,
+        sessionTopic: obs.sessionTopic, sessionPlan: obs.sessionPlan,
+        sharedSecond: true,
       });
       setTab("newObs");
       return;
@@ -10175,7 +10177,11 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   // session). Everything below that starts from the saved record starts from this instead.
   const src = existingObservation || seed || null;
 
-  const [step, setStep] = useState(0);
+  // The second coach of a shared session starts at Assessment Scoring: the session
+  // details and plan come from the first coach's report and are not edited here
+  // (only the pitch size can be revised).
+  const lockEarly = !!src?.sharedSecond;
+  const [step, setStep] = useState(() => (src?.sharedSecond ? 2 : 0));
   const [typeOfSessionOpen, setTypeOfSessionOpen] = useState(false);
   const [coachId, setCoachId] = useState(() => src?.coachId || "");
   const [coachSearchQuery, setCoachSearchQuery] = useState("");
@@ -10268,7 +10274,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   function sharedFields() {
     if (!sharedWithCoachId) return {};
     if (!sharedIdRef.current) sharedIdRef.current = uid();
-    return { sharedSessionId: sharedIdRef.current, sharedWithCoachId, sharedWithName: sharedPartnerName };
+    return { sharedSessionId: sharedIdRef.current, sharedWithCoachId, sharedWithName: sharedPartnerName, ...(lockEarly ? { sharedSecond: true } : {}) };
   }
 
   const selectedCoach = coaches.find(c => c.id === coachId);
@@ -10672,6 +10678,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     return i;
   }
   function goToStep(i) {
+    if (lockEarly && i < 2) return;
     if (i <= Math.max(step, maxReachableStep())) {
       if (i !== step) autoSaveDraft();
       setStep(i);
@@ -10831,7 +10838,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
 
       <div className="flex items-center gap-2">
         {steps.map((s, i) => {
-          const reachable = i <= Math.max(step, maxReachableStep());
+          const reachable = i <= Math.max(step, maxReachableStep()) && !(lockEarly && i < 2);
           return (
             <div key={s} className="flex items-center gap-2 flex-1">
               <button type="button" onClick={() => goToStep(i)} disabled={!reachable} title={reachable ? `Go to ${s}` : `Complete earlier sections first`}
@@ -10924,12 +10931,6 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
               </div>
             )}
 
-            {!!seed && !existingObservation && sharedPartnerName && (
-              <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2.5">
-                <p className="text-sm font-semibold text-indigo-800">Shared session with {sharedPartnerName}</p>
-                <p className="text-xs text-indigo-700 mt-0.5">The session details are copied across. Score and write feedback for {selectedCoach?.name || "this coach"} only; {sharedPartnerName}'s report is already saved.</p>
-              </div>
-            )}
             {!(seed && !existingObservation) && !usingNewCoach && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
                 <label className="text-[10px] font-bold uppercase tracking-wide text-indigo-600 mb-1.5 block">Shared session (optional)</label>
@@ -11492,6 +11493,29 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
 
         {step === 2 && (
           <div className="space-y-5">
+            {lockEarly && (
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-indigo-800">Shared session with {sharedPartnerName}</p>
+                  <p className="text-xs text-indigo-700 mt-0.5">
+                    Scoring {selectedCoach?.name || "this coach"} only. The session details and plan come from {sharedPartnerName}'s report
+                    {sessionPlan.sessionObjective ? <> (objective: <em>{sessionPlan.sessionObjective}</em>)</> : null}.
+                    If this coach's pitch was a different size, revise it here.
+                  </p>
+                </div>
+                <div className="border border-indigo-200 rounded-lg px-3 py-2 flex items-center gap-3 bg-white">
+                  <div className="flex-1">
+                    <p className="text-xs text-slate-500 mb-0.5">Pitch length</p>
+                    <input value={sessionPlan.pitchLength} onChange={e => setSessionPlanField("pitchLength", e.target.value)} placeholder="e.g. 40m" className="w-full text-sm outline-none" />
+                  </div>
+                  <span className="text-slate-500 font-semibold">x</span>
+                  <div className="flex-1">
+                    <p className="text-xs text-slate-500 mb-0.5">Pitch width</p>
+                    <input value={sessionPlan.pitchWidth} onChange={e => setSessionPlanField("pitchWidth", e.target.value)} placeholder="e.g. 30m" className="w-full text-sm outline-none" />
+                  </div>
+                </div>
+              </div>
+            )}
             {!(isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && (
             <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
               <p className="text-sm font-semibold text-indigo-800 mb-1">SOCHANGEIT Evidence Checklist</p>
@@ -11682,7 +11706,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
       </div>
 
       <div className="flex justify-between items-center">
-        <button onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0}
+        <button onClick={() => setStep(s => Math.max(lockEarly ? 2 : 0, s - 1))} disabled={step === (lockEarly ? 2 : 0)}
           className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-500 disabled:opacity-0">
           <ChevronLeft className="w-4 h-4" /> Back
         </button>
