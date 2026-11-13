@@ -2171,6 +2171,8 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   const visibleObservations = observations.filter(o => o.status !== "draft");
   const drafts = observations.filter(o => o.status === "draft");
   const editingObservation = editingObservationId ? observations.find(o => o.id === editingObservationId) : null;
+  // Pre-filled starting point for the second coach of a shared session.
+  const [shareSeed, setShareSeed] = useState(null);
 
   async function handleObservationSaved(obs) {
     const existingIndex = observations.findIndex(o => o.id === obs.id);
@@ -2264,6 +2266,26 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
       );
     }
 
+    // Shared session: once the first coach's report is submitted, open the second
+    // coach's observation with the session details carried across.
+    if (obs.status === "submitted" && obs.sharedSessionId && obs.sharedWithCoachId &&
+        !nextObservations.some(o => o.sharedSessionId === obs.sharedSessionId && o.coachId === obs.sharedWithCoachId)) {
+      setEditingObservationId(null);
+      setShareSeed({
+        coachId: obs.sharedWithCoachId,
+        sharedSessionId: obs.sharedSessionId,
+        sharedWithCoachId: obs.coachId,
+        sharedWithName: obs.coachName || "",
+        coachEducatorName: obs.coachEducatorName, educatorRole: obs.educatorRole,
+        date: obs.date, memberFederation: obs.memberFederation, sessionType: obs.sessionType,
+        formalCourseName: obs.formalCourseName, diplomaBlock: obs.diplomaBlock, courseNumber: obs.courseNumber,
+        ageGroup: obs.ageGroup, keyOutcomesFocus: obs.keyOutcomesFocus, coachingActivity: obs.coachingActivity,
+      });
+      setTab("newObs");
+      return;
+    }
+
+    setShareSeed(null);
     setEditingObservationId(null);
     setReportId(obs.id);
     setTab("report");
@@ -2409,10 +2431,12 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             saveCoaches={saveCoaches} saveEducators={saveEducators}
             observations={observations} saveObservations={saveObservations}
             completedTasks={completedTasks}
+            key={shareSeed ? `shared-${shareSeed.sharedSessionId}-${shareSeed.coachId}` : "new-observation"}
             existingObservation={editingObservation}
+            seed={shareSeed}
             defaultMemberFederation={initialMemberFederation}
             onSaved={handleObservationSaved}
-            onCancel={() => { setEditingObservationId(null); setTab("dashboard"); }}
+            onCancel={() => { setEditingObservationId(null); setShareSeed(null); setTab("dashboard"); }}
           />
         )}
         {tab === "tasks" && (
@@ -10145,12 +10169,15 @@ function useVisualViewportKeyboard() {
   return state;
 }
 
-function NewObservation({ coaches, courses, educators, saveCoaches, saveEducators, observations, saveObservations, completedTasks, existingObservation, defaultMemberFederation, onSaved, onCancel }) {
+function NewObservation({ coaches, courses, educators, saveCoaches, saveEducators, observations, saveObservations, completedTasks, existingObservation, seed, defaultMemberFederation, onSaved, onCancel }) {
   const isEditing = !!existingObservation;
+  // `seed` pre-fills a brand-new observation (used for the second coach of a shared
+  // session). Everything below that starts from the saved record starts from this instead.
+  const src = existingObservation || seed || null;
 
   const [step, setStep] = useState(0);
   const [typeOfSessionOpen, setTypeOfSessionOpen] = useState(false);
-  const [coachId, setCoachId] = useState(() => existingObservation?.coachId || "");
+  const [coachId, setCoachId] = useState(() => src?.coachId || "");
   const [coachSearchQuery, setCoachSearchQuery] = useState("");
   const [coachDropdownOpen, setCoachDropdownOpen] = useState(false);
   const [newCoachName, setNewCoachName] = useState("");
@@ -10160,56 +10187,56 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   const [idpParsing, setIdpParsing] = useState(false);
   const [idpError, setIdpError] = useState("");
 
-  const initialEducatorMatch = existingObservation
-    ? educators.find(e => e.name.toLowerCase() === (existingObservation.coachEducatorName || "").toLowerCase())
+  const initialEducatorMatch = src
+    ? educators.find(e => e.name.toLowerCase() === (src.coachEducatorName || "").toLowerCase())
     : null;
-  const [educatorRole, setEducatorRole] = useState(() => existingObservation?.educatorRole || "Coach Education Tutor (CET)");
+  const [educatorRole, setEducatorRole] = useState(() => src?.educatorRole || "Coach Education Tutor (CET)");
   const [educatorId, setEducatorId] = useState(() => {
-    if (!existingObservation) return "";
+    if (!src) return "";
     return initialEducatorMatch ? initialEducatorMatch.id : "__new__";
   });
   const [educatorSearchQuery, setEducatorSearchQuery] = useState("");
   const [educatorDropdownOpen, setEducatorDropdownOpen] = useState(false);
   const [newEducatorName, setNewEducatorName] = useState(() => {
-    if (!existingObservation) return "";
-    return initialEducatorMatch ? "" : (existingObservation.coachEducatorName || "");
+    if (!src) return "";
+    return initialEducatorMatch ? "" : (src.coachEducatorName || "");
   });
 
-  const [date, setDate] = useState(() => existingObservation?.date || todayLocalISO());
-  const [memberFederation, setMemberFederation] = useState(() => existingObservation?.memberFederation || defaultMemberFederation || DEFAULT_MEMBER_FEDERATION);
-  const [sessionType, setSessionType] = useState(() => existingObservation?.sessionType || "formal");
+  const [date, setDate] = useState(() => src?.date || todayLocalISO());
+  const [memberFederation, setMemberFederation] = useState(() => src?.memberFederation || defaultMemberFederation || DEFAULT_MEMBER_FEDERATION);
+  const [sessionType, setSessionType] = useState(() => src?.sessionType || "formal");
 
-  const initialCourseMatch = existingObservation
-    ? courses.find(c => c.title === existingObservation.formalCourseName)
+  const initialCourseMatch = src
+    ? courses.find(c => c.title === src.formalCourseName)
     : null;
   const [formalCourseOption, setFormalCourseOption] = useState(() => {
-    if (!existingObservation || !existingObservation.formalCourseName) return "";
+    if (!src || !src.formalCourseName) return "";
     return initialCourseMatch ? initialCourseMatch.id : "__other__";
   });
-  const [formalCourseName, setFormalCourseName] = useState(() => existingObservation?.formalCourseName || "");
-  const [diplomaBlock, setDiplomaBlock] = useState(() => existingObservation?.diplomaBlock || "");
-  const [courseNumber, setCourseNumber] = useState(() => existingObservation?.courseNumber || "");
-  const [ageGroup, setAgeGroup] = useState(() => existingObservation?.ageGroup || "");
-  const [keyOutcomesFocus, setKeyOutcomesFocus] = useState(() => existingObservation?.keyOutcomesFocus || "");
-  const initialTopicCoach = existingObservation ? coaches.find(c => c.id === existingObservation.coachId) : null;
+  const [formalCourseName, setFormalCourseName] = useState(() => src?.formalCourseName || "");
+  const [diplomaBlock, setDiplomaBlock] = useState(() => src?.diplomaBlock || "");
+  const [courseNumber, setCourseNumber] = useState(() => src?.courseNumber || "");
+  const [ageGroup, setAgeGroup] = useState(() => src?.ageGroup || "");
+  const [keyOutcomesFocus, setKeyOutcomesFocus] = useState(() => src?.keyOutcomesFocus || "");
+  const initialTopicCoach = src ? coaches.find(c => c.id === src.coachId) : null;
   const [sessionTopicOption, setSessionTopicOption] = useState(() => {
-    if (!existingObservation || !existingObservation.sessionTopic) return "";
+    if (!src || !src.sessionTopic) return "";
     const topics = initialTopicCoach?.topics || [];
-    return topics.includes(existingObservation.sessionTopic) ? existingObservation.sessionTopic : "__other__";
+    return topics.includes(src.sessionTopic) ? src.sessionTopic : "__other__";
   });
-  const [sessionTopic, setSessionTopic] = useState(() => existingObservation?.sessionTopic || "");
-  const [coachingActivity, setCoachingActivity] = useState(() => existingObservation?.coachingActivity || "");
-  const [sessionPlan, setSessionPlan] = useState(() => existingObservation?.sessionPlan ? { ...emptySessionPlan(), ...existingObservation.sessionPlan } : emptySessionPlan());
-  const [areas, setAreas] = useState(() => existingObservation?.areas || emptyAreas());
-  const [sochangeit, setSochangeit] = useState(() => existingObservation?.sochangeit || emptySochangeit());
-  const [strengths, setStrengths] = useState(() => existingObservation?.strengths || "");
-  const [areasForDevelopment, setAreasForDevelopment] = useState(() => existingObservation?.areas_feedback || "");
-  const [planNotes, setPlanNotes] = useState(() => existingObservation?.planNotes || "");
-  const [actionPlan, setActionPlan] = useState(() => existingObservation?.actionPlan || ["", "", ""]);
-  const [assessmentOutcome, setAssessmentOutcome] = useState(() => existingObservation?.assessmentOutcome || "");
-  const [assessorSignature, setAssessorSignature] = useState(() => existingObservation?.assessorSignature || "");
+  const [sessionTopic, setSessionTopic] = useState(() => src?.sessionTopic || "");
+  const [coachingActivity, setCoachingActivity] = useState(() => src?.coachingActivity || "");
+  const [sessionPlan, setSessionPlan] = useState(() => src?.sessionPlan ? { ...emptySessionPlan(), ...src.sessionPlan } : emptySessionPlan());
+  const [areas, setAreas] = useState(() => src?.areas || emptyAreas());
+  const [sochangeit, setSochangeit] = useState(() => src?.sochangeit || emptySochangeit());
+  const [strengths, setStrengths] = useState(() => src?.strengths || "");
+  const [areasForDevelopment, setAreasForDevelopment] = useState(() => src?.areas_feedback || "");
+  const [planNotes, setPlanNotes] = useState(() => src?.planNotes || "");
+  const [actionPlan, setActionPlan] = useState(() => src?.actionPlan || ["", "", ""]);
+  const [assessmentOutcome, setAssessmentOutcome] = useState(() => src?.assessmentOutcome || "");
+  const [assessorSignature, setAssessorSignature] = useState(() => src?.assessorSignature || "");
   const [autoSignature, setAutoSignature] = useState("");
-  const [cetNotes, setCetNotes] = useState(() => existingObservation?.cetNotes || "");
+  const [cetNotes, setCetNotes] = useState(() => src?.cetNotes || "");
 
   // Floating stopwatch shown only during Assessment Scoring (step 2) — helps
   // CETs time how long they spend observing before scoring. Resets when
@@ -10227,7 +10254,22 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
   const keyboard = useVisualViewportKeyboard();
-  const [potentialPathways, setPotentialPathways] = useState(() => existingObservation?.potentialPathways || []);
+  const [potentialPathways, setPotentialPathways] = useState(() => src?.potentialPathways || []);
+
+  // Shared session: two coaches delivered the same session. Each coach still gets
+  // their own observation (own scores, feedback, history, progress); the two are
+  // linked by a shared id and show "Shared session with ...".
+  const sharedIdRef = useRef(src?.sharedSessionId || "");
+  const [sharedWithCoachId, setSharedWithCoachId] = useState(() => src?.sharedWithCoachId || "");
+  const [sharedSearch, setSharedSearch] = useState("");
+  const [sharedOpen, setSharedOpen] = useState(false);
+  const sharedPartner = coaches.find(c => c.id === sharedWithCoachId);
+  const sharedPartnerName = sharedPartner?.name || src?.sharedWithName || "";
+  function sharedFields() {
+    if (!sharedWithCoachId) return {};
+    if (!sharedIdRef.current) sharedIdRef.current = uid();
+    return { sharedSessionId: sharedIdRef.current, sharedWithCoachId, sharedWithName: sharedPartnerName };
+  }
 
   const selectedCoach = coaches.find(c => c.id === coachId);
   const usingNewCoach = coachId === "__new__";
@@ -10686,6 +10728,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
       diplomaThreshold: threshold,
       assessorSignature: assessorSignature.trim(),
       cetNotes: cetNotes.trim(),
+      ...sharedFields(),
       savedAt: new Date().toISOString(),
     };
 
@@ -10752,6 +10795,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
       diplomaThreshold: threshold,
       assessorSignature: assessorSignature.trim(),
       cetNotes: cetNotes.trim(),
+      ...sharedFields(),
     };
   }
 
@@ -10877,6 +10921,57 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
               <div className="grid grid-cols-2 gap-3 pl-3 border-l-2 border-slate-100">
                 <input value={newCoachName} onChange={e => setNewCoachName(e.target.value)} placeholder="New coach name" className="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
                 <input value={newCoachClub} onChange={e => setNewCoachClub(e.target.value)} placeholder="Club / Team" className="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+            )}
+
+            {!!seed && !existingObservation && sharedPartnerName && (
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2.5">
+                <p className="text-sm font-semibold text-indigo-800">Shared session with {sharedPartnerName}</p>
+                <p className="text-xs text-indigo-700 mt-0.5">The session details are copied across. Score and write feedback for {selectedCoach?.name || "this coach"} only; {sharedPartnerName}'s report is already saved.</p>
+              </div>
+            )}
+            {!(seed && !existingObservation) && !usingNewCoach && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <label className="text-[10px] font-bold uppercase tracking-wide text-indigo-600 mb-1.5 block">Shared session (optional)</label>
+                {sharedPartner ? (
+                  <div className="flex items-center justify-between border border-slate-300 rounded-lg px-3 py-2 bg-white">
+                    <p className="text-sm font-medium text-slate-800">{sharedPartner.name}{sharedPartner.club && <span className="text-xs text-slate-500 ml-1.5">({sharedPartner.club})</span>}</p>
+                    <button type="button" onClick={() => { setSharedWithCoachId(""); setSharedSearch(""); }} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Remove</button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      value={sharedSearch}
+                      onChange={e => { setSharedSearch(e.target.value); setSharedOpen(true); }}
+                      onFocus={() => setSharedOpen(true)}
+                      onBlur={() => setTimeout(() => setSharedOpen(false), 150)}
+                      placeholder="Second coach in this session..."
+                      className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-sm bg-white"
+                    />
+                    {sharedOpen && (
+                      <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-md max-h-56 overflow-y-auto">
+                        {(() => {
+                          const q = sharedSearch.trim().toLowerCase();
+                          const matches = [...coaches]
+                            .filter(c => c.id !== coachId)
+                            .sort((a, b) => a.name.localeCompare(b.name))
+                            .filter(c => !q || c.name.toLowerCase().split(/\s+/).some(part => part.includes(q)));
+                          return matches.length === 0
+                            ? <p className="px-3 py-2.5 text-sm text-slate-500">No coaches match "{sharedSearch}".</p>
+                            : matches.map(c => (
+                              <button key={c.id} type="button" onMouseDown={() => { setSharedWithCoachId(c.id); setSharedSearch(""); setSharedOpen(false); }}
+                                className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm border-b border-slate-50 last:border-0">
+                                <span className="font-medium text-slate-800">{c.name}</span>
+                                {c.club && <span className="text-xs text-slate-500 ml-1.5">({c.club})</span>}
+                              </button>
+                            ));
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-slate-500 mt-1.5">Two coaches delivering this session together? Pick the second coach. When you submit this report, their observation opens with the session details already filled in. Each coach keeps their own scores and feedback.</p>
               </div>
             )}
 
@@ -11709,7 +11804,7 @@ function buildObservationInnerHtml(obs) {
 
   return `
         <div class="meta-grid">
-          <div><p class="meta-label">Coach</p><p class="meta-value">${esc(obs.coachName) || "—"}</p></div>
+          <div><p class="meta-label">Coach</p><p class="meta-value">${esc(obs.coachName) || "—"}${obs.sharedSessionId && obs.sharedWithName ? `<br/><span style="font-weight:600;color:#4338ca;font-size:11px;">Shared session with ${esc(obs.sharedWithName)}</span>` : ""}</p></div>
           <div><p class="meta-label">${esc(obs.educatorRole) || "Coach Education Tutor (CET)"}</p><p class="meta-value">${esc(obs.coachEducatorName) || "—"}</p></div>
           <div><p class="meta-label">Date</p><p class="meta-value">${obs.date ? new Date(obs.date).toLocaleDateString("en-GB") : "—"}</p></div>
         </div>
@@ -11957,6 +12052,9 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
           <div>
             <h2 className="text-xl font-bold text-slate-900">Coaching Observation Report</h2>
             <p className="text-sm text-slate-500">{obs.coachName}</p>
+            {obs.sharedSessionId && obs.sharedWithName && (
+              <p className="text-xs font-semibold text-indigo-700 mt-0.5">Shared session with {obs.sharedWithName}</p>
+            )}
           </div>
           <span className={`text-xs font-semibold px-3 py-1.5 rounded-full ${obs.sessionType === "formal" ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>
             {obs.sessionType === "formal" ? `Formal · ${obs.formalCourseName}${obs.courseNumber ? ` (#${obs.courseNumber})` : ""}${obs.diplomaBlock ? ` · ${obs.diplomaBlock}` : ""}` : "Informal Club Session"}
@@ -13814,7 +13912,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         <Calendar className="w-4 h-4 text-slate-500" />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-slate-800">{o.coachName}</p>
+                        <p className="text-sm font-semibold text-slate-800">{o.coachName}{o.sharedSessionId && o.sharedWithName && <span className="ml-2 text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded align-middle">Shared with {o.sharedWithName}</span>}</p>
                         <p className="text-xs text-slate-500">
                           {o.sessionType === "formal" ? `Formal · ${o.formalCourseName || "Course"}${o.courseNumber ? ` (#${o.courseNumber})` : ""}` : "Informal"} · {new Date(o.date).toLocaleDateString("en-GB")} · <CetName name={o.coachEducatorName} />
                           {oSessionNumber ? ` · Session ${oSessionNumber}` : ""}
