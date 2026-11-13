@@ -10247,13 +10247,40 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   // Floating stopwatch shown only during Assessment Scoring (step 2) — helps
   // CETs time how long they spend observing before scoring. Resets when
   // leaving the observation, not persisted with the record.
-  const [swSeconds, setSwSeconds] = useState(0);
-  const [swRunning, setSwRunning] = useState(false);
+  // Time is measured from the device clock (Date.now), not by counting ticks, so
+  // it stays right when the phone sleeps or the tab is in the background (the
+  // browser pauses timers then; the clock keeps going).
+  const [swBaseMs, setSwBaseMs] = useState(0);          // milliseconds banked before the current run
+  const [swStartedAt, setSwStartedAt] = useState(null); // Date.now() when the current run began
+  const [swNow, setSwNow] = useState(() => Date.now());
+  const swRunning = swStartedAt !== null;
+  const swSeconds = Math.floor((swBaseMs + (swRunning ? Math.max(0, swNow - swStartedAt) : 0)) / 1000);
   useEffect(() => {
     if (!swRunning) return;
-    const id = setInterval(() => setSwSeconds(s => s + 1), 1000);
-    return () => clearInterval(id);
+    const tick = () => setSwNow(Date.now());
+    tick();
+    const id = setInterval(tick, 500);
+    document.addEventListener("visibilitychange", tick);
+    window.addEventListener("focus", tick);
+    window.addEventListener("pageshow", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+      window.removeEventListener("focus", tick);
+      window.removeEventListener("pageshow", tick);
+    };
   }, [swRunning]);
+  function swToggle() {
+    if (swRunning) {
+      setSwBaseMs(b => b + Math.max(0, Date.now() - swStartedAt));
+      setSwStartedAt(null);
+    } else {
+      const now = Date.now();
+      setSwNow(now);
+      setSwStartedAt(now);
+    }
+  }
+  function swReset() { setSwStartedAt(null); setSwBaseMs(0); }
   function swFormat(total) {
     const m = Math.floor(total / 60);
     const s = total % 60;
@@ -11737,11 +11764,11 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
           <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Timer</p>
           <p className="text-xl font-bold text-slate-900 tabular-nums">{swFormat(swSeconds)}</p>
           <div className="flex items-center gap-1">
-            <button onClick={() => setSwRunning(r => !r)}
+            <button onClick={swToggle}
               className={`text-[11px] font-semibold px-2 py-1 rounded-md ${swRunning ? "bg-red-100 text-red-700 hover:bg-red-200" : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"}`}>
               {swRunning ? "Stop" : "Start"}
             </button>
-            <button onClick={() => { setSwRunning(false); setSwSeconds(0); }} title="Reset"
+            <button onClick={swReset} title="Reset"
               className="text-[11px] font-semibold px-2 py-1 rounded-md bg-slate-100 text-slate-500 hover:bg-slate-200">
               Reset
             </button>
