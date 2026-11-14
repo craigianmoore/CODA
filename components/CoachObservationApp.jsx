@@ -2169,16 +2169,21 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   async function recordAdminAttempt() {}
 
   const visibleObservations = observations.filter(o => o.status !== "draft");
-  const drafts = observations.filter(o => o.status === "draft");
+  // A shared session's second-coach draft is opened together with the first coach's
+  // draft (one form, a switch between the two), so list the pair once.
+  const drafts = observations.filter(o => o.status === "draft" && !(o.sharedSecond && observations.some(p =>
+    p.status === "draft" && !p.sharedSecond && p.sharedSessionId === o.sharedSessionId && p.coachId === o.sharedWithCoachId)));
   const editingObservation = editingObservationId ? observations.find(o => o.id === editingObservationId) : null;
-  // Pre-filled starting point for the second coach of a shared session.
-  const [shareSeed, setShareSeed] = useState(null);
 
-  async function handleObservationSaved(obs) {
-    const existingIndex = observations.findIndex(o => o.id === obs.id);
-    const nextObservations = existingIndex !== -1
-      ? observations.map(o => o.id === obs.id ? obs : o)
-      : [...observations, obs];
+  // `obs` is the record to open afterwards; `extra` are other records saved in the same
+  // go (the second coach of a shared session).
+  async function handleObservationSaved(obs, extra = []) {
+    const incoming = [obs, ...extra];
+    const nextObservations = [...observations];
+    incoming.forEach(r => {
+      const i = nextObservations.findIndex(o => o.id === r.id);
+      if (i !== -1) nextObservations[i] = r; else nextObservations.push(r);
+    });
     try {
       await saveObservations(nextObservations);
     } catch (err) {
@@ -2188,6 +2193,16 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
       return;
     }
 
+    // Update the Completed Tasks checklist for every submitted record, then save once.
+    let tasksNow = completedTasks;
+    let tasksChanged = false;
+    for (const rec of incoming) {
+      const after = tasksAfterSubmit(tasksNow, rec);
+      if (after) { tasksNow = after; tasksChanged = true; }
+    }
+    if (tasksChanged) await saveCompletedTasks(tasksNow);
+
+    function tasksAfterSubmit(completedTasks, obs) {
     if (obs.status === "submitted" && obs.coachId && obs.sessionType === "formal" && obs.formalCourseName) {
       const matchIdx = completedTasks.findIndex(t =>
         t.coachId === obs.coachId &&
@@ -2259,35 +2274,13 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
       }
       updatedTask.updatedAt = new Date().toISOString();
 
-      await saveCompletedTasks(
-        isNewTask
-          ? [...completedTasks, updatedTask]
-          : completedTasks.map((t, i) => i === matchIdx ? updatedTask : t)
-      );
+      return isNewTask
+        ? [...completedTasks, updatedTask]
+        : completedTasks.map((t, i) => i === matchIdx ? updatedTask : t);
+    }
+    return null;
     }
 
-    // Shared session: once the first coach's report is submitted, open the second
-    // coach's observation with the session details carried across.
-    if (obs.status === "submitted" && obs.sharedSessionId && obs.sharedWithCoachId &&
-        !nextObservations.some(o => o.sharedSessionId === obs.sharedSessionId && o.coachId === obs.sharedWithCoachId)) {
-      setEditingObservationId(null);
-      setShareSeed({
-        coachId: obs.sharedWithCoachId,
-        sharedSessionId: obs.sharedSessionId,
-        sharedWithCoachId: obs.coachId,
-        sharedWithName: obs.coachName || "",
-        coachEducatorName: obs.coachEducatorName, educatorRole: obs.educatorRole,
-        date: obs.date, memberFederation: obs.memberFederation, sessionType: obs.sessionType,
-        formalCourseName: obs.formalCourseName, diplomaBlock: obs.diplomaBlock, courseNumber: obs.courseNumber,
-        ageGroup: obs.ageGroup, keyOutcomesFocus: obs.keyOutcomesFocus, coachingActivity: obs.coachingActivity,
-        sessionTopic: obs.sessionTopic, sessionPlan: obs.sessionPlan,
-        sharedSecond: true,
-      });
-      setTab("newObs");
-      return;
-    }
-
-    setShareSeed(null);
     setEditingObservationId(null);
     setReportId(obs.id);
     setTab("report");
@@ -2300,12 +2293,25 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     // saved from another device. Without this, resuming a draft here seeds every
     // field from that stale snapshot, and saving later silently overwrites any
     // fields someone else already saved with the old values.
-    const { data, error } = await supabase.from("observations").select("id, data").eq("id", obs.id).single();
-    if (!error && data) {
-      const fresh = { ...data.data, id: data.id };
-      setObservations(prev => prev.map(o => (o.id === fresh.id ? fresh : o)));
+    //
+    // A shared session's two coaches are edited in one form. If the second coach's
+    // draft is opened while the first coach is still a draft, open the first coach's
+    // (which loads both). The partner's record is refreshed too, since the form shows both.
+    let target = obs;
+    if (obs.status === "draft" && obs.sharedSecond && obs.sharedSessionId) {
+      const primary = observations.find(o => o.status === "draft" && !o.sharedSecond
+        && o.sharedSessionId === obs.sharedSessionId && o.coachId === obs.sharedWithCoachId);
+      if (primary) target = primary;
     }
-    setEditingObservationId(obs.id);
+    const ids = [target.id, ...observations
+      .filter(o => target.sharedSessionId && o.sharedSessionId === target.sharedSessionId && o.id !== target.id)
+      .map(o => o.id)];
+    const { data, error } = await supabase.from("observations").select("id, data").in("id", ids);
+    if (!error && data && data.length) {
+      const fresh = new Map(data.map(r => [r.id, { ...r.data, id: r.id }]));
+      setObservations(prev => prev.map(o => (fresh.has(o.id) ? fresh.get(o.id) : o)));
+    }
+    setEditingObservationId(target.id);
     setTab("newObs");
   }
 
@@ -2433,12 +2439,11 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             saveCoaches={saveCoaches} saveEducators={saveEducators}
             observations={observations} saveObservations={saveObservations}
             completedTasks={completedTasks}
-            key={shareSeed ? `shared-${shareSeed.sharedSessionId}-${shareSeed.coachId}` : "new-observation"}
+            key="new-observation"
             existingObservation={editingObservation}
-            seed={shareSeed}
             defaultMemberFederation={initialMemberFederation}
             onSaved={handleObservationSaved}
-            onCancel={() => { setEditingObservationId(null); setShareSeed(null); setTab("dashboard"); }}
+            onCancel={() => { setEditingObservationId(null); setTab("dashboard"); }}
           />
         )}
         {tab === "tasks" && (
@@ -10171,6 +10176,60 @@ function useVisualViewportKeyboard() {
   return state;
 }
 
+// ---- Shared session helpers (two coaches in one New Observation form) ----
+// The per-coach part of a form: scores, feedback, plan, notes. The two coaches of a
+// shared session each have one of these; only the one on screen lives in the form's
+// own state, the other is parked and swapped in when the coach switch is pressed.
+function emptySlotFields() {
+  return {
+    areas: emptyAreas(), sochangeit: emptySochangeit(), strengths: "", areasForDevelopment: "",
+    planNotes: "", actionPlan: ["", "", ""], assessmentOutcome: "", outcomeManuallySet: false,
+    potentialPathways: [], cetNotes: "", pitchLength: "", pitchWidth: "",
+  };
+}
+function slotFieldsFromObs(o) {
+  const ar = o.areas || emptyAreas();
+  const th = o.sessionType === "formal" ? diplomaThresholdFor(o.formalCourseName) : null;
+  const total = areasTotal(ar);
+  const sugg = total >= HIGHLY_COMPETENT_THRESHOLD ? "Highly Competent" : total >= (th ?? 9) ? "Competent" : "Not Yet Competent";
+  return {
+    areas: ar,
+    sochangeit: o.sochangeit || emptySochangeit(),
+    strengths: o.strengths || "",
+    areasForDevelopment: o.areas_feedback || "",
+    planNotes: o.planNotes || "",
+    actionPlan: [...(Array.isArray(o.actionPlan) ? o.actionPlan : []), "", "", ""].slice(0, 3),
+    assessmentOutcome: o.assessmentOutcome || "",
+    outcomeManuallySet: !!o.assessmentOutcome && o.assessmentOutcome !== sugg,
+    potentialPathways: o.potentialPathways || [],
+    cetNotes: o.cetNotes || "",
+    pitchLength: "", pitchWidth: "",
+  };
+}
+function areasAreComplete(ar) {
+  return ASSESSMENT_AREAS.every(a => {
+    const score = ar[a.key]?.score;
+    if (typeof score !== "number") return false;
+    if (score <= 1 && !(ar[a.key].notes || "").trim()) return false;
+    return true;
+  });
+}
+function slotHasData(f) {
+  if (!f) return false;
+  return ASSESSMENT_AREAS.some(a => typeof f.areas?.[a.key]?.score === "number" || (f.areas?.[a.key]?.notes || "").trim())
+    || [f.strengths, f.areasForDevelopment, f.planNotes, f.cetNotes, f.pitchLength, f.pitchWidth].some(s => (s || "").trim())
+    || (f.actionPlan || []).some(a => (a || "").trim())
+    || Object.values(f.sochangeit || {}).some(Boolean);
+}
+function upsertMany(list, records) {
+  const next = [...list];
+  records.forEach(r => {
+    const i = next.findIndex(o => o.id === r.id);
+    if (i !== -1) next[i] = r; else next.push(r);
+  });
+  return next;
+}
+
 function NewObservation({ coaches, courses, educators, saveCoaches, saveEducators, observations, saveObservations, completedTasks, existingObservation, seed, defaultMemberFederation, onSaved, onCancel }) {
   const isEditing = !!existingObservation;
   // `seed` pre-fills a brand-new observation (used for the second coach of a shared
@@ -10343,6 +10402,113 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   // box wouldn't appear at 16+ until the dropdown was flipped by hand.
   const isHighlyCompetent = runningTotal >= HIGHLY_COMPETENT_THRESHOLD;
   const isNotYetCompetent = (assessmentOutcome || suggestedOutcome) === "Not Yet Competent";
+
+  // ---- Shared session: both coaches in this one form ----
+  // "A" is the coach being observed, "B" the second coach picked on Session Details.
+  // Scoring, Feedback and Development Plan show one coach at a time with a switch
+  // (labelled with their names). Each can be submitted on its own, or both together;
+  // whoever isn't submitted is kept as a draft to finish later.
+  const suggestedOutcomeFor = (ar) => {
+    const t = areasTotal(ar);
+    return t >= HIGHLY_COMPETENT_THRESHOLD ? "Highly Competent" : t >= effectiveThreshold ? "Competent" : "Not Yet Competent";
+  };
+  const dualEligible = !!sharedWithCoachId && !!coachId && !usingNewCoach && !lockEarly && existingObservation?.status !== "submitted";
+  const partnerRecord = dualEligible && sharedIdRef.current
+    ? (observations || []).find(o => o.sharedSessionId === sharedIdRef.current && o.coachId === sharedWithCoachId)
+    : null;
+  // If the other coach was already submitted (e.g. on its own earlier) this is a normal one-coach form.
+  const dual = dualEligible && (!partnerRecord || partnerRecord.status === "draft");
+  const nameA = (selectedCoach?.name || src?.coachName || "").trim() || "Coach 1";
+  const nameB = (sharedPartnerName || "").trim() || "Coach 2";
+  const [activeSlot, setActiveSlot] = useState("A");
+  const [pitchOverL, setPitchOverL] = useState("");
+  const [pitchOverW, setPitchOverW] = useState("");
+  const slotData = useRef(null);
+  const partnerIdRef = useRef("");
+  if (slotData.current === null) {
+    slotData.current = { A: null, B: null };
+    if (partnerRecord && partnerRecord.status === "draft") {
+      const f = slotFieldsFromObs(partnerRecord);
+      const pp = partnerRecord.sessionPlan || {};
+      if ((pp.pitchLength || "") !== (sessionPlan.pitchLength || "")) f.pitchLength = pp.pitchLength || "";
+      if ((pp.pitchWidth || "") !== (sessionPlan.pitchWidth || "")) f.pitchWidth = pp.pitchWidth || "";
+      slotData.current.B = f;
+      partnerIdRef.current = partnerRecord.id;
+    }
+  }
+  const activeName = dual && activeSlot === "B" ? nameB : nameA;
+
+  function currentFields() {
+    return {
+      areas, sochangeit, strengths, areasForDevelopment, planNotes, actionPlan,
+      assessmentOutcome, outcomeManuallySet, potentialPathways, cetNotes,
+      pitchLength: pitchOverL, pitchWidth: pitchOverW,
+    };
+  }
+  function fieldsFor(slot) {
+    return slot === activeSlot ? currentFields() : (slotData.current[slot] || emptySlotFields());
+  }
+  function loadFields(f) {
+    setAreas(f.areas); setSochangeit(f.sochangeit); setStrengths(f.strengths);
+    setAreasForDevelopment(f.areasForDevelopment); setPlanNotes(f.planNotes); setActionPlan(f.actionPlan);
+    setOutcomeManuallySet(f.outcomeManuallySet);
+    setAssessmentOutcome(f.outcomeManuallySet ? f.assessmentOutcome : suggestedOutcomeFor(f.areas));
+    setPotentialPathways(f.potentialPathways); setCetNotes(f.cetNotes);
+    setPitchOverL(f.pitchLength); setPitchOverW(f.pitchWidth);
+  }
+  function switchCoach(slot) {
+    if (slot === activeSlot) return;
+    slotData.current = { ...slotData.current, [activeSlot]: currentFields() };
+    let next = slotData.current[slot] || emptySlotFields();
+    if (step === 4 && next.actionPlan.every(a => !(a || "").trim())) {
+      const nyc = (next.outcomeManuallySet ? next.assessmentOutcome : suggestedOutcomeFor(next.areas)) === "Not Yet Competent";
+      next = { ...next, actionPlan: generateActionPlan(next.areas, next.areasForDevelopment, next.planNotes, nyc) };
+    }
+    loadFields(next);
+    setActiveSlot(slot);
+    window.scrollTo({ top: 0 });
+  }
+  // Per-coach completeness: i = 2 scoring, 3 feedback (plan notes).
+  function slotComplete(slot, i) {
+    const f = fieldsFor(slot);
+    if (i === 2) return areasAreComplete(f.areas);
+    if (i === 3) return f.planNotes.trim().length > 0;
+    return true;
+  }
+  const slotReady = (slot) => slotComplete(slot, 2) && slotComplete(slot, 3);
+  function removePartner() {
+    const bHasData = slotHasData(fieldsFor("B"));
+    if (bHasData && !window.confirm(`Remove ${nameB} from this shared session? Anything entered for ${nameB} will be discarded.`)) return;
+    if (activeSlot === "B") {
+      loadFields(slotData.current.A || emptySlotFields());
+      setActiveSlot("A");
+    }
+    slotData.current = { A: null, B: null };
+    if (partnerIdRef.current && saveObservations && observations) {
+      saveObservations(observations.filter(o => o.id !== partnerIdRef.current));
+    }
+    partnerIdRef.current = "";
+    setSharedWithCoachId("");
+    setSharedSearch("");
+  }
+
+  const coachSwitch = dual ? (
+    <div className="flex gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200" role="tablist" aria-label="Coach being assessed">
+      {[["A", nameA], ["B", nameB]].map(([slot, nm]) => {
+        const active = slot === activeSlot;
+        const done = step === 2 ? slotComplete(slot, 2) : step === 3 ? slotComplete(slot, 3) : slotReady(slot);
+        return (
+          <button key={slot} type="button" role="tab" aria-selected={active} onClick={() => switchCoach(slot)}
+            className={`flex-1 min-w-0 min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}>
+            <span className="truncate">{nm}</span>
+            {done ? <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <span className="w-2 h-2 rounded-full bg-slate-300 shrink-0" />}
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
 
   function togglePathway(opt) {
     setPotentialPathways(prev => prev.includes(opt) ? prev.filter(p => p !== opt) : [...prev, opt]);
@@ -10692,6 +10858,9 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   function stepIsComplete(i) {
     if (i === 0) return canProceedStep0();
     if (i === 1) return canProceedSessionPlan();
+    // Shared session: either coach being complete lets you move on (the other can be
+    // finished later), so one coach can be submitted at a time.
+    if (dual && (i === 2 || i === 3)) return slotComplete("A", i) || slotComplete("B", i);
     if (i === 2) return canProceedStep1();
     if (i === 3) return canProceedStep3();
     return true;
@@ -10723,7 +10892,105 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     return !!coachId;
   }
 
+  function draftEducatorName() {
+    return isCetRole
+      ? (usingNewEducator ? newEducatorName.trim() : (selectedEducator?.name || ""))
+      : newEducatorName.trim();
+  }
+  // Creates a brand-new educator once (if one was typed in) and returns the name.
+  function commitEducator() {
+    if (isCetRole) {
+      let n = selectedEducator?.name;
+      if (usingNewEducator) {
+        const ne = { id: uid(), name: newEducatorName.trim() };
+        saveEducators([...educators, ne]);
+        n = ne.name;
+      }
+      return n;
+    }
+    return newEducatorName.trim();
+  }
+  // One coach's observation record out of the shared form. A is the coach being
+  // observed; B is the second coach (marked sharedSecond so it reopens at scoring).
+  function dualRecord(slot, status, educatorName) {
+    const f = fieldsFor(slot);
+    const isA = slot === "A";
+    if (!sharedIdRef.current) sharedIdRef.current = uid();
+    let id;
+    if (isA) {
+      id = autoSaveDraftIdRef.current || existingObservation?.id || uid();
+      autoSaveDraftIdRef.current = id;
+    } else {
+      if (!partnerIdRef.current) partnerIdRef.current = uid();
+      id = partnerIdRef.current;
+    }
+    const highly = areasTotal(f.areas) >= HIGHLY_COMPETENT_THRESHOLD;
+    const plan = isA ? sessionPlan : {
+      ...sessionPlan,
+      pitchLength: (f.pitchLength || "").trim() || sessionPlan.pitchLength,
+      pitchWidth: (f.pitchWidth || "").trim() || sessionPlan.pitchWidth,
+    };
+    const submitted = status === "submitted";
+    return {
+      id,
+      status,
+      coachId: isA ? coachId : sharedWithCoachId,
+      coachName: isA ? (selectedCoach?.name || "") : (sharedPartner?.name || ""),
+      coachEducatorName: educatorName,
+      educatorRole,
+      date,
+      memberFederation,
+      sessionType,
+      formalCourseName: sessionType === "formal" ? formalCourseName.trim() : "",
+      diplomaBlock: sessionType === "formal" && (isBDiploma(formalCourseName) || isADiploma(formalCourseName)) ? diplomaBlock : "",
+      courseNumber: sessionType === "formal" && (isCDiploma(formalCourseName) || isBDiploma(formalCourseName) || isADiploma(formalCourseName)) ? courseNumber.trim() : "",
+      ageGroup: ageGroup.trim(),
+      keyOutcomesFocus: keyOutcomesFocus.trim(),
+      sessionTopic: sessionTopic.trim(),
+      coachingActivity: coachingActivity.trim(),
+      sessionPlan: plan,
+      areas: f.areas,
+      sochangeit: f.sochangeit,
+      strengths: f.strengths.trim(),
+      areas_feedback: f.areasForDevelopment.trim(),
+      planNotes: f.planNotes.trim(),
+      actionPlan: submitted ? f.actionPlan.map(a => (a || "").trim()) : f.actionPlan,
+      assessmentOutcome: f.assessmentOutcome || suggestedOutcomeFor(f.areas) || "",
+      potentialPathways: highly ? f.potentialPathways : [],
+      diplomaThreshold: threshold,
+      assessorSignature: assessorSignature.trim(),
+      cetNotes: f.cetNotes.trim(),
+      sharedSessionId: sharedIdRef.current,
+      sharedWithCoachId: isA ? sharedWithCoachId : coachId,
+      sharedWithName: isA ? nameB : nameA,
+      ...(isA ? {} : { sharedSecond: true }),
+      ...(submitted ? {} : { savedAt: new Date().toISOString() }),
+    };
+  }
+  // The second coach is only written once something has been entered for them (or
+  // they were saved before), so an untouched partner doesn't clutter Drafts.
+  const partnerWorthSaving = () => slotHasData(fieldsFor("B")) || !!partnerIdRef.current;
+  function autoSaveDual() {
+    if (!saveObservations || !observations || !coachId) return;
+    const edu = draftEducatorName();
+    const recs = [dualRecord("A", "draft", edu)];
+    if (partnerWorthSaving()) recs.push(dualRecord("B", "draft", edu));
+    saveObservations(upsertMany(observations, recs));
+  }
+  // which: "A" | "B" | "both". Whoever isn't submitted is saved as a draft, so nothing is lost.
+  function submitDual(which) {
+    const edu = commitEducator();
+    const A = dualRecord("A", which === "B" ? "draft" : "submitted", edu);
+    const B = dualRecord("B", which === "A" ? "draft" : "submitted", edu);
+    if (which === "B") onSaved(B, [A]); else onSaved(A, [B]);
+  }
+  function saveAndReturnDual() {
+    const edu = draftEducatorName();
+    onSaved(dualRecord("A", "draft", edu), partnerWorthSaving() ? [dualRecord("B", "draft", edu)] : []);
+  }
+
   function autoSaveDraft() {
+    if (dual) { autoSaveDual(); return; }
     if (!saveObservations || !observations) return;
     if (!coachId && !newCoachName.trim()) return;
 
@@ -10834,6 +11101,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   }
 
   function handleSaveAndReturn() {
+    if (dual) { saveAndReturnDual(); return; }
     onSaved(buildObservation("draft"));
   }
 
@@ -10964,7 +11232,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 {sharedPartner ? (
                   <div className="flex items-center justify-between border border-slate-300 rounded-lg px-3 py-2 bg-white">
                     <p className="text-sm font-medium text-slate-800">{sharedPartner.name}{sharedPartner.club && <span className="text-xs text-slate-500 ml-1.5">({sharedPartner.club})</span>}</p>
-                    <button type="button" onClick={() => { setSharedWithCoachId(""); setSharedSearch(""); }} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Remove</button>
+                    <button type="button" onClick={removePartner} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Remove</button>
                   </div>
                 ) : (
                   <div className="relative">
@@ -11545,7 +11813,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
             )}
             {!(isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && (
             <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
-              <p className="text-sm font-semibold text-indigo-800 mb-1">SOCHANGEIT Evidence Checklist</p>
+              <p className="text-sm font-semibold text-indigo-800 mb-1">SOCHANGEIT Evidence Checklist{dual ? ` — ${activeName}` : ""}</p>
               <p className="text-xs text-indigo-600 mb-3">Tick any elements observed as evidence of turning around a faltering session. These do not count toward the assessment score.</p>
               <div className="grid sm:grid-cols-2 gap-2">
                 {SOCHANGEIT_ITEMS.map(item => (
@@ -11565,9 +11833,30 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
             </div>
             )}
 
+            {dual && activeSlot === "B" && (
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 space-y-3">
+                <p className="text-xs text-indigo-700">
+                  Shared session with {nameA}. If {nameB}'s pitch was a different size, revise it here — leave blank if it was the same
+                  ({sessionPlan.pitchLength || "?"} x {sessionPlan.pitchWidth || "?"}).
+                </p>
+                <div className="border border-indigo-200 rounded-lg px-3 py-2 flex items-center gap-3 bg-white">
+                  <div className="flex-1">
+                    <p className="text-xs text-slate-500 mb-0.5">Pitch length</p>
+                    <input value={pitchOverL} onChange={e => setPitchOverL(sanitizeAlphanumeric(e.target.value))} placeholder={sessionPlan.pitchLength || "e.g. 40m"} className="w-full text-sm outline-none" />
+                  </div>
+                  <span className="text-slate-500 font-semibold">x</span>
+                  <div className="flex-1">
+                    <p className="text-xs text-slate-500 mb-0.5">Pitch width</p>
+                    <input value={pitchOverW} onChange={e => setPitchOverW(sanitizeAlphanumeric(e.target.value))} placeholder={sessionPlan.pitchWidth || "e.g. 30m"} className="w-full text-sm outline-none" />
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="sticky top-0 bg-white pb-2 z-10">
+              {dual && <div className="mb-2">{coachSwitch}</div>}
               <div className="flex items-center justify-between mb-1.5">
-                <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5"><ListChecks className="w-4 h-4" /> Assessment Scoring</p>
+                <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5"><ListChecks className="w-4 h-4" /> Assessment Scoring{dual ? ` — ${activeName}` : ""}</p>
                 <p className="text-sm font-bold text-slate-900">{runningTotal} / {MAX_TOTAL_SCORE}</p>
               </div>
               <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -11615,8 +11904,9 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
 
         {step === 3 && (
           <div className="space-y-4">
+            {coachSwitch}
             <div>
-              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Key strengths observed</label>
+              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Key strengths observed{dual ? ` — ${activeName}` : ""}</label>
               <VoiceTextarea value={strengths} onChange={e => setStrengths(e.target.value)} rows={4}
                 placeholder="What did the coach do well in this session?" className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
             </div>
@@ -11638,9 +11928,10 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
 
         {step === 4 && (
           <div className="space-y-5">
+            {coachSwitch}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-medium text-slate-500 block">Coach's Action Plan</label>
+                <label className="text-xs font-medium text-slate-500 block">{dual ? `${activeName}'s Action Plan` : "Coach's Action Plan"}</label>
                 <button onClick={suggestActions} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Suggest Actions</button>
               </div>
               <p className="text-xs text-slate-500 mb-2">Auto-suggested from the assessment scoring, areas for development, and plan notes — edit freely.</p>
@@ -11728,6 +12019,13 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 <p className="text-xs text-slate-500 mt-1">Auto-filled from the Technical Director's name entered in Session Details — edit if needed.</p>
               )}
             </div>
+
+            {dual && (
+              <p className="text-xs text-slate-500 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+                Submit {nameA} or {nameB} on their own, or both together. A coach who isn't submitted is kept as a draft in Drafts so you can finish them later.
+                The assessor signature is shared by both.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -11737,17 +12035,32 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
           className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-500 disabled:opacity-0">
           <ChevronLeft className="w-4 h-4" /> Back
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <button onClick={handleSaveAndReturn} disabled={!canSaveDraft()} title={!canSaveDraft() ? "Select or add a coach first to save a draft" : undefined}
             className="flex items-center gap-1.5 bg-white border border-slate-300 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-500">
             <Clock className="w-4 h-4" /> Save & Return
           </button>
           {step < 4 ? (
             <button onClick={handleNext}
-              disabled={(step === 0 && !canProceedStep0()) || (step === 1 && !canProceedSessionPlan()) || (step === 2 && !canProceedStep1()) || (step === 3 && !canProceedStep3())}
+              disabled={(step === 0 && !canProceedStep0()) || (step === 1 && !canProceedSessionPlan()) || (step === 2 && !stepIsComplete(2)) || (step === 3 && !stepIsComplete(3))}
               className="flex items-center gap-1.5 bg-slate-900 text-white px-5 py-2.5 rounded-lg text-sm font-semibold disabled:bg-slate-300">
               Next <ArrowRight className="w-4 h-4" />
             </button>
+          ) : dual ? (
+            <>
+              {[["A", nameA], ["B", nameB]].map(([slot, nm]) => (
+                <button key={slot} onClick={() => submitDual(slot)} disabled={!slotReady(slot)}
+                  title={!slotReady(slot) ? `Finish ${nm}'s scoring and plan notes first` : `Submit ${nm} now and keep the other coach as a draft`}
+                  className="flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:bg-slate-300 disabled:hover:bg-slate-300 max-w-[11rem]">
+                  <Check className="w-4 h-4 shrink-0" /> <span className="truncate">Submit {nm}</span>
+                </button>
+              ))}
+              <button onClick={() => submitDual("both")} disabled={!(slotReady("A") && slotReady("B"))}
+                title={!(slotReady("A") && slotReady("B")) ? "Both coaches need their scoring and plan notes finished" : "Submit both coaches"}
+                className="flex items-center gap-1.5 bg-slate-900 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-800 disabled:bg-slate-300 disabled:hover:bg-slate-300">
+                <Check className="w-4 h-4" /> Submit both
+              </button>
+            </>
           ) : (
             <button onClick={handleSaveAndSubmit} disabled={!canSave()}
               title={!canSave() ? "Add a note under 'Additional plan notes for the coach' on the Feedback step first" : undefined}
@@ -11779,7 +12092,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
         <div className="fixed left-0 right-0 z-30 bg-white border-t border-slate-300 shadow-[0_-4px_16px_rgba(0,0,0,0.08)]"
           style={{ bottom: keyboard.insetBottom }}>
           <div className="max-w-5xl mx-auto px-4 py-3">
-            <p className="text-sm font-semibold text-slate-800 mb-1">General Notes</p>
+            <p className="text-sm font-semibold text-slate-800 mb-1">General Notes{dual ? ` — ${activeName}` : ""}</p>
             <p className="text-xs text-slate-500 mb-2">Always visible while scoring — use this for anything that doesn't fit neatly under one assessment area.</p>
             <VoiceTextarea value={cetNotes} onChange={e => setCetNotes(e.target.value)} rows={3}
               placeholder="Add any general notes here..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
