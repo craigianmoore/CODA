@@ -593,6 +593,7 @@ function findItemObservations(observations, record, label) {
     if (o.coachId !== record.coachId) return false;
     if (cn ? (o.courseNumber || "").trim() !== cn : (o.formalCourseName || "") !== record.courseTitle) return false;
     if (isCDiploma(record.courseTitle)) return base === "Practical Session";
+    if (base === ASSESSMENT_OBS_LABEL) return (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) && o.sessionType === "formal";
     return (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) && o.sessionTopic === base;
   }).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
   return {
@@ -742,6 +743,34 @@ function setNewLabelCourses(v) { NEW_LABEL_COURSES = v || {}; }
 // CET's name wherever it appears. Refreshed on every App render.
 let CET_OBS_COUNTS = {};
 function setCetObsCounts(v) { CET_OBS_COUNTS = v || {}; }
+
+// Assessment Observation (B / A Diploma checklist): every candidate must be
+// observed at least once. Derived from submitted formal observations of that
+// candidate on that course — key -> true when the latest one isn't Not Yet
+// Competent. Refreshed on every App render. A manual tick on the record
+// (assessmentObservationDone) also counts, for observations done off-system.
+const ASSESSMENT_OBS_LABEL = "Assessment Observation";
+let ASSESSMENT_OBS = {};
+function setAssessmentObs(v) { ASSESSMENT_OBS = v || {}; }
+function assessmentObsKey(coachId, courseNumber, courseTitle) {
+  const cn = String(courseNumber || "").trim();
+  return `${coachId}|${cn ? "n:" + cn : "t:" + (courseTitle || "")}`;
+}
+function assessmentObsFromObservations(observations) {
+  const latest = {};
+  (observations || []).forEach(o => {
+    if (o.status === "draft" || o.sessionType !== "formal" || !o.coachId) return;
+    const k = assessmentObsKey(o.coachId, o.courseNumber, o.formalCourseName);
+    const t = new Date(o.date || 0).getTime();
+    if (!latest[k] || t >= latest[k].t) latest[k] = { t, ok: o.assessmentOutcome !== "Not Yet Competent" };
+  });
+  const m = {};
+  Object.keys(latest).forEach(k => { m[k] = latest[k].ok; });
+  return m;
+}
+function assessmentObsDone(record) {
+  return !!record.assessmentObservationDone || !!ASSESSMENT_OBS[assessmentObsKey(record.coachId, record.courseNumber, record.courseTitle)];
+}
 // Highest course level a CET can present (covers the levels below it).
 const CET_PRESENT_LEVELS = [
   { key: "FoF", rank: 1, label: "Foundation (FoF)" },
@@ -862,7 +891,8 @@ function courseworkItemsRaw(record, coachTopics, team) {
       { label: "6WC (6 Week Cycle)", done: !!record.sixWeekCycleDone, outcome: "", group: "fixed" },
       { label: "with FC (football conditioning) details", done: !!record.fcDetailsDone, outcome: "", group: "fixed" },
     ];
-    return [...sessionItems, ...fixedItems, onlineModulesItem, formativeAssessmentItem];
+    const observationItem = { label: ASSESSMENT_OBS_LABEL, done: assessmentObsDone(record), outcome: "", group: "observation" };
+    return [observationItem, ...sessionItems, ...fixedItems, onlineModulesItem, formativeAssessmentItem];
   }
   return [];
 }
@@ -891,7 +921,11 @@ function applyCourseworkToggle(task, label, coachTopics) {
   } else if (label === "Formative Assessment") {
     updated.formativeAssessmentDone = !task.formativeAssessmentDone;
   } else if (isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) {
-    if (topics.includes(label)) {
+    if (label === ASSESSMENT_OBS_LABEL) {
+      // Ticked automatically by a submitted observation; the manual tick covers one done off-system.
+      if (assessmentObsDone({ ...task, assessmentObservationDone: false })) return task;
+      updated.assessmentObservationDone = !task.assessmentObservationDone;
+    } else if (topics.includes(label)) {
       updated.sessionPlansDone = { ...(task.sessionPlansDone || {}), [label]: !(task.sessionPlansDone || {})[label] };
     } else if (label === "Goalscoring Presentation") updated.goalscoringPresentationDone = !task.goalscoringPresentationDone;
     else if (label === "Game Plan") updated.gamePlanDone = !task.gamePlanDone;
@@ -2026,6 +2060,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     (cetAssessments || []).forEach(a => bump(a.cetName, "seen"));
     return m;
   }, [observations, cetAssessments]));
+  setAssessmentObs(useMemo(() => assessmentObsFromObservations(observations), [observations]));
   const [rapaAssessments, setRapaAssessments] = useState([]);
   const [rapaIncidents, setRapaIncidents] = useState([]);
   const [rapaProposals, setRapaProposals] = useState([]);
@@ -2240,6 +2275,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             analysisSessionPlanDone: false,
             annualPlanDone: false,
             coachingSession25MinDone: false,
+            assessmentObservationDone: false,
             sixWeekCycleDone: false,
             fcDetailsDone: false,
             practicalSessionDone: false,
@@ -5369,6 +5405,7 @@ function emptyCompletedTaskForm() {
     analysisSessionPlanDone: false,
     annualPlanDone: false,
     coachingSession25MinDone: false,
+    assessmentObservationDone: false,
     sixWeekCycleDone: false,
     fcDetailsDone: false,
     practicalSessionDone: false,
@@ -5416,7 +5453,7 @@ function courseworkProgress(record, coachTopics) {
       record.fcDetailsDone,
       ...(isB ? [record.coachingSession25MinDone] : []),
     ].filter(Boolean).length;
-    return { done: sessionDone + fixedDone + onlineDone + formativeDone, total: topics.length + (isB ? 7 : 6) + 2 };
+    return { done: sessionDone + fixedDone + onlineDone + formativeDone + (assessmentObsDone(record) ? 1 : 0), total: topics.length + (isB ? 7 : 6) + 2 + 1 };
   }
   return { done: 0, total: 0 };
 }
@@ -7560,6 +7597,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
         analysisSessionPlanDone: all.some(t => t.analysisSessionPlanDone),
         annualPlanDone: all.some(t => t.annualPlanDone),
         coachingSession25MinDone: all.some(t => t.coachingSession25MinDone),
+        assessmentObservationDone: all.some(t => t.assessmentObservationDone),
         sixWeekCycleDone: all.some(t => t.sixWeekCycleDone),
         fcDetailsDone: all.some(t => t.fcDetailsDone),
         practicalSessionDone: all.some(t => t.practicalSessionDone),
@@ -7829,6 +7867,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       analysisSessionPlanDone: !!task.analysisSessionPlanDone,
       annualPlanDone: !!task.annualPlanDone,
       coachingSession25MinDone: !!task.coachingSession25MinDone,
+      assessmentObservationDone: !!task.assessmentObservationDone,
       sixWeekCycleDone: task.sixWeekCycleDone != null ? !!task.sixWeekCycleDone : !!task.sixWeekCycleFcDone,
       fcDetailsDone: task.fcDetailsDone != null ? !!task.fcDetailsDone : !!task.sixWeekCycleFcDone,
       practicalSessionDone: !!task.practicalSessionDone,
@@ -7886,6 +7925,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       analysisSessionPlanDone: form.analysisSessionPlanDone,
       annualPlanDone: form.annualPlanDone,
       coachingSession25MinDone: form.coachingSession25MinDone,
+      assessmentObservationDone: form.assessmentObservationDone,
       sixWeekCycleDone: form.sixWeekCycleDone,
       fcDetailsDone: form.sixWeekCycleDone ? form.fcDetailsDone : false,
       practicalSessionDone: form.practicalSessionDone,
@@ -8426,6 +8466,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           analysisSessionPlanDone: false,
           annualPlanDone: false,
           coachingSession25MinDone: false,
+          assessmentObservationDone: false,
           sixWeekCycleDone: false,
           fcDetailsDone: false,
           practicalSessionDone: false,
@@ -8871,6 +8912,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             <div className="border-t border-slate-100 pt-3 space-y-2">
               <p className="text-sm font-semibold text-slate-800 mb-1">Coursework</p>
               {[
+                ...((isBDiploma(form.courseTitle) || isADiploma(form.courseTitle)) ? [{ label: ASSESSMENT_OBS_LABEL, key: "assessmentObservationDone" }] : []),
                 { label: "Goalscoring Presentation", key: "goalscoringPresentationDone", extra: form.team ? <span className="text-xs text-slate-500">({form.team})</span> : null },
                 { label: "Game Plan", key: "gamePlanDone" },
                 { label: "Analysis Session Plan", key: "analysisSessionPlanDone" },
@@ -9792,9 +9834,10 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                               {(() => {
                                                 // Grouped subheaders instead of one flat list — the "group" tag on
                                                 // each item comes from courseworkItems().
-                                                const GROUP_ORDER = ["topics", "fixed", "custom", "modules"];
+                                                const GROUP_ORDER = ["observation", "topics", "fixed", "custom", "modules"];
                                                 const GROUP_LABELS = {
                                                   topics: isCDiploma(t.courseTitle) ? "Practical Assessment" : usesNewLabels(t) ? "Sessions" : "Session Topics",
+                                                  observation: "Observation",
                                                   fixed: "Fixed Items",
                                                   custom: "Course Items",
                                                   modules: "Modules & Assessment",
