@@ -7843,13 +7843,18 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     setCoachSearchQuery(matchedCoach ? matchedCoach.name : "");
   }
 
-  function canSave() {
-    if (!form.coachId) return false;
-    if (!form.courseTitle.trim()) return false;
-    if (form.attendancePercent === "") return false;
+  // What still stops "Save Record" (empty when it can be saved). Only the coach, the
+  // course and attendance % are required; everything else on the form is optional.
+  function saveBlocker() {
+    if (!form.coachId) return "Pick the coach from the list that appears as you type — typing the name alone isn't enough. (Not listed? Add them in Coaches & CETs first.)";
+    if (!form.courseTitle.trim()) return "Choose a course (or type your own under Other).";
+    if (form.attendancePercent === "") return "Enter Attendance % (0–100).";
     const pct = Number(form.attendancePercent);
-    if (isNaN(pct) || pct < 0 || pct > 100) return false;
-    return true;
+    if (isNaN(pct) || pct < 0 || pct > 100) return "Attendance % must be between 0 and 100.";
+    return "";
+  }
+  function canSave() {
+    return !saveBlocker();
   }
 
   function saveTask() {
@@ -8630,12 +8635,18 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-semibold text-slate-800">{editingId ? "Edit Record" : "New Record"}</p>
           <div className="flex gap-2">
-            <button onClick={saveTask} disabled={!canSave()} className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-semibold disabled:bg-slate-300">
+            <button onClick={saveTask} disabled={!canSave()} title={saveBlocker() || undefined} className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-semibold disabled:bg-slate-300">
               {editingId ? "Save Changes" : "Save Record"}
             </button>
             <button onClick={resetForm} className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500">Cancel</button>
           </div>
         </div>
+
+        {saveBlocker() && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            To save: {saveBlocker()}
+          </p>
+        )}
 
         <div>
           <label className="text-[10px] font-bold uppercase tracking-wide text-indigo-600 mb-1.5 block">Coach</label>
@@ -8651,7 +8662,13 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 value={coachSearchQuery}
                 onChange={e => { setCoachSearchQuery(e.target.value); setCoachDropdownOpen(true); }}
                 onFocus={() => setCoachDropdownOpen(true)}
-                onBlur={() => setTimeout(() => setCoachDropdownOpen(false), 150)}
+                onBlur={() => {
+                  // A full name typed out and tabbed away from counts as picking that coach.
+                  const typed = coachSearchQuery.trim().toLowerCase();
+                  const exact = typed ? coaches.filter(c => c.name.trim().toLowerCase() === typed) : [];
+                  if (exact.length === 1) { setField("coachId", exact[0].id); setCoachSearchQuery(exact[0].name); }
+                  setTimeout(() => setCoachDropdownOpen(false), 150);
+                }}
                 placeholder="Search for a coach by name..."
                 className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-sm"
               />
@@ -10423,6 +10440,8 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   const [activeSlot, setActiveSlot] = useState("A");
   const [pitchOverL, setPitchOverL] = useState("");
   const [pitchOverW, setPitchOverW] = useState("");
+  const pitchOverLRef = useRef(null);
+  const pitchOverWRef = useRef(null);
   const slotData = useRef(null);
   const partnerIdRef = useRef("");
   if (slotData.current === null) {
@@ -11842,12 +11861,24 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 <div className="border border-indigo-200 rounded-lg px-3 py-2 flex items-center gap-3 bg-white">
                   <div className="flex-1">
                     <p className="text-xs text-slate-500 mb-0.5">Pitch length</p>
-                    <input value={pitchOverL} onChange={e => setPitchOverL(sanitizeAlphanumeric(e.target.value))} placeholder={sessionPlan.pitchLength || "e.g. 40m"} className="w-full text-sm outline-none" />
+                    <input ref={pitchOverLRef} value={pitchOverL}
+                      onChange={e => {
+                        const clean = sanitizeAlphanumeric(e.target.value);
+                        setPitchOverL(clean);
+                        if (clean.replace(/\D/g, "").length >= 2) pitchOverWRef.current && pitchOverWRef.current.focus();
+                      }}
+                      placeholder={sessionPlan.pitchLength || "e.g. 40m"} className="w-full text-sm outline-none" />
                   </div>
                   <span className="text-slate-500 font-semibold">x</span>
                   <div className="flex-1">
                     <p className="text-xs text-slate-500 mb-0.5">Pitch width</p>
-                    <input value={pitchOverW} onChange={e => setPitchOverW(sanitizeAlphanumeric(e.target.value))} placeholder={sessionPlan.pitchWidth || "e.g. 30m"} className="w-full text-sm outline-none" />
+                    <input ref={pitchOverWRef} value={pitchOverW}
+                      onChange={e => {
+                        const clean = sanitizeAlphanumeric(e.target.value);
+                        setPitchOverW(clean);
+                        if (clean.replace(/\D/g, "").length >= 2) pitchOverLRef.current && pitchOverLRef.current.focus();
+                      }}
+                      placeholder={sessionPlan.pitchWidth || "e.g. 30m"} className="w-full text-sm outline-none" />
                   </div>
                 </div>
               </div>
