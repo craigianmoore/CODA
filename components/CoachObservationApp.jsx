@@ -7765,6 +7765,42 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     setForm(prev => ({ ...prev, courseworkNotes: { ...prev.courseworkNotes, [label]: text } }));
   }
 
+  // "Tick all" for the coursework checklist in the form. Covers every checkbox the form
+  // offers for this course (Not Yet Competent sessions are skipped — they need a
+  // re-observation first). Online Modules is a percentage, so it isn't touched.
+  function courseworkTickState(f) {
+    const flags = [["formativeAssessmentDone"]];
+    const topicKeys = [];
+    if (f.sheetDriven) {
+      // custom items handled separately
+    } else if (isCDiploma(f.courseTitle)) {
+      if (f.practicalSessionOutcome !== "Not Yet Competent") flags.push(["practicalSessionDone"]);
+    } else if (isBDiploma(f.courseTitle) || isADiploma(f.courseTitle)) {
+      flags.push(["assessmentObservationDone"], ["goalscoringPresentationDone"], ["gamePlanDone"], ["analysisSessionPlanDone"],
+        ["annualPlanDone"], ["sixWeekCycleDone"], ["fcDetailsDone"]);
+      if (isBDiploma(f.courseTitle)) flags.push(["coachingSession25MinDone"]);
+      const coach = coaches.find(c => c.id === f.coachId);
+      ((coach && coach.topics) || []).slice(0, 4).forEach(t => {
+        if ((f.sessionPlansOutcomes || {})[t] !== "Not Yet Competent") topicKeys.push(t);
+      });
+    }
+    const allTicked = flags.every(([k]) => !!f[k]) && topicKeys.every(t => !!(f.sessionPlansDone || {})[t]) &&
+      (f.customItems || []).every(ci => !!ci.done);
+    return { flags, topicKeys, allTicked };
+  }
+  function toggleAllCoursework() {
+    setForm(prev => {
+      const { flags, topicKeys, allTicked } = courseworkTickState(prev);
+      const next = !allTicked;
+      const out = { ...prev };
+      flags.forEach(([k]) => { out[k] = next; });
+      out.sessionPlansDone = { ...(prev.sessionPlansDone || {}) };
+      topicKeys.forEach(t => { out.sessionPlansDone[t] = next; });
+      if (prev.customItems) out.customItems = prev.customItems.map(ci => ({ ...ci, done: next }));
+      return out;
+    });
+  }
+
   function toggleSixWeekCycle() {
     setForm(prev => {
       const next = !prev.sixWeekCycleDone;
@@ -8845,7 +8881,11 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer border-t border-slate-100 pt-3">
+        <label className="flex items-center gap-2 text-sm font-semibold text-indigo-700 cursor-pointer border-t border-slate-100 pt-3" title="Ticks every coursework item below (not Online Modules %)">
+          <input type="checkbox" checked={courseworkTickState(form).allTicked} onChange={toggleAllCoursework} className="rounded border-slate-300" />
+          Tick all coursework
+        </label>
+        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer pt-1">
           <input type="checkbox" checked={!!form.formativeAssessmentDone} onChange={() => setField("formativeAssessmentDone", !form.formativeAssessmentDone)} className="rounded border-slate-300" />
           Formative Assessment (in course) Completed
         </label>
