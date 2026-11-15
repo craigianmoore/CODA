@@ -1629,6 +1629,13 @@ function totalForObs(o) {
   return null;
 }
 
+// Running score of an unsubmitted draft: the total so far and how many of the areas have a score yet.
+function draftScore(o) {
+  const areas = (o && o.areas) || {};
+  const scored = ASSESSMENT_AREAS.filter(a => typeof areas[a.key]?.score === "number").length;
+  return { total: areasTotal(areas), scored, of: ASSESSMENT_AREAS.length };
+}
+
 function lowerFirst(s) {
   if (!s) return s;
   return s.charAt(0).toLowerCase() + s.slice(1);
@@ -2464,6 +2471,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             onEditDraft={handleEditDraft}
             onSubmitDraft={handleSubmitDraft}
             onViewDraft={(id) => { setReportId(id); setTab("report"); }}
+            allDrafts={observations.filter(o => o.status === "draft")}
             cetDrafts={cetAssessments.filter(a => a.status === "draft")}
             onContinueCetDraft={(id) => { setPendingCetDraftId(id); setTab("cetAssessment"); }}
             session={codaSession}
@@ -2860,7 +2868,7 @@ function ShareCodaCard() {
   );
 }
 
-function Dashboard({ coaches, educators, observations, courses, drafts, completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goNewObs, goHistory, openCompletedTaskFn, onEditDraft, onSubmitDraft, onViewDraft, cetDrafts = [], onContinueCetDraft, session }) {
+function Dashboard({ coaches, educators, observations, courses, drafts, allDrafts = [], completedTasks, saveCompletedTasks, closedCourseNumbers, saveClosedCourseNumbers, goNewObs, goHistory, openCompletedTaskFn, onEditDraft, onSubmitDraft, onViewDraft, cetDrafts = [], onContinueCetDraft, session }) {
   const [draftsExpanded, setDraftsExpanded] = useState(false);
   const [draftsSortMode, setDraftsSortMode] = useState("name");
   useEffect(() => {
@@ -2957,6 +2965,28 @@ function Dashboard({ coaches, educators, observations, courses, drafts, complete
                   <p className="text-xs text-slate-500 truncate">
                     {d.sessionType === "formal" ? `Formal · ${d.formalCourseName || "Course"}` : "Informal"} · {new Date(d.date).toLocaleDateString("en-GB")} · {d.coachEducatorName ? <CetName name={d.coachEducatorName} /> : "No CET set"}
                   </p>
+                  {(() => {
+                    // A shared session's second coach is saved as its own draft, listed under the first coach.
+                    const partner = d.sharedWithCoachId && !d.sharedSecond
+                      ? (allDrafts || []).find(p => p.sharedSecond && p.sharedSessionId === d.sharedSessionId && p.coachId === d.sharedWithCoachId)
+                      : null;
+                    const chip = (rec, label) => {
+                      const sc = draftScore(rec);
+                      return (
+                        <span key={rec.id} className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${sc.scored ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-slate-50 border-slate-200 text-slate-400"}`}
+                          title={`${sc.scored} of ${sc.of} areas scored so far`}>
+                          {label}{sc.scored ? `Score ${sc.total} / ${MAX_TOTAL_SCORE}` : "No scores yet"}
+                          {sc.scored > 0 && sc.scored < sc.of && <span className="font-normal opacity-70">· {sc.scored}/{sc.of} areas</span>}
+                        </span>
+                      );
+                    };
+                    return (
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {chip(d, partner ? `${(d.coachName || "Coach").split(" ")[0]}: ` : "")}
+                        {partner && chip(partner, `${(partner.coachName || "Coach").split(" ")[0]}: `)}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button onClick={() => onEditDraft(d)} className="flex items-center gap-1 text-xs font-semibold text-amber-700 border border-amber-300 px-2.5 py-1.5 rounded-lg hover:bg-amber-50">
