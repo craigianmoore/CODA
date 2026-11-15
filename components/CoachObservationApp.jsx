@@ -3106,6 +3106,14 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
     saveCompletedTasks(completedTasks.map(t => idsInGroup.has(t.id) ? { ...t, onlineModulesPercent: pct, updatedAt: new Date().toISOString() } : t));
   }
 
+  // Group tick for Formative Assessment: ticks every coach in the course, or clears
+  // them all when they are all already ticked.
+  function toggleGroupFormative(group) {
+    const allDone = group.records.every(r => r.formativeAssessmentDone);
+    const idsInGroup = new Set(group.records.map(r => r.id));
+    saveCompletedTasks(completedTasks.map(t => idsInGroup.has(t.id) ? { ...t, formativeAssessmentDone: !allDone, updatedAt: new Date().toISOString() } : t));
+  }
+
   function applyIndividualOnlineModules(task) {
     const raw = individualOnlineInputs[task.id];
     if (raw === undefined || raw === "") return;
@@ -3233,6 +3241,24 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                             className="bg-violet-600 text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-violet-700">
                             Apply to All
                           </button>
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-xs font-semibold text-emerald-800 mb-1.5">Formative Assessment for all coaches in this course</p>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          {(() => {
+                            const doneCount = g.records.filter(r => r.formativeAssessmentDone).length;
+                            const allDone = doneCount === g.records.length;
+                            return (
+                              <>
+                                <button onClick={() => toggleGroupFormative(g)}
+                                  className={`text-sm font-semibold px-3 py-2 rounded-lg flex items-center gap-1.5 ${allDone ? "bg-white text-emerald-700 border border-emerald-300 hover:bg-emerald-100" : "bg-emerald-600 text-white hover:bg-emerald-700"}`}>
+                                  <Check className="w-3.5 h-3.5" /> {allDone ? "Untick all" : "Tick all"}
+                                </button>
+                                <span className="text-xs text-emerald-800">{doneCount} of {g.records.length} ticked</span>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                       <div className="space-y-1.5">
