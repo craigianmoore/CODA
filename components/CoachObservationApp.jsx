@@ -7789,6 +7789,25 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     setEditingId(null);
   }
 
+  // Keep your place in the coach list: opening a coach's details swaps their card for a
+  // taller form, so on Save / Cancel put the card back at the same spot on the screen
+  // instead of leaving the page wherever the form's scrolling ended up.
+  const editAnchorRef = useRef(null);
+  useEffect(() => {
+    if (editingId) return;
+    const a = editAnchorRef.current;
+    if (!a) return;
+    editAnchorRef.current = null;
+    const restore = () => {
+      const el = document.getElementById(`ct-task-${a.id}`);
+      if (!el) return;
+      const delta = el.getBoundingClientRect().top - a.top;
+      if (Math.abs(delta) > 1) window.scrollBy({ top: delta, left: 0, behavior: "auto" });
+    };
+    restore();
+    requestAnimationFrame(() => { restore(); requestAnimationFrame(restore); });
+  }, [editingId]);
+
   // Data repair — before the courseworkProgress/auto-link bug was fixed,
   // a Not Yet Competent observation could still leave the matching
   // checklist item marked done. The checkbox is now locked from being
@@ -7871,6 +7890,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   }
 
   function startEdit(task) {
+    const cardEl = document.getElementById(`ct-task-${task.id}`);
+    if (cardEl) editAnchorRef.current = { id: task.id, top: cardEl.getBoundingClientRect().top };
     setEditingId(task.id);
     expandCourseGroup(task.courseNumber);
     const matchedCourse = courses.find(c => c.title === task.courseTitle);
