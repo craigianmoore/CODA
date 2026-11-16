@@ -10523,6 +10523,14 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
   const keyboard = useVisualViewportKeyboard();
+  // General Notes bar (step 2) is pinned to the bottom of the screen. On a phone it sits
+  // right above the keyboard and covers the box being typed in, so: it starts folded on
+  // small screens, and while the keyboard is up for any other box it steps out of the way.
+  const [notesOpen, setNotesOpen] = useState(() => typeof window === "undefined" || window.innerWidth >= 640);
+  const [notesFocused, setNotesFocused] = useState(false);
+  const notesBoxRef = useRef(null);
+  const keyboardUp = keyboard.insetBottom > 0;
+  const notesVisibleFull = notesOpen && (!keyboardUp || notesFocused);
   const [potentialPathways, setPotentialPathways] = useState(() => src?.potentialPathways || []);
 
   // Shared session: two coaches delivered the same session. Each coach still gets
@@ -11291,7 +11299,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   const steps = ["Session Details", "Session Plan", "Assessment Scoring", "Feedback", "Development Plan"];
 
   return (
-    <div className={`space-y-5 ${step === 2 ? "pb-52" : ""}`}>
+    <div className={`space-y-5 ${step === 2 ? (notesOpen ? "pb-52" : "pb-16") : ""}`}>
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-900">{isEditing ? "Edit Observation" : "New Observation"}</h2>
         <button onClick={onCancel} className="text-sm text-slate-500 hover:text-slate-600 flex items-center gap-1">
@@ -12279,13 +12287,25 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
           </div>
         </div>
       )}
-      {step === 2 && (
+      {step === 2 && !notesVisibleFull && !(keyboardUp && !notesFocused) && (
+        <button type="button" onClick={() => { setNotesOpen(true); setTimeout(() => { const el = notesBoxRef.current; el && el.focus(); }, 50); }}
+          className="fixed right-3 z-30 flex items-center gap-1.5 bg-white border border-slate-300 shadow-md rounded-full px-3 py-1.5 text-xs font-semibold text-slate-700"
+          style={{ bottom: `calc(${keyboard.insetBottom}px + 0.75rem)` }}>
+          General Notes{cetNotes && cetNotes.trim() ? <span className="w-2 h-2 rounded-full bg-emerald-500" title="Has notes" /> : null}
+        </button>
+      )}
+      {step === 2 && notesVisibleFull && (
         <div className="fixed left-0 right-0 z-30 bg-white border-t border-slate-300 shadow-[0_-4px_16px_rgba(0,0,0,0.08)]"
-          style={{ bottom: keyboard.insetBottom }}>
+          style={{ bottom: keyboard.insetBottom }}
+          onFocus={() => setNotesFocused(true)} onBlur={() => setNotesFocused(false)}>
           <div className="max-w-5xl mx-auto px-4 py-3">
-            <p className="text-sm font-semibold text-slate-800 mb-1">General Notes{dual ? ` — ${activeName}` : ""}</p>
-            <p className="text-xs text-slate-500 mb-2">Always visible while scoring — use this for anything that doesn't fit neatly under one assessment area.</p>
-            <VoiceTextarea value={cetNotes} onChange={e => setCetNotes(e.target.value)} rows={3}
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="text-sm font-semibold text-slate-800">General Notes{dual ? ` — ${activeName}` : ""}</p>
+              <button type="button" onClick={() => { setNotesOpen(false); setNotesFocused(false); }}
+                className="text-xs font-semibold text-slate-500 border border-slate-200 rounded-md px-2 py-0.5 hover:bg-slate-50">Hide</button>
+            </div>
+            <p className="text-xs text-slate-500 mb-2 hidden sm:block">Always visible while scoring — use this for anything that doesn't fit neatly under one assessment area.</p>
+            <VoiceTextarea ref={notesBoxRef} value={cetNotes} onChange={e => setCetNotes(e.target.value)} rows={3}
               placeholder="Add any general notes here..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
           </div>
         </div>
