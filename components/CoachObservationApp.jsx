@@ -10422,6 +10422,9 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   const [coachId, setCoachId] = useState(() => src?.coachId || "");
   const [coachSearchQuery, setCoachSearchQuery] = useState("");
   const [coachDropdownOpen, setCoachDropdownOpen] = useState(false);
+  // When a Course Number is entered, the coach pickers narrow to the coaches
+  // on that course (from Coaches Progress). "Show all" overrides it.
+  const [showAllCoaches, setShowAllCoaches] = useState(false);
   const [newCoachName, setNewCoachName] = useState("");
   const [newCoachClub, setNewCoachClub] = useState("");
   const [showIdpEditor, setShowIdpEditor] = useState(false);
@@ -10523,6 +10526,12 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
   const keyboard = useVisualViewportKeyboard();
+  const courseNumberTrim = (courseNumber || "").trim();
+  const courseCoachIds = courseNumberTrim
+    ? new Set((completedTasks || []).filter(t => (t.courseNumber || "").trim() === courseNumberTrim && t.coachId).map(t => t.coachId))
+    : null;
+  const courseFilterOn = !!courseCoachIds && !showAllCoaches;
+  const coachesForPicker = courseFilterOn ? coaches.filter(c => courseCoachIds.has(c.id)) : coaches;
   // General Notes bar (step 2) is pinned to the bottom of the screen. On a phone it sits
   // right above the keyboard and covers the box being typed in, so: it starts folded on
   // small screens, and while the keyboard is up for any other box it steps out of the way.
@@ -11377,13 +11386,19 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                     <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-md max-h-56 overflow-y-auto">
                       {(() => {
                         const q = coachSearchQuery.trim().toLowerCase();
-                        const matches = [...coaches]
+                        const matches = [...coachesForPicker]
                           .sort((a, b) => a.name.localeCompare(b.name))
                           .filter(c => !q || c.name.toLowerCase().split(/\s+/).some(part => part.includes(q)));
                         return (
                           <>
+                            {courseCoachIds && (
+                              <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-indigo-50 border-b border-indigo-100 text-xs text-indigo-800">
+                                <span>{courseFilterOn ? `Only coaches on Course #${courseNumberTrim} (${coachesForPicker.length})` : "Showing all coaches"}</span>
+                                <button type="button" onMouseDown={() => setShowAllCoaches(v => !v)} className="font-semibold underline shrink-0">{courseFilterOn ? "Show all" : "Course only"}</button>
+                              </div>
+                            )}
                             {matches.length === 0 ? (
-                              <p className="px-3 py-2.5 text-sm text-slate-500">No coaches match "{coachSearchQuery}".</p>
+                              <p className="px-3 py-2.5 text-sm text-slate-500">{courseFilterOn && !coachSearchQuery.trim() ? `No coaches are on Course #${courseNumberTrim} in Coaches Progress yet.` : `No coaches match "${coachSearchQuery}".`}</p>
                             ) : (
                               matches.map(c => (
                                 <button key={c.id} onMouseDown={() => { setCoachId(c.id); setCoachSearchQuery(c.name); setCoachDropdownOpen(false); }}
@@ -11436,7 +11451,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                       <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-md max-h-56 overflow-y-auto">
                         {(() => {
                           const q = sharedSearch.trim().toLowerCase();
-                          const matches = [...coaches]
+                          const matches = [...coachesForPicker]
                             .filter(c => c.id !== coachId)
                             .sort((a, b) => a.name.localeCompare(b.name))
                             .filter(c => !q || c.name.toLowerCase().split(/\s+/).some(part => part.includes(q)));
