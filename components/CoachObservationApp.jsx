@@ -11366,6 +11366,88 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
         {step === 0 && (
           <div className="space-y-4">
             <div>
+              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Session type</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => handleSessionType("formal")}
+                  className={`text-left p-3 rounded-lg border-2 transition-colors ${sessionType === "formal" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
+                  <p className="text-sm font-semibold text-slate-800">Formal course session</p>
+                  <p className="text-xs text-slate-500">Part of a formal qualification / course assessment</p>
+                </button>
+                <button onClick={() => handleSessionType("informal")}
+                  className={`text-left p-3 rounded-lg border-2 transition-colors ${sessionType === "informal" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
+                  <p className="text-sm font-semibold text-slate-800">Informal club session</p>
+                  <p className="text-xs text-slate-500">A regular session observed at the coach's club</p>
+                </button>
+              </div>
+            </div>
+
+            {sessionType === "formal" && (
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course / qualification name</label>
+                <select value={formalCourseOption} onChange={e => handleFormalCourseOptionChange(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+                  <option value="">Select from Course Library...</option>
+                  {courses.filter(c => memberFederation === "FA" || !isADiploma(c.title)).map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                  <option value="__other__">Other (type your own)</option>
+                </select>
+                {formalCourseOption === "__other__" && (
+                  <input value={formalCourseName} onChange={e => setFormalCourseName(e.target.value)} placeholder="Custom qualification / course name"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-2" />
+                )}
+                {(isCDiploma(formalCourseName) || isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && (
+                  <div className="mt-2">
+                    <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course Number</label>
+                    <input value={courseNumber} onChange={e => setCourseNumber(e.target.value)}
+                      placeholder={isCDiploma(formalCourseName) ? "e.g. 165" : "e.g. 240"}
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                    {courseNumber.trim() && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        {(() => {
+                          const candidateName = usingNewCoach ? (newCoachName.trim() || "this coach") : (selectedCoach?.name || "this coach");
+                          const sn = usingNewCoach || !coachId
+                            ? 1
+                            : computeSessionNumber(observations, coachId, courseNumber, existingObservation ? existingObservation.id : "__preview__", date);
+                          return `This will be recorded as Session ${sn} for ${candidateName} on Course #${courseNumber.trim()}.`;
+                        })()}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {threshold !== null && (
+                  <p className="text-xs text-slate-500 mt-1.5">Minimum passing score for this qualification: {threshold}/{MAX_TOTAL_SCORE}</p>
+                )}
+              </div>
+            )}
+
+            {sessionType === "formal" && (isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && (
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">
+                  Diploma Block <span className="text-red-500">*</span>
+                </label>
+                <select value={diplomaBlock} onChange={e => setDiplomaBlock(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+                  <option value="">Select block...</option>
+                  {(isADiploma(formalCourseName) ? DIPLOMA_BLOCK_OPTIONS_A : DIPLOMA_BLOCK_OPTIONS_B).map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+                {!diplomaBlock && (
+                  <p className="text-xs text-red-500 mt-1">Required for B/A Diploma courses.</p>
+                )}
+                {(isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && diplomaBlock && matchedCompletedTask && (
+                  <p className="text-xs text-slate-500 mt-1">Auto-filled from attendance on file — change it above if needed.</p>
+                )}
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Member Federation</label>
+              <select value={memberFederation} onChange={e => setMemberFederation(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+                {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
+              </select>
+              <p className="text-xs text-slate-500 mt-1">Sets the logo shown on this report's PDF export.</p>
+            </div>
+
+            <div>
               <label className="text-[10px] font-bold uppercase tracking-wide text-indigo-600 mb-1.5 block">Coach being observed</label>
               {selectedCoach ? (
                 <div className="flex items-center justify-between border border-slate-300 rounded-lg px-3 py-2.5 bg-slate-50">
@@ -11435,6 +11517,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 </div>
               )}
             </div>
+
             {usingNewCoach && (
               <div className="grid grid-cols-2 gap-3 pl-3 border-l-2 border-slate-100">
                 <input value={newCoachName} onChange={e => setNewCoachName(e.target.value)} placeholder="New coach name" className="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
@@ -11498,14 +11581,6 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Date of observation</label>
                 <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
               </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Member Federation</label>
-              <select value={memberFederation} onChange={e => setMemberFederation(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
-                {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
-              </select>
-              <p className="text-xs text-slate-500 mt-1">Sets the logo shown on this report's PDF export.</p>
             </div>
 
             <div>
@@ -11595,80 +11670,6 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
               const needLabel = (CET_PRESENT_LEVELS.find(l => l.key === need) || {}).label;
               return <p className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-3 py-2">⚠ {selectedEducator.name} is marked as able to present up to level {has}, but this is a {needLabel} course.</p>;
             })()}
-
-            <div>
-              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Session type</label>
-              <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => handleSessionType("formal")}
-                  className={`text-left p-3 rounded-lg border-2 transition-colors ${sessionType === "formal" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
-                  <p className="text-sm font-semibold text-slate-800">Formal course session</p>
-                  <p className="text-xs text-slate-500">Part of a formal qualification / course assessment</p>
-                </button>
-                <button onClick={() => handleSessionType("informal")}
-                  className={`text-left p-3 rounded-lg border-2 transition-colors ${sessionType === "informal" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
-                  <p className="text-sm font-semibold text-slate-800">Informal club session</p>
-                  <p className="text-xs text-slate-500">A regular session observed at the coach's club</p>
-                </button>
-              </div>
-            </div>
-
-            {sessionType === "formal" && (
-              <div>
-                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course / qualification name</label>
-                <select value={formalCourseOption} onChange={e => handleFormalCourseOptionChange(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
-                  <option value="">Select from Course Library...</option>
-                  {courses.filter(c => memberFederation === "FA" || !isADiploma(c.title)).map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                  <option value="__other__">Other (type your own)</option>
-                </select>
-                {formalCourseOption === "__other__" && (
-                  <input value={formalCourseName} onChange={e => setFormalCourseName(e.target.value)} placeholder="Custom qualification / course name"
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-2" />
-                )}
-                {(isCDiploma(formalCourseName) || isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && (
-                  <div className="mt-2">
-                    <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course Number</label>
-                    <input value={courseNumber} onChange={e => setCourseNumber(e.target.value)}
-                      placeholder={isCDiploma(formalCourseName) ? "e.g. 165" : "e.g. 240"}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-                    {courseNumber.trim() && (
-                      <p className="text-xs text-slate-500 mt-1">
-                        {(() => {
-                          const candidateName = usingNewCoach ? (newCoachName.trim() || "this coach") : (selectedCoach?.name || "this coach");
-                          const sn = usingNewCoach || !coachId
-                            ? 1
-                            : computeSessionNumber(observations, coachId, courseNumber, existingObservation ? existingObservation.id : "__preview__", date);
-                          return `This will be recorded as Session ${sn} for ${candidateName} on Course #${courseNumber.trim()}.`;
-                        })()}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {threshold !== null && (
-                  <p className="text-xs text-slate-500 mt-1.5">Minimum passing score for this qualification: {threshold}/{MAX_TOTAL_SCORE}</p>
-                )}
-              </div>
-            )}
-
-            {sessionType === "formal" && (isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && (
-              <div>
-                <label className="text-xs font-medium text-slate-500 mb-1.5 block">
-                  Diploma Block <span className="text-red-500">*</span>
-                </label>
-                <select value={diplomaBlock} onChange={e => setDiplomaBlock(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
-                  <option value="">Select block...</option>
-                  {(isADiploma(formalCourseName) ? DIPLOMA_BLOCK_OPTIONS_A : DIPLOMA_BLOCK_OPTIONS_B).map(opt => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
-                {!diplomaBlock && (
-                  <p className="text-xs text-red-500 mt-1">Required for B/A Diploma courses.</p>
-                )}
-                {(isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && diplomaBlock && matchedCompletedTask && (
-                  <p className="text-xs text-slate-500 mt-1">Auto-filled from attendance on file — change it above if needed.</p>
-                )}
-              </div>
-            )}
 
             <div>
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">
