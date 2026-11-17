@@ -8254,6 +8254,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       role: session.tier === "master" ? undefined : session.tier,
       memberFederations: session.memberFederations || [],
       assignedCourseNumbers: session.assignedCourseNumbers || [],
+      coordinatorMfs: session.coordinatorMfs || [],
     });
   }, [session, progressAuthed]);
   const [progressAuthName, setProgressAuthName] = useState("");
