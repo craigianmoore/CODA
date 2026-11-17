@@ -873,10 +873,16 @@ function newLabelDisplay(record, label, topicsList) {
 // fixed items (Game Plan, Annual Plan, 6WC...) and instead carry whatever
 // extra columns the coach sheet had as record.customItems = [{label, done}].
 // Legacy records have no sheetDriven flag and are completely unaffected.
+// A Diploma no longer carries the sheet's "Session 1/2/3" course items (the per-block
+// Assessment Observations replace them); hidden everywhere, data left untouched.
+function visibleCustomItems(record) {
+  const list = record.customItems || [];
+  return isADiploma(record.courseTitle) ? list.filter(ci => !/^session\s*\d+\b/i.test(String(ci.label || "").trim())) : list;
+}
 function courseworkItems(record, coachTopics, team) {
   let items = courseworkItemsRaw(record, coachTopics, team);
   if (record.sheetDriven) {
-    const custom = (record.customItems || []).map(ci => ({ label: ci.label, done: !!ci.done, outcome: "", group: "custom" }));
+    const custom = visibleCustomItems(record).map(ci => ({ label: ci.label, done: !!ci.done, outcome: "", group: "custom" }));
     items = items.filter(i => i.group !== "fixed");
     const modIdx = items.findIndex(i => i.group === "modules");
     items.splice(modIdx === -1 ? items.length : modIdx, 0, ...custom);
@@ -7901,7 +7907,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     }
     const allTicked = flags.every(([k]) => !!f[k]) && topicKeys.every(t => !!(f.sessionPlansDone || {})[t]) &&
       obsBlocks.every(b => assessmentObsBlockDone(f, b)) &&
-      (f.customItems || []).every(ci => !!ci.done);
+      visibleCustomItems(f).every(ci => !!ci.done);
     return { flags, topicKeys, obsBlocks, allTicked };
   }
   function toggleAllCoursework() {
@@ -7917,7 +7923,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
         obsBlocks.forEach(b => { out.assessmentObsBlocks[b] = next; });
         if (next === false) out.assessmentObservationDone = false;
       }
-      if (prev.customItems) out.customItems = prev.customItems.map(ci => ({ ...ci, done: next }));
+      if (prev.customItems) { const vis = new Set(visibleCustomItems(prev).map(c => c.label)); out.customItems = prev.customItems.map(ci => vis.has(ci.label) ? { ...ci, done: next } : ci); }
       return out;
     });
   }
@@ -9192,10 +9198,10 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           </>
         ) : null}
 
-        {form.sheetDriven && (form.customItems || []).length > 0 && (
+        {form.sheetDriven && visibleCustomItems(form).length > 0 && (
           <div className="border-t border-slate-100 pt-3 space-y-2">
             <p className="text-sm font-semibold text-slate-800 mb-1">Course Items</p>
-            {form.customItems.map(ci => (
+            {visibleCustomItems(form).map(ci => (
               <div key={ci.label}>
               <label className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
                 <span>{ci.label}</span>
