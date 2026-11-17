@@ -609,7 +609,11 @@ function findItemObservations(observations, record, label) {
     if (o.coachId !== record.coachId) return false;
     if (cn ? (o.courseNumber || "").trim() !== cn : (o.formalCourseName || "") !== record.courseTitle) return false;
     if (isCDiploma(record.courseTitle)) return base === "Practical Session";
-    if (base === ASSESSMENT_OBS_LABEL) return (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) && o.sessionType === "formal";
+    if (isAssessmentObsLabel(base)) {
+      if (!((isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) && o.sessionType === "formal")) return false;
+      const blk = assessmentObsBlockOf(base);
+      return !blk || o.diplomaBlock === blk;
+    }
     return (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) && o.sessionTopic === base;
   }).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
   return {
@@ -724,8 +728,10 @@ function isCoachFullyComplete(record, coachTopics) {
 function outstandingRequirements(t, coachTopics) {
   const reqs = [];
   if (t.attendancePercent < 100) reqs.push("Attendance");
-  if ((t.onlineModulesPercent || 0) < 100) reqs.push("Online Modules");
-  if (!t.formativeAssessmentDone) reqs.push("Formative Assessment");
+  if (!isADiploma(t.courseTitle)) {
+    if ((t.onlineModulesPercent || 0) < 100) reqs.push("Online Modules");
+    if (!t.formativeAssessmentDone) reqs.push("Formative Assessment");
+  }
   if (isCDiploma(t.courseTitle)) {
     if (t.practicalSessionOutcome === "Not Yet Competent") {
       reqs.push("redo Practical");
@@ -783,12 +789,32 @@ function assessmentObsFromObservations(observations) {
     const k = assessmentObsKey(o.coachId, o.courseNumber, o.formalCourseName);
     const t = new Date(o.date || 0).getTime();
     if (!latest[k] || t >= latest[k].t) latest[k] = { t, ok: o.assessmentOutcome !== "Not Yet Competent" };
+    if (o.diplomaBlock) {
+      const kb = k + "|" + o.diplomaBlock;
+      if (!latest[kb] || t >= latest[kb].t) latest[kb] = { t, ok: o.assessmentOutcome !== "Not Yet Competent" };
+    }
   });
   const m = {};
   Object.keys(latest).forEach(k => { m[k] = latest[k].ok; });
   return m;
 }
+// A Diploma has one Assessment Observation per block ("Assessment Observation – Block 1"),
+// B Diploma a single one. Per-block ticks live in record.assessmentObsBlocks; a submitted
+// formal observation tagged with that Diploma Block also counts. The older single
+// assessmentObservationDone flag is treated as the first block's.
+const ASSESSMENT_OBS_SEP = " – ";
+function assessmentObsLabelFor(block) { return block ? ASSESSMENT_OBS_LABEL + ASSESSMENT_OBS_SEP + block : ASSESSMENT_OBS_LABEL; }
+function isAssessmentObsLabel(label) { return label === ASSESSMENT_OBS_LABEL || String(label || "").startsWith(ASSESSMENT_OBS_LABEL + ASSESSMENT_OBS_SEP); }
+function assessmentObsBlockOf(label) { return label === ASSESSMENT_OBS_LABEL ? "" : String(label || "").slice((ASSESSMENT_OBS_LABEL + ASSESSMENT_OBS_SEP).length); }
+function assessmentObsBlocksFor(record) { return isADiploma(record.courseTitle) ? diplomaBlocksFor(record.courseTitle, record) : []; }
+function assessmentObsBlockDone(record, block) {
+  if ((record.assessmentObsBlocks || {})[block]) return true;
+  if (block === DIPLOMA_BLOCK_OPTIONS_A[0] && record.assessmentObservationDone) return true;
+  return !!ASSESSMENT_OBS[assessmentObsKey(record.coachId, record.courseNumber, record.courseTitle) + "|" + block];
+}
 function assessmentObsDone(record) {
+  const blocks = assessmentObsBlocksFor(record);
+  if (blocks.length) return blocks.every(b => assessmentObsBlockDone(record, b));
   return !!record.assessmentObservationDone || !!ASSESSMENT_OBS[assessmentObsKey(record.coachId, record.courseNumber, record.courseTitle)];
 }
 // Highest course level a CET can present (covers the levels below it).
@@ -911,8 +937,13 @@ function courseworkItemsRaw(record, coachTopics, team) {
       { label: "6WC (6 Week Cycle)", done: !!record.sixWeekCycleDone, outcome: "", group: "fixed" },
       { label: "with FC (football conditioning) details", done: !!record.fcDetailsDone, outcome: "", group: "fixed" },
     ];
-    const observationItem = { label: ASSESSMENT_OBS_LABEL, done: assessmentObsDone(record), outcome: "", group: "observation" };
-    return [observationItem, ...sessionItems, ...fixedItems, onlineModulesItem, formativeAssessmentItem];
+    const blocks = assessmentObsBlocksFor(record);
+    const observationItems = blocks.length
+      ? blocks.map(b => ({ label: assessmentObsLabelFor(b), done: assessmentObsBlockDone(record, b), outcome: "", group: "observation" }))
+      : [{ label: ASSESSMENT_OBS_LABEL, done: assessmentObsDone(record), outcome: "", group: "observation" }];
+    // A Diploma has no Online Modules / Formative Assessment items.
+    const moduleItems = isADiploma(record.courseTitle) ? [] : [onlineModulesItem, formativeAssessmentItem];
+    return [...observationItems, ...sessionItems, ...fixedItems, ...moduleItems];
   }
   return [];
 }
@@ -938,13 +969,21 @@ function applyCourseworkToggle(task, label, coachTopics) {
     updated.sessionPlansReassessmentDone = { ...(task.sessionPlansReassessmentDone || {}), [topic]: !(task.sessionPlansReassessmentDone || {})[topic] };
   } else if (isCDiploma(task.courseTitle) && label === "Practical Session") {
     updated.practicalSessionDone = !task.practicalSessionDone;
-  } else if (label === "Formative Assessment") {
+  } else if (label === "Formative Assessment" && !isADiploma(task.courseTitle)) {
     updated.formativeAssessmentDone = !task.formativeAssessmentDone;
   } else if (isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) {
-    if (label === ASSESSMENT_OBS_LABEL) {
+    if (isAssessmentObsLabel(label)) {
       // Ticked automatically by a submitted observation; the manual tick covers one done off-system.
-      if (assessmentObsDone({ ...task, assessmentObservationDone: false })) return task;
-      updated.assessmentObservationDone = !task.assessmentObservationDone;
+      const blk = assessmentObsBlockOf(label);
+      if (blk) {
+        const manual = { ...task, assessmentObsBlocks: { ...(task.assessmentObsBlocks || {}), [blk]: false }, assessmentObservationDone: false };
+        if (assessmentObsBlockDone(manual, blk)) return task;
+        updated.assessmentObsBlocks = { ...(task.assessmentObsBlocks || {}), [blk]: !(task.assessmentObsBlocks || {})[blk] };
+        if (blk === DIPLOMA_BLOCK_OPTIONS_A[0]) updated.assessmentObservationDone = false;
+      } else {
+        if (assessmentObsDone({ ...task, assessmentObservationDone: false })) return task;
+        updated.assessmentObservationDone = !task.assessmentObservationDone;
+      }
     } else if (topics.includes(label)) {
       updated.sessionPlansDone = { ...(task.sessionPlansDone || {}), [label]: !(task.sessionPlansDone || {})[label] };
     } else if (label === "Goalscoring Presentation") updated.goalscoringPresentationDone = !task.goalscoringPresentationDone;
@@ -2312,6 +2351,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             annualPlanDone: false,
             coachingSession25MinDone: false,
             assessmentObservationDone: false,
+            assessmentObsBlocks: {},
             sixWeekCycleDone: false,
             fcDetailsDone: false,
             practicalSessionDone: false,
@@ -3303,6 +3343,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                           </button>
                         </div>
                       </div>
+                      {!isADiploma(g.records[0]?.courseTitle) && (
                       <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
                         <p className="text-xs font-semibold text-emerald-800 mb-1.5">Formative Assessment for all coaches in this course</p>
                         <div className="flex items-center gap-3 flex-wrap">
@@ -3321,6 +3362,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                           })()}
                         </div>
                       </div>
+                      )}
                       <div className="space-y-1.5">
                         <p className="text-xs font-semibold text-slate-500">Or update individually</p>
                         {[...g.records].sort((a, b) => a.coachName.localeCompare(b.coachName)).map(t => {
@@ -5509,8 +5551,9 @@ function courseworkProgress(record, coachTopics) {
     const its = courseworkItems(record, coachTopics).filter(i => !i.isReassessment);
     return { done: its.filter(i => i.done).length, total: its.length };
   }
-  const onlineDone = (record.onlineModulesPercent || 0) >= 100 ? 1 : 0;
-  const formativeDone = record.formativeAssessmentDone ? 1 : 0;
+  const noModules = isADiploma(record.courseTitle);
+  const onlineDone = !noModules && (record.onlineModulesPercent || 0) >= 100 ? 1 : 0;
+  const formativeDone = !noModules && record.formativeAssessmentDone ? 1 : 0;
   if (isCDiploma(record.courseTitle)) {
     // Once a Not Yet Competent practical is reassessed (ticked), it counts
     // as done here too — otherwise done/total could never reach 100%.
@@ -5521,6 +5564,7 @@ function courseworkProgress(record, coachTopics) {
   }
   if (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) {
     const isB = isBDiploma(record.courseTitle);
+    const isA = !isB;
     const topics = (coachTopics || []).slice(0, 4);
     // Same logic per session topic: a Not Yet Competent topic only counts
     // once its Reassessment tickbox is done, not its (permanently false)
@@ -5539,7 +5583,10 @@ function courseworkProgress(record, coachTopics) {
       record.fcDetailsDone,
       ...(isB ? [record.coachingSession25MinDone] : []),
     ].filter(Boolean).length;
-    return { done: sessionDone + fixedDone + onlineDone + formativeDone + (assessmentObsDone(record) ? 1 : 0), total: topics.length + (isB ? 7 : 6) + 2 + 1 };
+    const obsBlocks = assessmentObsBlocksFor(record);
+    const obsDone = obsBlocks.length ? obsBlocks.filter(b => assessmentObsBlockDone(record, b)).length : (assessmentObsDone(record) ? 1 : 0);
+    const obsTotal = obsBlocks.length || 1;
+    return { done: sessionDone + fixedDone + onlineDone + formativeDone + obsDone, total: topics.length + (isB ? 7 : 6) + (isA ? 0 : 2) + obsTotal };
   }
   return { done: 0, total: 0 };
 }
@@ -7689,6 +7736,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
         annualPlanDone: all.some(t => t.annualPlanDone),
         coachingSession25MinDone: all.some(t => t.coachingSession25MinDone),
         assessmentObservationDone: all.some(t => t.assessmentObservationDone),
+        assessmentObsBlocks: all.reduce((m, t) => { Object.keys(t.assessmentObsBlocks || {}).forEach(b => { if (t.assessmentObsBlocks[b]) m[b] = true; }); return m; }, {}),
         sixWeekCycleDone: all.some(t => t.sixWeekCycleDone),
         fcDetailsDone: all.some(t => t.fcDetailsDone),
         practicalSessionDone: all.some(t => t.practicalSessionDone),
@@ -7834,14 +7882,16 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   // offers for this course (Not Yet Competent sessions are skipped — they need a
   // re-observation first). Online Modules is a percentage, so it isn't touched.
   function courseworkTickState(f) {
-    const flags = [["formativeAssessmentDone"]];
+    const flags = isADiploma(f.courseTitle) ? [] : [["formativeAssessmentDone"]];
     const topicKeys = [];
+    const obsBlocks = isADiploma(f.courseTitle) ? diplomaBlocksFor(f.courseTitle, f) : [];
     if (f.sheetDriven) {
       // custom items handled separately
     } else if (isCDiploma(f.courseTitle)) {
       if (f.practicalSessionOutcome !== "Not Yet Competent") flags.push(["practicalSessionDone"]);
     } else if (isBDiploma(f.courseTitle) || isADiploma(f.courseTitle)) {
-      flags.push(["assessmentObservationDone"], ["goalscoringPresentationDone"], ["gamePlanDone"], ["analysisSessionPlanDone"],
+      if (!obsBlocks.length) flags.push(["assessmentObservationDone"]);
+      flags.push(["goalscoringPresentationDone"], ["gamePlanDone"], ["analysisSessionPlanDone"],
         ["annualPlanDone"], ["sixWeekCycleDone"], ["fcDetailsDone"]);
       if (isBDiploma(f.courseTitle)) flags.push(["coachingSession25MinDone"]);
       const coach = coaches.find(c => c.id === f.coachId);
@@ -7850,17 +7900,23 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       });
     }
     const allTicked = flags.every(([k]) => !!f[k]) && topicKeys.every(t => !!(f.sessionPlansDone || {})[t]) &&
+      obsBlocks.every(b => assessmentObsBlockDone(f, b)) &&
       (f.customItems || []).every(ci => !!ci.done);
-    return { flags, topicKeys, allTicked };
+    return { flags, topicKeys, obsBlocks, allTicked };
   }
   function toggleAllCoursework() {
     setForm(prev => {
-      const { flags, topicKeys, allTicked } = courseworkTickState(prev);
+      const { flags, topicKeys, obsBlocks, allTicked } = courseworkTickState(prev);
       const next = !allTicked;
       const out = { ...prev };
       flags.forEach(([k]) => { out[k] = next; });
       out.sessionPlansDone = { ...(prev.sessionPlansDone || {}) };
       topicKeys.forEach(t => { out.sessionPlansDone[t] = next; });
+      if (obsBlocks.length) {
+        out.assessmentObsBlocks = { ...(prev.assessmentObsBlocks || {}) };
+        obsBlocks.forEach(b => { out.assessmentObsBlocks[b] = next; });
+        if (next === false) out.assessmentObservationDone = false;
+      }
       if (prev.customItems) out.customItems = prev.customItems.map(ci => ({ ...ci, done: next }));
       return out;
     });
@@ -8016,6 +8072,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       annualPlanDone: !!task.annualPlanDone,
       coachingSession25MinDone: !!task.coachingSession25MinDone,
       assessmentObservationDone: !!task.assessmentObservationDone,
+      assessmentObsBlocks: { ...(task.assessmentObsBlocks || {}) },
       sixWeekCycleDone: task.sixWeekCycleDone != null ? !!task.sixWeekCycleDone : !!task.sixWeekCycleFcDone,
       fcDetailsDone: task.fcDetailsDone != null ? !!task.fcDetailsDone : !!task.sixWeekCycleFcDone,
       practicalSessionDone: !!task.practicalSessionDone,
@@ -8074,6 +8131,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       annualPlanDone: form.annualPlanDone,
       coachingSession25MinDone: form.coachingSession25MinDone,
       assessmentObservationDone: form.assessmentObservationDone,
+      assessmentObsBlocks: form.assessmentObsBlocks || {},
       sixWeekCycleDone: form.sixWeekCycleDone,
       fcDetailsDone: form.sixWeekCycleDone ? form.fcDetailsDone : false,
       practicalSessionDone: form.practicalSessionDone,
@@ -8963,10 +9021,12 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           <input type="checkbox" checked={courseworkTickState(form).allTicked} onChange={toggleAllCoursework} className="rounded border-slate-300" />
           Tick all coursework
         </label>
+        {!isADiploma(form.courseTitle) && (
         <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer pt-1">
           <input type="checkbox" checked={!!form.formativeAssessmentDone} onChange={() => setField("formativeAssessmentDone", !form.formativeAssessmentDone)} className="rounded border-slate-300" />
           Formative Assessment (in course) Completed
         </label>
+        )}
 
         <div>
           <label className="text-xs font-medium text-slate-500 mb-1.5 block">Video Link</label>
@@ -9077,7 +9137,13 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             <div className="border-t border-slate-100 pt-3 space-y-2">
               <p className="text-sm font-semibold text-slate-800 mb-1">Coursework</p>
               {[
-                ...((isBDiploma(form.courseTitle) || isADiploma(form.courseTitle)) ? [{ label: ASSESSMENT_OBS_LABEL, key: "assessmentObservationDone" }] : []),
+                ...(isADiploma(form.courseTitle)
+                  ? diplomaBlocksFor(form.courseTitle, form).map(b => ({
+                      label: assessmentObsLabelFor(b), key: "assessmentObsBlocks:" + b,
+                      get: () => assessmentObsBlockDone(form, b),
+                      set: () => setForm(prev => ({ ...prev, assessmentObsBlocks: { ...(prev.assessmentObsBlocks || {}), [b]: !assessmentObsBlockDone(prev, b) }, ...(b === DIPLOMA_BLOCK_OPTIONS_A[0] ? { assessmentObservationDone: false } : {}) })),
+                    }))
+                  : isBDiploma(form.courseTitle) ? [{ label: ASSESSMENT_OBS_LABEL, key: "assessmentObservationDone" }] : []),
                 { label: "Goalscoring Presentation", key: "goalscoringPresentationDone", extra: form.team ? <span className="text-xs text-slate-500">({form.team})</span> : null },
                 { label: "Game Plan", key: "gamePlanDone" },
                 { label: "Analysis Session Plan", key: "analysisSessionPlanDone" },
@@ -9089,10 +9155,10 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                     <span>{newLabelDisplay(form, item.label, [])}</span>
                     <span className="flex items-center gap-2">
                       {item.extra}
-                      <input type="checkbox" checked={form[item.key]} onChange={() => setField(item.key, !form[item.key])} className="rounded border-slate-300" />
+                      <input type="checkbox" checked={item.get ? item.get() : form[item.key]} onChange={() => item.set ? item.set() : setField(item.key, !form[item.key])} className="rounded border-slate-300" />
                     </span>
                   </label>
-                  {!form[item.key] && (
+                  {!(item.get ? item.get() : form[item.key]) && (
                     <input value={form.courseworkNotes?.[item.label] || ""} onChange={e => setCourseworkNote(item.label, e.target.value)}
                       placeholder="Short note (optional)..." maxLength={140}
                       className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-600 mt-1" />
