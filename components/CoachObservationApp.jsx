@@ -11001,6 +11001,22 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     return true;
   }
   const slotReady = (slot) => slotComplete(slot, 2) && slotComplete(slot, 3);
+  // Joint sessions: both coaches should get their own feedback. If the written notes are
+  // word-for-word the same, ask before submitting (copy/paste is easy to do by accident).
+  const [dupPrompt, setDupPrompt] = useState(null); // "A" | "B" | "both" while the prompt is open
+  const normNote = (t) => (t || "").toLowerCase().replace(/\s+/g, " ").trim();
+  function identicalNoteFields() {
+    const fa = fieldsFor("A"), fb = fieldsFor("B");
+    const out = [];
+    [["strengths", "Strengths"], ["areasForDevelopment", "Areas for development"], ["planNotes", "Plan notes"]].forEach(([k, label]) => {
+      const x = normNote(fa[k]);
+      if (x.length >= 10 && x === normNote(fb[k])) out.push(label);
+    });
+    return out;
+  }
+  function requestSubmitDual(which) {
+    if (identicalNoteFields().length > 0) setDupPrompt(which); else submitDual(which);
+  }
   function removePartner() {
     const bHasData = slotHasData(fieldsFor("B"));
     if (bHasData && !window.confirm(`Remove ${nameB} from this joint session? Anything entered for ${nameB} will be discarded.`)) return;
@@ -12625,13 +12641,13 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
           ) : dual ? (
             <>
               {[["A", nameA], ["B", nameB]].map(([slot, nm]) => (
-                <button key={slot} onClick={() => submitDual(slot)} disabled={!slotReady(slot)}
+                <button key={slot} onClick={() => requestSubmitDual(slot)} disabled={!slotReady(slot)}
                   title={!slotReady(slot) ? `Finish ${nm}'s scoring and plan notes first` : `Submit ${nm} now and keep the other coach as a draft`}
                   className="flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:bg-slate-300 disabled:hover:bg-slate-300 max-w-[11rem]">
                   <Check className="w-4 h-4 shrink-0" /> <span className="truncate">Submit {nm}</span>
                 </button>
               ))}
-              <button onClick={() => submitDual("both")} disabled={!(slotReady("A") && slotReady("B"))}
+              <button onClick={() => requestSubmitDual("both")} disabled={!(slotReady("A") && slotReady("B"))}
                 title={!(slotReady("A") && slotReady("B")) ? "Both coaches need their scoring and plan notes finished" : "Submit both coaches"}
                 className="flex items-center gap-1.5 bg-slate-900 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-800 disabled:bg-slate-300 disabled:hover:bg-slate-300">
                 <Check className="w-4 h-4" /> Submit both
@@ -12646,6 +12662,24 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
           )}
         </div>
       </div>
+
+      {dupPrompt && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-5">
+            <h3 className="text-base font-bold text-slate-900">Both coaches have identical notes</h3>
+            <p className="text-sm text-slate-600 mt-2">
+              {nameA} and {nameB} have exactly the same text in: <strong>{identicalNoteFields().join(", ")}</strong>.
+              Each coach should get feedback on their own session. Is that intended?
+            </p>
+            <div className="flex flex-wrap justify-end gap-2 mt-4">
+              <button onClick={() => setDupPrompt(null)}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800">Go back and edit</button>
+              <button onClick={() => { const w = dupPrompt; setDupPrompt(null); submitDual(w); }}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-slate-300 text-slate-700 hover:bg-slate-50">Submit anyway</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {step === 2 && (
         <div className="fixed right-4 z-40 bg-white border-2 border-slate-300 rounded-xl shadow-lg px-3 py-2.5 flex flex-col items-center gap-1.5 w-24"
