@@ -405,7 +405,23 @@ const COACHING_ACTIVITY_OBJECTIVES = {
 };
 
 const DIPLOMA_BLOCK_OPTIONS_B = ["Block 1", "Block 2", "Block 3"];
-const DIPLOMA_BLOCK_OPTIONS_A = ["Block 1", "Block 2", "Block 3", "Block 4"];
+// A Diploma now runs 3 blocks (it used to be 4). Records that already hold
+// Block 4 data keep it: see diplomaBlocksFor.
+const DIPLOMA_BLOCK_OPTIONS_A = ["Block 1", "Block 2", "Block 3"];
+const LEGACY_A_BLOCK = "Block 4";
+function recordHasBlock(t, block) {
+  return !!t && ["blockStatuses", "blockNotes", "blockEngagement"].some(k => t[k] && t[k][block] !== undefined && t[k][block] !== null && t[k][block] !== "");
+}
+// Block list for a Coaches Progress record, or a course group of records.
+function diplomaBlocksFor(courseTitle, recordOrRecords) {
+  if (isBDiploma(courseTitle)) return DIPLOMA_BLOCK_OPTIONS_B;
+  if (!isADiploma(courseTitle)) return [];
+  const recs = Array.isArray(recordOrRecords) ? recordOrRecords : [recordOrRecords];
+  return recs.some(r => recordHasBlock(r, LEGACY_A_BLOCK)) ? [...DIPLOMA_BLOCK_OPTIONS_A, LEGACY_A_BLOCK] : DIPLOMA_BLOCK_OPTIONS_A;
+}
+// Classroom engagement, ranked 0-3, recorded per block.
+const ENGAGEMENT_LEVELS = [0, 1, 2, 3];
+const ENGAGEMENT_TITLE = "Classroom engagement (0 = not engaged, 3 = highly engaged)";
 
 // CET Assessment — FV's own tool for assessing a CET's coaching-conversation
 // and session-design practice, distinct from the coach observation rubric.
@@ -5942,7 +5958,7 @@ function buildCourseReportHtml(group, coaches, incompleteOnly) {
     return { t, done, total, outstanding };
   }).filter(r => !incompleteOnly || r.outstanding.length > 0);
 
-  const blockOptionsFor = (t) => isADiploma(t.courseTitle) ? DIPLOMA_BLOCK_OPTIONS_A : isBDiploma(t.courseTitle) ? DIPLOMA_BLOCK_OPTIONS_B : [];
+  const blockOptionsFor = (t) => diplomaBlocksFor(t.courseTitle, t);
 
   const candidateSections = rows.map(({ t, done, total, outstanding }) => {
     const outstandingRows = outstanding.length > 0
@@ -5951,7 +5967,7 @@ function buildCourseReportHtml(group, coaches, incompleteOnly) {
     const blockOpts = blockOptionsFor(t);
     const statuses = t.blockStatuses || {};
     const trackingRow = blockOpts.length > 0
-      ? `<p style="font-size:12px;margin:0 0 10px;color:#475569;">Progress Tracking: ${blockOpts.map(b => `${esc(b)}: ${esc(normProgress(statuses[b]) || "not set")}`).join(" · ")}</p>`
+      ? `<p style="font-size:12px;margin:0 0 10px;color:#475569;">Progress Tracking: ${blockOpts.map(b => `${esc(b)}: ${esc(normProgress(statuses[b]) || "not set")}${(t.blockEngagement || {})[b] !== undefined ? ` (engagement ${(t.blockEngagement || {})[b]}/3)` : ""}`).join(" · ")}</p>`
       : "";
     return `
       <div data-pdf-nosplit="1" style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:10px;">
@@ -6014,11 +6030,16 @@ function buildOutstandingCandidateHtml(task, coach) {
       ? `<table style="width:100%;border-collapse:collapse;font-size:13px;">${outstandingRows}</table>`
       : '<p style="font-size:13px;color:#059669;font-weight:600;">Everything is complete.</p>'}
     ${(() => {
-      const blockNoteEntries = Object.entries(task.blockNotes || {}).filter(([, note]) => (note || "").trim());
+      const eng = task.blockEngagement || {};
+      const blockNoteEntries = [...new Set([...Object.keys(task.blockNotes || {}), ...Object.keys(eng)])]
+        .filter(block => ((task.blockNotes || {})[block] || "").trim() || eng[block] !== undefined)
+        .sort()
+        .map(block => [block, (task.blockNotes || {})[block] || ""]);
       if (!blockNoteEntries.length) return "";
       const rows = blockNoteEntries.map(([block, note]) => {
         const status = normProgress((task.blockStatuses || {})[block]);
-        return `<tr><td style="padding:6px 8px;border:1px solid #ddd;width:130px;font-weight:600;vertical-align:top;">${esc(block)}${status ? `<br/><span style="font-weight:400;color:#64748b;">${esc(status)}</span>` : ""}</td><td style="padding:6px 8px;border:1px solid #ddd;white-space:pre-wrap;">${esc(note)}</td></tr>`;
+        const engText = eng[block] !== undefined ? `Classroom engagement ${eng[block]}/3` : "";
+        return `<tr><td style="padding:6px 8px;border:1px solid #ddd;width:130px;font-weight:600;vertical-align:top;">${esc(block)}${status ? `<br/><span style="font-weight:400;color:#64748b;">${esc(status)}</span>` : ""}${engText ? `<br/><span style="font-weight:400;color:#64748b;">${esc(engText)}</span>` : ""}</td><td style="padding:6px 8px;border:1px solid #ddd;white-space:pre-wrap;">${esc(note)}</td></tr>`;
       }).join("");
       return `<h2 style="margin:20px 0 8px 0;">Progress Notes</h2><table style="width:100%;border-collapse:collapse;font-size:13px;">${rows}</table>`;
     })()}
@@ -8159,9 +8180,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   const [recommendNotesDraft, setRecommendNotesDraft] = useState({});
 
   function blockOptionsForTask(task) {
-    if (isADiploma(task.courseTitle)) return DIPLOMA_BLOCK_OPTIONS_A;
-    if (isBDiploma(task.courseTitle)) return DIPLOMA_BLOCK_OPTIONS_B;
-    return [];
+    return diplomaBlocksFor(task.courseTitle, task);
   }
 
   // The block currently being tracked — the first one with no status
@@ -8247,6 +8266,21 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     }
     saveCompletedTasks(completedTasks.map(t => t.id === task.id
       ? { ...t, blockStatuses: { ...(t.blockStatuses || {}), [block]: status }, updatedAt: new Date().toISOString() }
+      : t));
+  }
+
+  // Classroom engagement, 0-3, per block. Same permission as Progress Tracking.
+  // Tapping the current rank again clears it.
+  function setBlockEngagement(task, block, level) {
+    if (!progressAuthed || !adminHasCourseAccess(progressAuthMatch, task.courseNumber, task.memberFederation)) {
+      setProgressAuthForTaskId(task.id);
+      setProgressAuthName(""); setProgressAuthPin(""); setProgressAuthError(false);
+      return;
+    }
+    const next = { ...(task.blockEngagement || {}) };
+    if (next[block] === level) delete next[block]; else next[block] = level;
+    saveCompletedTasks(completedTasks.map(t => t.id === task.id
+      ? { ...t, blockEngagement: next, updatedAt: new Date().toISOString() }
       : t));
   }
 
@@ -8766,7 +8800,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                               : s === "Needs Assistance" ? "bg-red-100 text-red-700 border-red-300"
                               : "bg-amber-100 text-amber-700 border-amber-300"
                             }`}>
-                              {b.replace("Block ", "B")}: {s || "not set"}
+                              {b.replace("Block ", "B")}: {s || "not set"}{(t.blockEngagement || {})[b] !== undefined ? ` · Eng ${(t.blockEngagement || {})[b]}/3` : ""}
                             </span>
                           );
                         })}
@@ -9286,7 +9320,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               <button onClick={() => selectDiplomaType("A")} type="button"
                 className={`text-left p-3 rounded-lg border-2 transition-colors ${courseworkDiplomaType === "A" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
                 <p className="text-sm font-semibold text-slate-800">A Diploma</p>
-                <p className="text-xs text-slate-500">Full coursework: session plans + 6 milestone items, 4 blocks</p>
+                <p className="text-xs text-slate-500">Full coursework: session plans + 6 milestone items, 3 blocks</p>
               </button>
               <button onClick={() => selectDiplomaType("B")} type="button"
                 className={`text-left p-3 rounded-lg border-2 transition-colors ${courseworkDiplomaType === "B" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
@@ -9661,7 +9695,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                           {(() => {
                             if (!g.courseNumber) return null;
                             const isCDip = isCDiploma(g.courseTitle);
-                            const groupBlockOpts = isADiploma(g.courseTitle) ? DIPLOMA_BLOCK_OPTIONS_A : isBDiploma(g.courseTitle) ? DIPLOMA_BLOCK_OPTIONS_B : isCDip ? ["Course"] : [];
+                            const groupBlockOpts = isCDip ? ["Course"] : diplomaBlocksFor(g.courseTitle, g.records);
                             if (groupBlockOpts.length === 0) return null;
                             const groupClosedBlocks = closedCourseBlocks[g.courseNumber] || [];
                             const nextBlockToClose = groupBlockOpts.find(b => !groupClosedBlocks.includes(b));
@@ -10114,6 +10148,17 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                               : "bg-white text-slate-500 border-slate-200"
                                                           } ${locked ? "cursor-not-allowed" : !canSetActive ? "opacity-70 cursor-pointer" : ""}`}>
                                                           {s}
+                                                        </button>
+                                                      ))}
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 mt-1.5" title={ENGAGEMENT_TITLE}>
+                                                      <span className="text-[10px] font-semibold text-violet-600">Classroom engagement</span>
+                                                      {ENGAGEMENT_LEVELS.map(n => (
+                                                        <button key={n} type="button" disabled={locked} onClick={() => setBlockEngagement(t, block, n)}
+                                                          className={`w-7 h-7 text-xs font-semibold rounded-full border transition-colors ${
+                                                            (t.blockEngagement || {})[block] === n ? "bg-violet-600 text-white border-violet-600" : "bg-white text-slate-500 border-slate-200"
+                                                          } ${locked ? "cursor-not-allowed opacity-60" : !canSetActive ? "opacity-70 cursor-pointer" : ""}`}>
+                                                          {n}
                                                         </button>
                                                       ))}
                                                     </div>
@@ -10967,11 +11012,10 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     if ((!isBDiploma(formalCourseName) && !isADiploma(formalCourseName)) || diplomaBlock || !matchedCompletedTask) return;
     let block = "";
     if (isADiploma(formalCourseName)) {
-      const days = Math.round(((matchedCompletedTask.attendancePercent || 0) / 100) * 12);
-      if (days >= 1 && days <= 3) block = "Block 1";
-      else if (days >= 4 && days <= 6) block = "Block 2";
-      else if (days >= 7 && days <= 9) block = "Block 3";
-      else if (days >= 10 && days <= 12) block = "Block 4";
+      const pct = matchedCompletedTask.attendancePercent || 0;
+      if (pct > 0 && pct <= 100 / 3) block = "Block 1";
+      else if (pct > 100 / 3 && pct <= 200 / 3) block = "Block 2";
+      else if (pct > 200 / 3) block = "Block 3";
     } else {
       const days = Math.round(((matchedCompletedTask.attendancePercent || 0) / 100) * 9);
       if (days >= 1 && days <= 2) block = "Block 1";
@@ -11365,6 +11409,72 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
       <div className="bg-white rounded-xl border border-slate-200 p-5">
         {step === 0 && (
           <div className="space-y-4">
+            {sessionType === "formal" && (
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course / qualification name</label>
+                <select value={formalCourseOption} onChange={e => handleFormalCourseOptionChange(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+                  <option value="">Select from Course Library...</option>
+                  {courses.filter(c => memberFederation === "FA" || !isADiploma(c.title)).map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                  <option value="__other__">Other (type your own)</option>
+                </select>
+                {formalCourseOption === "__other__" && (
+                  <input value={formalCourseName} onChange={e => setFormalCourseName(e.target.value)} placeholder="Custom qualification / course name"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-2" />
+                )}
+                {(isCDiploma(formalCourseName) || isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && (
+                  <div className="mt-2">
+                    <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course Number</label>
+                    <input value={courseNumber} onChange={e => setCourseNumber(e.target.value)}
+                      placeholder={isCDiploma(formalCourseName) ? "e.g. 165" : "e.g. 240"}
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                    {courseNumber.trim() && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        {(() => {
+                          const candidateName = usingNewCoach ? (newCoachName.trim() || "this coach") : (selectedCoach?.name || "this coach");
+                          const sn = usingNewCoach || !coachId
+                            ? 1
+                            : computeSessionNumber(observations, coachId, courseNumber, existingObservation ? existingObservation.id : "__preview__", date);
+                          return `This will be recorded as Session ${sn} for ${candidateName} on Course #${courseNumber.trim()}.`;
+                        })()}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {threshold !== null && (
+                  <p className="text-xs text-slate-500 mt-1.5">Minimum passing score for this qualification: {threshold}/{MAX_TOTAL_SCORE}</p>
+                )}
+              </div>
+            )}
+
+            {sessionType === "formal" && (isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && (
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1.5 block">
+                  Diploma Block <span className="text-red-500">*</span>
+                </label>
+                <select value={diplomaBlock} onChange={e => setDiplomaBlock(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+                  <option value="">Select block...</option>
+                  {(isADiploma(formalCourseName) ? (diplomaBlock === LEGACY_A_BLOCK ? [...DIPLOMA_BLOCK_OPTIONS_A, LEGACY_A_BLOCK] : DIPLOMA_BLOCK_OPTIONS_A) : DIPLOMA_BLOCK_OPTIONS_B).map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+                {!diplomaBlock && (
+                  <p className="text-xs text-red-500 mt-1">Required for B/A Diploma courses.</p>
+                )}
+                {(isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && diplomaBlock && matchedCompletedTask && (
+                  <p className="text-xs text-slate-500 mt-1">Auto-filled from attendance on file — change it above if needed.</p>
+                )}
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Member Federation</label>
+              <select value={memberFederation} onChange={e => setMemberFederation(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
+                {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
+              </select>
+              <p className="text-xs text-slate-500 mt-1">Sets the logo shown on this report's PDF export.</p>
+            </div>
+
             <div>
               <label className="text-[10px] font-bold uppercase tracking-wide text-indigo-600 mb-1.5 block">Coach being observed</label>
               {selectedCoach ? (
@@ -11435,6 +11545,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 </div>
               )}
             </div>
+
             {usingNewCoach && (
               <div className="grid grid-cols-2 gap-3 pl-3 border-l-2 border-slate-100">
                 <input value={newCoachName} onChange={e => setNewCoachName(e.target.value)} placeholder="New coach name" className="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
@@ -11487,6 +11598,22 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
               </div>
             )}
 
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Session type</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => handleSessionType("formal")}
+                  className={`text-left p-3 rounded-lg border-2 transition-colors ${sessionType === "formal" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
+                  <p className="text-sm font-semibold text-slate-800">Formal course session</p>
+                  <p className="text-xs text-slate-500">Part of a formal qualification / course assessment</p>
+                </button>
+                <button onClick={() => handleSessionType("informal")}
+                  className={`text-left p-3 rounded-lg border-2 transition-colors ${sessionType === "informal" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
+                  <p className="text-sm font-semibold text-slate-800">Informal club session</p>
+                  <p className="text-xs text-slate-500">A regular session observed at the coach's club</p>
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Role</label>
@@ -11498,14 +11625,6 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                 <label className="text-xs font-medium text-slate-500 mb-1.5 block">Date of observation</label>
                 <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
               </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Member Federation</label>
-              <select value={memberFederation} onChange={e => setMemberFederation(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
-                {MEMBER_FEDERATIONS.map(mf => <option key={mf.key} value={mf.key}>{mf.label}</option>)}
-              </select>
-              <p className="text-xs text-slate-500 mt-1">Sets the logo shown on this report's PDF export.</p>
             </div>
 
             <div>
@@ -11595,80 +11714,6 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
               const needLabel = (CET_PRESENT_LEVELS.find(l => l.key === need) || {}).label;
               return <p className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-3 py-2">⚠ {selectedEducator.name} is marked as able to present up to level {has}, but this is a {needLabel} course.</p>;
             })()}
-
-            <div>
-              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Session type</label>
-              <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => handleSessionType("formal")}
-                  className={`text-left p-3 rounded-lg border-2 transition-colors ${sessionType === "formal" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
-                  <p className="text-sm font-semibold text-slate-800">Formal course session</p>
-                  <p className="text-xs text-slate-500">Part of a formal qualification / course assessment</p>
-                </button>
-                <button onClick={() => handleSessionType("informal")}
-                  className={`text-left p-3 rounded-lg border-2 transition-colors ${sessionType === "informal" ? "border-slate-900 bg-slate-50" : "border-slate-200"}`}>
-                  <p className="text-sm font-semibold text-slate-800">Informal club session</p>
-                  <p className="text-xs text-slate-500">A regular session observed at the coach's club</p>
-                </button>
-              </div>
-            </div>
-
-            {sessionType === "formal" && (
-              <div>
-                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course / qualification name</label>
-                <select value={formalCourseOption} onChange={e => handleFormalCourseOptionChange(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
-                  <option value="">Select from Course Library...</option>
-                  {courses.filter(c => memberFederation === "FA" || !isADiploma(c.title)).map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                  <option value="__other__">Other (type your own)</option>
-                </select>
-                {formalCourseOption === "__other__" && (
-                  <input value={formalCourseName} onChange={e => setFormalCourseName(e.target.value)} placeholder="Custom qualification / course name"
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-2" />
-                )}
-                {(isCDiploma(formalCourseName) || isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && (
-                  <div className="mt-2">
-                    <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course Number</label>
-                    <input value={courseNumber} onChange={e => setCourseNumber(e.target.value)}
-                      placeholder={isCDiploma(formalCourseName) ? "e.g. 165" : "e.g. 240"}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-                    {courseNumber.trim() && (
-                      <p className="text-xs text-slate-500 mt-1">
-                        {(() => {
-                          const candidateName = usingNewCoach ? (newCoachName.trim() || "this coach") : (selectedCoach?.name || "this coach");
-                          const sn = usingNewCoach || !coachId
-                            ? 1
-                            : computeSessionNumber(observations, coachId, courseNumber, existingObservation ? existingObservation.id : "__preview__", date);
-                          return `This will be recorded as Session ${sn} for ${candidateName} on Course #${courseNumber.trim()}.`;
-                        })()}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {threshold !== null && (
-                  <p className="text-xs text-slate-500 mt-1.5">Minimum passing score for this qualification: {threshold}/{MAX_TOTAL_SCORE}</p>
-                )}
-              </div>
-            )}
-
-            {sessionType === "formal" && (isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && (
-              <div>
-                <label className="text-xs font-medium text-slate-500 mb-1.5 block">
-                  Diploma Block <span className="text-red-500">*</span>
-                </label>
-                <select value={diplomaBlock} onChange={e => setDiplomaBlock(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
-                  <option value="">Select block...</option>
-                  {(isADiploma(formalCourseName) ? DIPLOMA_BLOCK_OPTIONS_A : DIPLOMA_BLOCK_OPTIONS_B).map(opt => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
-                {!diplomaBlock && (
-                  <p className="text-xs text-red-500 mt-1">Required for B/A Diploma courses.</p>
-                )}
-                {(isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && diplomaBlock && matchedCompletedTask && (
-                  <p className="text-xs text-slate-500 mt-1">Auto-filled from attendance on file — change it above if needed.</p>
-                )}
-              </div>
-            )}
 
             <div>
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">
