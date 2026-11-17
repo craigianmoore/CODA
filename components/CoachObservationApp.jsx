@@ -1413,12 +1413,12 @@ async function postAdminSettings(creds, settings, pins) {
 
 // CODA-wide sign-in session. Persisted in localStorage so people aren't
 // re-prompted on every page load. Two kinds:
-//   { kind: "cet", cetId, name } — name-only, no PIN, sees everything
-//     needed to do normal CET work (New Observation, their own History).
+//   { kind: "cet", cetId, name, assignedCourseNumbers, coordinatorMfs } —
+//     name-only, no PIN. Can do normal CET work (New Observation, their own
+//     History) but sees NO course data unless granted (see sessionCanSeeRecord).
 //   { kind: "admin", tier, name, memberFederations, memberFederation,
 //     assignedCourseNumbers } — one of the 4 admin tiers, authenticated
-//     with name+PIN. Only this kind is subject to MF/course visibility
-//     scoping — CETs are never restricted by it.
+//     with name+PIN, scoped by MF / course number.
 const CODA_SESSION_KEY = "codaSession";
 function loadCodaSession() {
   if (typeof window === "undefined") return null;
@@ -1454,7 +1454,20 @@ function sessionVisibleCourseNumbers(session) {
 }
 // Applies both scoping rules to a single record. courseNumber/mfKey should
 // be pulled from whatever field that record type uses for each.
-function sessionCanSeeRecord(session, courseNumber, mfKey) {
+// A CET signed in by name only has NO course access until an FA Admin, MF Admin
+// or MF Coordinator grants it (selected course numbers, or every course in a
+// federation). opts.noCourseOk lets observations that aren't tied to a course
+// (informal club sessions) through; opts.own lets a CET see their own work.
+function cetCourseGrant(session, courseNumber, mfKey) {
+  return (session.assignedCourseNumbers || []).some(n => cnEq(n, courseNumber))
+    || (session.coordinatorMfs || []).includes(mfKey);
+}
+function sessionCanSeeRecord(session, courseNumber, mfKey, opts) {
+  if (session && session.kind === "cet") {
+    if (opts && opts.own) return true;
+    if (!cnKey(courseNumber)) return !!(opts && opts.noCourseOk);
+    return cetCourseGrant(session, courseNumber, mfKey);
+  }
   const courseFilter = sessionVisibleCourseNumbers(session);
   if (courseFilter) return courseFilter.some(n => cnEq(n, courseNumber)) || coordinatorMfsOf(session).includes(mfKey);
   const mfFilter = sessionVisibleMfKeys(session);
@@ -2196,6 +2209,20 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     setCodaSession(next);
     saveCodaSession(next);
   }, [adminSettings]);
+  // Same for a CET: their course grants live on their CET record, so keep the
+  // saved session in step with it (grants given or taken away later).
+  useEffect(() => {
+    if (!codaSession || codaSession.kind !== "cet" || !educators || educators.length === 0) return;
+    const me = educators.find(e => e.id === codaSession.cetId);
+    if (!me) return;
+    const courses = me.assignedCourseNumbers || [];
+    const coord = me.coordinatorMfs || [];
+    if (JSON.stringify(courses) === JSON.stringify(codaSession.assignedCourseNumbers || [])
+      && JSON.stringify(coord) === JSON.stringify(codaSession.coordinatorMfs || [])) return;
+    const next = { ...codaSession, assignedCourseNumbers: courses, coordinatorMfs: coord };
+    setCodaSession(next);
+    saveCodaSession(next);
+  }, [educators]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [reportId, setReportId] = useState(null);
@@ -2658,7 +2685,8 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
                 />
                 <CetTab educators={educators} saveEducators={saveEducators} observations={visibleObservations}
                   adminSettings={adminSettings} adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
-                  goHistoryForCet={(name) => { setHistoryCetFilter(name); setTab("history"); }} />
+                  goHistoryForCet={(name) => { setHistoryCetFilter(name); setTab("history"); }}
+                  session={codaSession} completedTasks={completedTasks} />
               </div>
             </CollapsibleSection>
             <CollapsibleSection title="Course & Workshop Library" count={courses.length} sectionKey="courses" expandedSections={expandedLogisticsSections} setExpandedSections={setExpandedLogisticsSections}>
@@ -2730,7 +2758,7 @@ function SignInGate({ educators, adminSettings, adminLockouts, recordAdminAttemp
   function signInAsCet() {
     const cet = educators.find(e => e.id === cetId);
     if (!cet) { setError("Select your name to continue."); return; }
-    onSignedIn({ kind: "cet", cetId: cet.id, name: cet.name });
+    onSignedIn({ kind: "cet", cetId: cet.id, name: cet.name, assignedCourseNumbers: cet.assignedCourseNumbers || [], coordinatorMfs: cet.coordinatorMfs || [] });
   }
 
   async function signInAsAdmin() {
@@ -4502,7 +4530,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
   );
 }
 
-function CetTab({ educators, saveEducators, observations, adminSettings, adminLockouts, recordAdminAttempt, goHistoryForCet }) {
+function CetTab({ educators, saveEducators, observations, adminSettings, adminLockouts, recordAdminAttempt, goHistoryForCet, session, completedTasks }) {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [org, setOrg] = useState("");
@@ -4519,6 +4547,48 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [editingMfId, setEditingMfId] = useState(null);
   const [editingMfSelection, setEditingMfSelection] = useState([]);
+  // Course access (who may see which courses) — FA Admin, MF Admin and MF
+  // Coordinator only, and only inside their own federation(s).
+  const [editingAccessId, setEditingAccessId] = useState(null);
+  const [accessCoordMfs, setAccessCoordMfs] = useState([]);
+  const [accessCourses, setAccessCourses] = useState([]);
+  const grantTier = session && session.kind === "admin" ? session.tier : "";
+  const canGrantAccess = grantTier === "master" || grantTier === "lead" || grantTier === "coordinator";
+  const grantMfs = grantTier === "master" ? MEMBER_FEDERATIONS.map(m => m.key) : (session && session.memberFederations) || [];
+  const coursesByMf = (() => {
+    const out = {};
+    (completedTasks || []).forEach(t => {
+      const cn = (t.courseNumber || "").trim();
+      const mf = t.memberFederation || DEFAULT_MEMBER_FEDERATION;
+      if (!cn || !grantMfs.includes(mf)) return;
+      out[mf] = out[mf] || {};
+      if (!out[mf][cnKey(cn)]) out[mf][cnKey(cn)] = cn;
+    });
+    return Object.fromEntries(Object.entries(out).map(([mf, m]) => [mf, Object.values(m).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))]));
+  })();
+  function startEditAccess(cet) {
+    setEditingAccessId(cet.id);
+    setAccessCoordMfs(cet.coordinatorMfs || []);
+    setAccessCourses(cet.assignedCourseNumbers || []);
+  }
+  function toggleAccessMf(mf) {
+    setAccessCoordMfs(prev => prev.includes(mf) ? prev.filter(k => k !== mf) : [...prev, mf]);
+  }
+  function toggleAccessCourse(cn) {
+    setAccessCourses(prev => prev.some(n => cnEq(n, cn)) ? prev.filter(n => !cnEq(n, cn)) : [...prev, cn]);
+  }
+  function saveAccess() {
+    // A non-FA admin can only add or remove inside their own federations: keep
+    // whatever the CET already has outside them.
+    const cet = educators.find(c => c.id === editingAccessId) || {};
+    const allCoursesInScope = new Set(Object.values(coursesByMf).flat().map(cnKey));
+    const keepCourses = grantTier === "master" ? [] : (cet.assignedCourseNumbers || []).filter(n => !allCoursesInScope.has(cnKey(n)));
+    const keepMfs = grantTier === "master" ? [] : (cet.coordinatorMfs || []).filter(k => !grantMfs.includes(k));
+    const nextCourses = [...keepCourses, ...accessCourses.filter(n => grantTier === "master" || allCoursesInScope.has(cnKey(n)))];
+    const nextMfs = [...keepMfs, ...accessCoordMfs.filter(k => grantMfs.includes(k))];
+    saveEducators(educators.map(c => c.id === editingAccessId ? { ...c, assignedCourseNumbers: nextCourses, coordinatorMfs: nextMfs } : c));
+    setEditingAccessId(null);
+  }
   const [editingDetailsId, setEditingDetailsId] = useState(null);
   const [editingDetailsClub, setEditingDetailsClub] = useState("");
   const [editingDetailsLevelOption, setEditingDetailsLevelOption] = useState("");
@@ -5035,6 +5105,12 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                             className="text-xs font-semibold text-indigo-600 border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-50 whitespace-nowrap">
                             MF
                           </button>
+                          {canGrantAccess && (
+                            <button onClick={() => editingAccessId === c.id ? setEditingAccessId(null) : startEditAccess(c)}
+                              className="text-xs font-semibold text-violet-600 border border-violet-200 px-2 py-1 rounded-md hover:bg-violet-50 whitespace-nowrap">
+                              Course access
+                            </button>
+                          )}
                           <button onClick={() => setConfirmDeleteId(c.id)} className="text-slate-500 hover:text-red-600 p-1 rounded-md hover:bg-red-50">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -5077,6 +5153,43 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                           <div className="flex gap-2">
                             <button onClick={saveMfAssignment} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Save</button>
                             <button onClick={() => setEditingMfId(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+                          </div>
+                        </div>
+                      )}
+                      {canGrantAccess && editingAccessId === c.id && (
+                        <div className="mt-3 border-t border-slate-100 pt-3 space-y-2">
+                          <p className="text-xs font-semibold text-violet-700">Course access for {c.name}</p>
+                          <p className="text-[11px] text-slate-500">A CET sees no course data until you grant it. Tick a federation for every course in it, or pick individual course numbers.</p>
+                          {grantMfs.length === 0 && <p className="text-xs text-slate-500">You aren't assigned to a Member Federation, so you can't grant access.</p>}
+                          {grantMfs.map(mf => {
+                            const label = (MEMBER_FEDERATIONS.find(m => m.key === mf) || {}).label || mf;
+                            const nums = coursesByMf[mf] || [];
+                            const all = accessCoordMfs.includes(mf);
+                            return (
+                              <div key={mf} className="rounded-lg border border-slate-200 p-2">
+                                <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
+                                  <input type="checkbox" checked={all} onChange={() => toggleAccessMf(mf)} />
+                                  {label} — all courses
+                                </label>
+                                {!all && nums.length > 0 && (
+                                  <div className="flex gap-1.5 flex-wrap mt-1.5">
+                                    {nums.map(cn => (
+                                      <button key={cn} type="button" onClick={() => toggleAccessCourse(cn)}
+                                        className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                                          accessCourses.some(n => cnEq(n, cn)) ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-white text-slate-500 border-slate-200"
+                                        }`}>
+                                        {cn}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                                {!all && nums.length === 0 && <p className="text-[11px] text-slate-400 mt-1">No courses yet in this federation.</p>}
+                              </div>
+                            );
+                          })}
+                          <div className="flex gap-2">
+                            <button onClick={saveAccess} className="text-xs font-semibold text-violet-600 hover:text-violet-700">Save</button>
+                            <button onClick={() => setEditingAccessId(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
                           </div>
                         </div>
                       )}
@@ -13413,7 +13526,10 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     if (competenceFilter && (o.assessmentOutcome || "") !== competenceFilter) return false;
     if (minScoreFilter !== "" && (total == null || total < Number(minScoreFilter))) return false;
     if (maxScoreFilter !== "" && (total == null || total > Number(maxScoreFilter))) return false;
-    if (!sessionCanSeeRecord(session, o.courseNumber, o.memberFederation)) return false;
+    if (!sessionCanSeeRecord(session, o.courseNumber, o.memberFederation, {
+      noCourseOk: true,
+      own: !!session && session.kind === "cet" && (o.coachEducatorName || "").trim().toLowerCase() === (session.name || "").trim().toLowerCase(),
+    })) return false;
     return true;
   });
   const filtersActive = !!(coachId || cetFilter || courseNumberFilter || courseTypeFilter || dateFromFilter || dateToFilter || competenceFilter || minScoreFilter !== "" || maxScoreFilter !== "");
@@ -14219,7 +14335,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           Edit PIN
                         </button>
                       )}
-                      {a.role === "course" && (iAmMaster || (iAmLead && (a.memberFederations || []).some(mf => (signedInAdminMatch.memberFederations || []).includes(mf)))) && (
+                      {a.role === "course" && (iAmMaster || ((iAmLead || iAmCoordinator) && (a.memberFederations || []).some(mf => (signedInAdminMatch.memberFederations || []).includes(mf)))) && (
                         <button onClick={() => editingAdminCoursesName === a.name ? setEditingAdminCoursesName(null) : startEditAdminCourses(a.name)}
                           className="text-[10px] font-bold text-violet-600 hover:text-violet-800 ml-1">
                           Edit Courses
