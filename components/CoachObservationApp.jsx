@@ -728,7 +728,7 @@ function isCoachFullyComplete(record, coachTopics) {
 function outstandingRequirements(t, coachTopics) {
   const reqs = [];
   if (t.attendancePercent < 100) reqs.push("Attendance");
-  if (!isBDiploma(t.courseTitle)) {
+  if (!isADiploma(t.courseTitle)) {
     if ((t.onlineModulesPercent || 0) < 100) reqs.push("Online Modules");
     if (!t.formativeAssessmentDone) reqs.push("Formative Assessment");
   }
@@ -941,8 +941,8 @@ function courseworkItemsRaw(record, coachTopics, team) {
     const observationItems = blocks.length
       ? blocks.map(b => ({ label: assessmentObsLabelFor(b), done: assessmentObsBlockDone(record, b), outcome: "", group: "observation" }))
       : [{ label: ASSESSMENT_OBS_LABEL, done: assessmentObsDone(record), outcome: "", group: "observation" }];
-    // B Diploma has no Online Modules / Formative Assessment items.
-    const moduleItems = isBDiploma(record.courseTitle) ? [] : [onlineModulesItem, formativeAssessmentItem];
+    // A Diploma has no Online Modules / Formative Assessment items.
+    const moduleItems = isADiploma(record.courseTitle) ? [] : [onlineModulesItem, formativeAssessmentItem];
     return [...observationItems, ...sessionItems, ...fixedItems, ...moduleItems];
   }
   return [];
@@ -969,7 +969,7 @@ function applyCourseworkToggle(task, label, coachTopics) {
     updated.sessionPlansReassessmentDone = { ...(task.sessionPlansReassessmentDone || {}), [topic]: !(task.sessionPlansReassessmentDone || {})[topic] };
   } else if (isCDiploma(task.courseTitle) && label === "Practical Session") {
     updated.practicalSessionDone = !task.practicalSessionDone;
-  } else if (label === "Formative Assessment" && !isBDiploma(task.courseTitle)) {
+  } else if (label === "Formative Assessment" && !isADiploma(task.courseTitle)) {
     updated.formativeAssessmentDone = !task.formativeAssessmentDone;
   } else if (isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) {
     if (isAssessmentObsLabel(label)) {
@@ -3343,7 +3343,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
                           </button>
                         </div>
                       </div>
-                      {!isBDiploma(g.records[0]?.courseTitle) && (
+                      {!isADiploma(g.records[0]?.courseTitle) && (
                       <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
                         <p className="text-xs font-semibold text-emerald-800 mb-1.5">Formative Assessment for all coaches in this course</p>
                         <div className="flex items-center gap-3 flex-wrap">
@@ -5551,7 +5551,7 @@ function courseworkProgress(record, coachTopics) {
     const its = courseworkItems(record, coachTopics).filter(i => !i.isReassessment);
     return { done: its.filter(i => i.done).length, total: its.length };
   }
-  const noModules = isBDiploma(record.courseTitle);
+  const noModules = isADiploma(record.courseTitle);
   const onlineDone = !noModules && (record.onlineModulesPercent || 0) >= 100 ? 1 : 0;
   const formativeDone = !noModules && record.formativeAssessmentDone ? 1 : 0;
   if (isCDiploma(record.courseTitle)) {
@@ -5564,6 +5564,7 @@ function courseworkProgress(record, coachTopics) {
   }
   if (isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) {
     const isB = isBDiploma(record.courseTitle);
+    const isA = !isB;
     const topics = (coachTopics || []).slice(0, 4);
     // Same logic per session topic: a Not Yet Competent topic only counts
     // once its Reassessment tickbox is done, not its (permanently false)
@@ -5585,7 +5586,7 @@ function courseworkProgress(record, coachTopics) {
     const obsBlocks = assessmentObsBlocksFor(record);
     const obsDone = obsBlocks.length ? obsBlocks.filter(b => assessmentObsBlockDone(record, b)).length : (assessmentObsDone(record) ? 1 : 0);
     const obsTotal = obsBlocks.length || 1;
-    return { done: sessionDone + fixedDone + onlineDone + formativeDone + obsDone, total: topics.length + (isB ? 7 : 6) + (isB ? 0 : 2) + obsTotal };
+    return { done: sessionDone + fixedDone + onlineDone + formativeDone + obsDone, total: topics.length + (isB ? 7 : 6) + (isA ? 0 : 2) + obsTotal };
   }
   return { done: 0, total: 0 };
 }
@@ -7881,7 +7882,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   // offers for this course (Not Yet Competent sessions are skipped — they need a
   // re-observation first). Online Modules is a percentage, so it isn't touched.
   function courseworkTickState(f) {
-    const flags = isBDiploma(f.courseTitle) ? [] : [["formativeAssessmentDone"]];
+    const flags = isADiploma(f.courseTitle) ? [] : [["formativeAssessmentDone"]];
     const topicKeys = [];
     const obsBlocks = isADiploma(f.courseTitle) ? diplomaBlocksFor(f.courseTitle, f) : [];
     if (f.sheetDriven) {
@@ -9020,7 +9021,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           <input type="checkbox" checked={courseworkTickState(form).allTicked} onChange={toggleAllCoursework} className="rounded border-slate-300" />
           Tick all coursework
         </label>
-        {!isBDiploma(form.courseTitle) && (
+        {!isADiploma(form.courseTitle) && (
         <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer pt-1">
           <input type="checkbox" checked={!!form.formativeAssessmentDone} onChange={() => setField("formativeAssessmentDone", !form.formativeAssessmentDone)} className="rounded border-slate-300" />
           Formative Assessment (in course) Completed
