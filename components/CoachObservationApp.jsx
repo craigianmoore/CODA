@@ -806,7 +806,9 @@ const ASSESSMENT_OBS_SEP = " – ";
 function assessmentObsLabelFor(block) { return block ? ASSESSMENT_OBS_LABEL + ASSESSMENT_OBS_SEP + block : ASSESSMENT_OBS_LABEL; }
 function isAssessmentObsLabel(label) { return label === ASSESSMENT_OBS_LABEL || String(label || "").startsWith(ASSESSMENT_OBS_LABEL + ASSESSMENT_OBS_SEP); }
 function assessmentObsBlockOf(label) { return label === ASSESSMENT_OBS_LABEL ? "" : String(label || "").slice((ASSESSMENT_OBS_LABEL + ASSESSMENT_OBS_SEP).length); }
-function assessmentObsBlocksFor(record) { return isADiploma(record.courseTitle) ? diplomaBlocksFor(record.courseTitle, record) : []; }
+// A Diploma has no Assessment Observation item at all (B Diploma keeps its single one).
+function assessmentObsBlocksFor(record) { return []; }
+function hasAssessmentObs(record) { return isBDiploma(record.courseTitle); }
 function assessmentObsBlockDone(record, block) {
   if ((record.assessmentObsBlocks || {})[block]) return true;
   if (block === DIPLOMA_BLOCK_OPTIONS_A[0] && record.assessmentObservationDone) return true;
@@ -940,7 +942,7 @@ function courseworkItemsRaw(record, coachTopics, team) {
     const blocks = assessmentObsBlocksFor(record);
     const observationItems = blocks.length
       ? blocks.map(b => ({ label: assessmentObsLabelFor(b), done: assessmentObsBlockDone(record, b), outcome: "", group: "observation" }))
-      : [{ label: ASSESSMENT_OBS_LABEL, done: assessmentObsDone(record), outcome: "", group: "observation" }];
+      : hasAssessmentObs(record) ? [{ label: ASSESSMENT_OBS_LABEL, done: assessmentObsDone(record), outcome: "", group: "observation" }] : [];
     // A Diploma has no Online Modules / Formative Assessment items.
     const moduleItems = isADiploma(record.courseTitle) ? [] : [onlineModulesItem, formativeAssessmentItem];
     return [...observationItems, ...sessionItems, ...fixedItems, ...moduleItems];
@@ -5584,8 +5586,8 @@ function courseworkProgress(record, coachTopics) {
       ...(isB ? [record.coachingSession25MinDone] : []),
     ].filter(Boolean).length;
     const obsBlocks = assessmentObsBlocksFor(record);
-    const obsDone = obsBlocks.length ? obsBlocks.filter(b => assessmentObsBlockDone(record, b)).length : (assessmentObsDone(record) ? 1 : 0);
-    const obsTotal = obsBlocks.length || 1;
+    const obsDone = obsBlocks.length ? obsBlocks.filter(b => assessmentObsBlockDone(record, b)).length : (hasAssessmentObs(record) && assessmentObsDone(record) ? 1 : 0);
+    const obsTotal = obsBlocks.length || (hasAssessmentObs(record) ? 1 : 0);
     return { done: sessionDone + fixedDone + onlineDone + formativeDone + obsDone, total: topics.length + (isB ? 7 : 6) + (isA ? 0 : 2) + obsTotal };
   }
   return { done: 0, total: 0 };
@@ -7890,7 +7892,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     } else if (isCDiploma(f.courseTitle)) {
       if (f.practicalSessionOutcome !== "Not Yet Competent") flags.push(["practicalSessionDone"]);
     } else if (isBDiploma(f.courseTitle) || isADiploma(f.courseTitle)) {
-      if (!obsBlocks.length) flags.push(["assessmentObservationDone"]);
+      if (hasAssessmentObs(f)) flags.push(["assessmentObservationDone"]);
       flags.push(["goalscoringPresentationDone"], ["gamePlanDone"], ["analysisSessionPlanDone"],
         ["annualPlanDone"], ["sixWeekCycleDone"], ["fcDetailsDone"]);
       if (isBDiploma(f.courseTitle)) flags.push(["coachingSession25MinDone"]);
@@ -9143,7 +9145,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                       get: () => assessmentObsBlockDone(form, b),
                       set: () => setForm(prev => ({ ...prev, assessmentObsBlocks: { ...(prev.assessmentObsBlocks || {}), [b]: !assessmentObsBlockDone(prev, b) }, ...(b === DIPLOMA_BLOCK_OPTIONS_A[0] ? { assessmentObservationDone: false } : {}) })),
                     }))
-                  : isBDiploma(form.courseTitle) ? [{ label: ASSESSMENT_OBS_LABEL, key: "assessmentObservationDone" }] : []),
+                  : hasAssessmentObs(form) ? [{ label: ASSESSMENT_OBS_LABEL, key: "assessmentObservationDone" }] : []),
                 { label: "Goalscoring Presentation", key: "goalscoringPresentationDone", extra: form.team ? <span className="text-xs text-slate-500">({form.team})</span> : null },
                 { label: "Game Plan", key: "gamePlanDone" },
                 { label: "Analysis Session Plan", key: "analysisSessionPlanDone" },
