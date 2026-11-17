@@ -1205,7 +1205,7 @@ function migrateAdminSettings(raw) {
     if (role === "fifa") return { name: a.name || "", pin: a.pin || "", role };
     if (role === "lead") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || [], ...fifaFlag };
     if (role === "coordinator") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || [], ...fifaFlag };
-    if (role === "course") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || (a.memberFederation ? [a.memberFederation] : []), assignedCourseNumbers: a.assignedCourseNumbers || [], ...fifaFlag };
+    if (role === "course") return { name: a.name || "", pin: a.pin || "", role, memberFederations: a.memberFederations || (a.memberFederation ? [a.memberFederation] : []), assignedCourseNumbers: a.assignedCourseNumbers || [], coordinatorMfs: Array.isArray(a.coordinatorMfs) ? a.coordinatorMfs : [], ...fifaFlag };
     return { name: a.name || "", pin: a.pin || "", role: "master" };
   }).filter(a => a.name);
   return {
@@ -1265,11 +1265,19 @@ function adminHasMfAccess(adminMatch, mfKey) {
 // Master always; Lead or Coordinator if the MF matches theirs (both can
 // act on every course in their MF, just not the bulk-destructive actions
 // above); Course Admin only if this specific course number is one of theirs.
+// A Course Admin can be given MF Coordinator-level access for particular
+// federations (coordinatorMfs), e.g. all courses in FV but only #306 in FA.
+// Only federations they are also assigned to count.
+function coordinatorMfsOf(adminOrSession) {
+  if (!adminOrSession) return [];
+  const own = adminOrSession.memberFederations || [];
+  return (adminOrSession.coordinatorMfs || []).filter(k => own.includes(k));
+}
 function adminHasCourseAccess(adminMatch, courseNumber, mfKey) {
   const tier = adminTier(adminMatch);
   if (tier === "master") return true;
   if (tier === "lead" || tier === "coordinator") return (adminMatch.memberFederations || []).includes(mfKey);
-  if (tier === "course") return (adminMatch.assignedCourseNumbers || []).includes((courseNumber || "").trim());
+  if (tier === "course") return (adminMatch.assignedCourseNumbers || []).includes((courseNumber || "").trim()) || coordinatorMfsOf(adminMatch).includes(mfKey);
   return false;
 }
 
@@ -1364,7 +1372,7 @@ function sessionVisibleCourseNumbers(session) {
 // be pulled from whatever field that record type uses for each.
 function sessionCanSeeRecord(session, courseNumber, mfKey) {
   const courseFilter = sessionVisibleCourseNumbers(session);
-  if (courseFilter) return courseFilter.includes((courseNumber || "").trim());
+  if (courseFilter) return courseFilter.includes((courseNumber || "").trim()) || coordinatorMfsOf(session).includes(mfKey);
   const mfFilter = sessionVisibleMfKeys(session);
   if (mfFilter) return mfFilter.includes(mfKey);
   return true;
@@ -2097,9 +2105,10 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     const same = tier === codaSession.tier
       && JSON.stringify(mfs) === JSON.stringify(codaSession.memberFederations || [])
       && JSON.stringify(courses) === JSON.stringify(codaSession.assignedCourseNumbers || [])
+      && JSON.stringify(me.coordinatorMfs || []) === JSON.stringify(codaSession.coordinatorMfs || [])
       && (me.fifaMentoring === true) === (codaSession.fifaMentoring === true);
     if (same) return;
-    const next = { ...codaSession, tier, memberFederations: mfs, assignedCourseNumbers: courses, fifaMentoring: me.fifaMentoring === true };
+    const next = { ...codaSession, tier, memberFederations: mfs, assignedCourseNumbers: courses, coordinatorMfs: me.coordinatorMfs || [], fifaMentoring: me.fifaMentoring === true };
     setCodaSession(next);
     saveCodaSession(next);
   }, [adminSettings]);
@@ -2652,6 +2661,7 @@ function SignInGate({ educators, adminSettings, adminLockouts, recordAdminAttemp
       memberFederations: match.memberFederations || [],
       memberFederation: match.memberFederation || "",
       assignedCourseNumbers: match.assignedCourseNumbers || [],
+      coordinatorMfs: match.coordinatorMfs || [],
       fifaMentoring: match.fifaMentoring === true,
     });
     if (tier === "master" || tier === "fifa" || match.fifaMentoring === true) {
@@ -13083,6 +13093,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   const [editingAdminPinName, setEditingAdminPinName] = useState(null);
   const [editingAdminCoursesName, setEditingAdminCoursesName] = useState(null);
   const [editAdminMfSelection, setEditAdminMfSelection] = useState([]);
+  const [editAdminCoordMfs, setEditAdminCoordMfs] = useState([]);
   const [editAdminCourseNumbers, setEditAdminCourseNumbers] = useState([]);
   const [editAdminCoursesError, setEditAdminCoursesError] = useState("");
   const [editAdminCoursesSuccessName, setEditAdminCoursesSuccessName] = useState("");
@@ -13163,6 +13174,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   const [newAdminRole, setNewAdminRole] = useState("master");
   const [newAdminMfSelection, setNewAdminMfSelection] = useState([]);
   const [newAdminCourseMfSelection, setNewAdminCourseMfSelection] = useState([]);
+  const [newAdminCoordMfs, setNewAdminCoordMfs] = useState([]);
   const [newAdminCourseNumbers, setNewAdminCourseNumbers] = useState([]);
   const [resetAllPin, setResetAllPin] = useState("");
   const [resetAllPinConfirm, setResetAllPinConfirm] = useState("");
@@ -13364,7 +13376,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setNewPin(""); setNewPinConfirm(""); setPinChangeError(""); setPinChangeSuccess(false);
     setNewAdminName(""); setNewAdminPin(""); setNewAdminPinSelf(""); setNewAdminPinSelfConfirm(""); setNewAdminPinMode("me"); setAddAdminError("");
     setNewAdminRole("master"); setNewAdminMfSelection([]);
-    setNewAdminCourseMfSelection([]); setNewAdminCourseNumbers([]);
+    setNewAdminCourseMfSelection([]); setNewAdminCourseNumbers([]); setNewAdminCoordMfs([]);
     setConfirmRemoveAdminName(null); setRemoveAdminError("");
     setBinOpen(false); setBinItems(null); setBinLoading(false); setRestoringKey(null);
     setSessionHostNameInput(""); setSessionHostError(""); setSessionHostSuccess(false);
@@ -13570,6 +13582,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     const admin = adminSettings.admins.find(a => a.name === name);
     setEditAdminMfSelection((admin && admin.memberFederations) || []);
     setEditAdminCourseNumbers((admin && admin.assignedCourseNumbers) || []);
+    setEditAdminCoordMfs((admin && admin.coordinatorMfs) || []);
     setEditAdminCoursesError("");
     setEditAdminCoursesSuccessName("");
   }
@@ -13579,8 +13592,9 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       setEditAdminCoursesError("Select at least one Member Federation for this Course Admin.");
       return;
     }
-    if (editAdminCourseNumbers.length === 0) {
-      setEditAdminCoursesError("Select at least one course number for this Course Admin.");
+    const editCoordMfs = editAdminCoordMfs.filter(k => editAdminMfSelection.includes(k));
+    if (editAdminCourseNumbers.length === 0 && editCoordMfs.length === 0) {
+      setEditAdminCoursesError("Select at least one course number (or give all-courses access in a federation) for this Course Admin.");
       return;
     }
     const currentMfs = (adminSettings.admins.find(a => a.name.trim().toLowerCase() === editingAdminCoursesName.trim().toLowerCase())?.memberFederations) || [];
@@ -13592,13 +13606,14 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       return;
     }
     const updatedAdmins = adminSettings.admins.map(a =>
-      a.name.trim().toLowerCase() === editingAdminCoursesName.trim().toLowerCase() ? { ...a, memberFederations: editAdminMfSelection, assignedCourseNumbers: editAdminCourseNumbers } : a
+      a.name.trim().toLowerCase() === editingAdminCoursesName.trim().toLowerCase() ? { ...a, memberFederations: editAdminMfSelection, assignedCourseNumbers: editAdminCourseNumbers, coordinatorMfs: editCoordMfs } : a
     );
     if (!(await commitAdminSettings({ ...adminSettings, admins: updatedAdmins }))) return;
     setEditAdminCoursesSuccessName(editingAdminCoursesName);
     setEditingAdminCoursesName(null);
     setEditAdminMfSelection([]);
     setEditAdminCourseNumbers([]);
+    setEditAdminCoordMfs([]);
     setEditAdminCoursesError("");
   }
 
@@ -13712,7 +13727,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
         setAddAdminError("You can only add Course Admins for your own Member Federation.");
         return;
       }
-      if (newAdminCourseNumbers.length === 0) {
+      if (newAdminCourseNumbers.length === 0 && newAdminCoordMfs.filter(k => newAdminCourseMfSelection.includes(k)).length === 0) {
         setAddAdminError("Select at least one course number for this Course Admin.");
         return;
       }
@@ -13746,7 +13761,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       : effectiveRole === "coordinator"
       ? { name, role: "coordinator", memberFederations: newAdminMfSelection }
       : effectiveRole === "course"
-      ? { name, role: "course", memberFederations: newAdminCourseMfSelection, assignedCourseNumbers: newAdminCourseNumbers }
+      ? { name, role: "course", memberFederations: newAdminCourseMfSelection, assignedCourseNumbers: newAdminCourseNumbers, coordinatorMfs: newAdminCoordMfs.filter(k => newAdminCourseMfSelection.includes(k)) }
       : effectiveRole === "fifa"
       ? { name, role: "fifa" }
       : { name, role: "master" };
@@ -13760,6 +13775,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     setNewAdminMfSelection([]);
     setNewAdminCourseMfSelection([]);
     setNewAdminCourseNumbers([]);
+    setNewAdminCoordMfs([]);
     setAddAdminError("");
   }
 
@@ -14010,7 +14026,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         : a.role === "coordinator"
                         ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.coordinator.c }}>{ROLE_STYLE.coordinator.sym} MF Coordinator: {(a.memberFederations || []).join(", ")}</span>
                         : a.role === "course"
-                        ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.course.c }}>{ROLE_STYLE.course.sym} Course Admin: {(a.memberFederations || []).join(", ")} (#{(a.assignedCourseNumbers || []).join(", #")})</span>
+                        ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.course.c }}>{ROLE_STYLE.course.sym} Course Admin: {(a.memberFederations || []).join(", ")}{(a.assignedCourseNumbers || []).length > 0 ? ` (#${(a.assignedCourseNumbers || []).join(", #")})` : ""}{coordinatorMfsOf(a).length > 0 ? ` · all courses: ${coordinatorMfsOf(a).join(", ")}` : ""}</span>
                         : a.role === "fifa"
                         ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.fifa.c }}>{ROLE_STYLE.fifa.sym} FIFA Mentor (FIFA Mentoring only)</span>
                         : <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.master.c }}>{ROLE_STYLE.master.sym} FA Admin</span>}
@@ -14104,6 +14120,21 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                       const options = courseNumbersForMf(mfKey);
                       return (
                         <div key={mfKey}>
+                          <p className="text-[11px] font-medium text-violet-700 mb-1">{mfLabel} — permission level</p>
+                          <div className="flex gap-1.5 flex-wrap mb-1.5">
+                            {[[false, "Course Admin (selected courses only)"], [true, "MF Coordinator (all courses in this federation)"]].map(([isCoord, label]) => (
+                              <button key={String(isCoord)} type="button"
+                                onClick={() => setEditAdminCoordMfs(prev => isCoord ? (prev.includes(mfKey) ? prev : [...prev, mfKey]) : prev.filter(k => k !== mfKey))}
+                                className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                                  editAdminCoordMfs.includes(mfKey) === isCoord ? "bg-violet-600 text-white border-violet-600" : "bg-white text-slate-500 border-slate-200"
+                                }`}>
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                          {editAdminCoordMfs.includes(mfKey) ? (
+                            <p className="text-xs text-slate-500">Can view and manage every course in {mfLabel} (Reopen Report, Export PDF, Progress Tracking), not just specific numbers. No Clear History, Remove CETs or Merge Duplicates.</p>
+                          ) : <>
                           <p className="text-[11px] font-medium text-violet-700 mb-1">{mfLabel} course number(s)</p>
                           {options.length === 0 ? (
                             <p className="text-xs text-slate-500">No courses tagged to this federation yet in Coaches Progress.</p>
@@ -14119,12 +14150,13 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                               ))}
                             </div>
                           )}
+                          </>}
                         </div>
                       );
                     })}
                     <div className="flex gap-2">
                       <button onClick={handleSaveAdminCourses} className="text-xs font-semibold text-violet-600 hover:text-violet-700">Save</button>
-                      <button onClick={() => { setEditingAdminCoursesName(null); setEditAdminMfSelection([]); setEditAdminCourseNumbers([]); setEditAdminCoursesError(""); }} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+                      <button onClick={() => { setEditingAdminCoursesName(null); setEditAdminMfSelection([]); setEditAdminCourseNumbers([]); setEditAdminCoordMfs([]); setEditAdminCoursesError(""); }} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
                     </div>
                     {editAdminCoursesError && <p className="text-xs text-red-600">{editAdminCoursesError}</p>}
                   </div>
@@ -14301,6 +14333,21 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           const options = courseNumbersForMf(mfKey);
                           return (
                             <div key={mfKey}>
+                              <p className="text-xs font-medium text-slate-500 mb-1">{mfLabel} — permission level</p>
+                              <div className="flex gap-1.5 flex-wrap mb-1.5">
+                                {[[false, "Course Admin (selected courses only)"], [true, "MF Coordinator (all courses in this federation)"]].map(([isCoord, label]) => (
+                                  <button key={String(isCoord)} type="button"
+                                    onClick={() => setNewAdminCoordMfs(prev => isCoord ? (prev.includes(mfKey) ? prev : [...prev, mfKey]) : prev.filter(k => k !== mfKey))}
+                                    className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                                      newAdminCoordMfs.includes(mfKey) === isCoord ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-500 border-slate-200"
+                                    }`}>
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                              {newAdminCoordMfs.includes(mfKey) ? (
+                                <p className="text-xs text-slate-500">Can view and manage every course in {mfLabel}, not just specific numbers. No Clear History, Remove CETs or Merge Duplicates.</p>
+                              ) : <>
                               <p className="text-xs font-medium text-slate-500 mb-1">
                                 {mfLabel} course number(s) — {adminSettings.admins.filter(a => a.role === "course" && (a.memberFederations || []).includes(mfKey)).length}/{mfSlotLimit(adminSettings, mfKey, "course")} Course Admins already set for this federation
                               </p>
@@ -14318,6 +14365,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                                   ))}
                                 </div>
                               )}
+                              </>}
                             </div>
                           );
                         })}
