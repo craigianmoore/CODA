@@ -672,6 +672,10 @@ function dominantMfForGroup(group) {
   return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
 }
 
+// Progress Tracking status was renamed "As Expected" -> "On Track"; records
+// saved before the rename still hold the old value, so normalise on read.
+function normProgress(s) { return s === "As Expected" ? "On Track" : s; }
+
 function courseNumericSort(a, b) {
   const na = parseInt(a.courseNumber, 10);
   const nb = parseInt(b.courseNumber, 10);
@@ -5937,7 +5941,7 @@ function buildCourseReportHtml(group, coaches, incompleteOnly) {
     const blockOpts = blockOptionsFor(t);
     const statuses = t.blockStatuses || {};
     const trackingRow = blockOpts.length > 0
-      ? `<p style="font-size:12px;margin:0 0 10px;color:#475569;">Progress Tracking: ${blockOpts.map(b => `${esc(b)}: ${esc(statuses[b] || "not set")}`).join(" · ")}</p>`
+      ? `<p style="font-size:12px;margin:0 0 10px;color:#475569;">Progress Tracking: ${blockOpts.map(b => `${esc(b)}: ${esc(normProgress(statuses[b]) || "not set")}`).join(" · ")}</p>`
       : "";
     return `
       <div data-pdf-nosplit="1" style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:10px;">
@@ -6003,7 +6007,7 @@ function buildOutstandingCandidateHtml(task, coach) {
       const blockNoteEntries = Object.entries(task.blockNotes || {}).filter(([, note]) => (note || "").trim());
       if (!blockNoteEntries.length) return "";
       const rows = blockNoteEntries.map(([block, note]) => {
-        const status = (task.blockStatuses || {})[block];
+        const status = normProgress((task.blockStatuses || {})[block]);
         return `<tr><td style="padding:6px 8px;border:1px solid #ddd;width:130px;font-weight:600;vertical-align:top;">${esc(block)}${status ? `<br/><span style="font-weight:400;color:#64748b;">${esc(status)}</span>` : ""}</td><td style="padding:6px 8px;border:1px solid #ddd;white-space:pre-wrap;">${esc(note)}</td></tr>`;
       }).join("");
       return `<h2 style="margin:20px 0 8px 0;">Progress Notes</h2><table style="width:100%;border-collapse:collapse;font-size:13px;">${rows}</table>`;
@@ -8113,13 +8117,13 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   }
 
 
-  // Candidate progress tracking (Tracking Ahead / As Expected / Needs
+  // Candidate progress tracking (Tracking Ahead / On Track / Needs
   // Assistance), set per diploma block. Visible to any CET; only settable
   // by a Course Admin (for their own assigned course), MF Admin (for
   // their MF), or Master. Auth here persists for the rest of this tab
   // visit once entered, rather than re-prompting per candidate — the
   // per-candidate course-access check still applies on every actual save.
-  const PROGRESS_STATUSES = ["Tracking Ahead", "As Expected", "Needs Assistance"];
+  const PROGRESS_STATUSES = ["Tracking Ahead", "On Track", "Needs Assistance"];
   const [progressAuthed, setProgressAuthed] = useState(false);
   const [progressAuthMatch, setProgressAuthMatch] = useState(null);
   // Already signed in as an admin: that PIN login is enough, so don't ask again
@@ -8744,7 +8748,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Progress Tracking</p>
                       <div className="flex gap-1.5 flex-wrap">
                         {blockOpts.map(b => {
-                          const s = statuses[b];
+                          const s = normProgress(statuses[b]);
                           return (
                             <span key={b} className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
                               !s ? "bg-slate-50 text-slate-300 border-slate-100"
@@ -10078,7 +10082,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                 const isActive = block === activeBlock;
                                                 const isReopened = reopenedBlock === block;
                                                 const locked = !isActive && !isReopened;
-                                                const status = statuses[block] || null;
+                                                const status = normProgress(statuses[block]) || null;
                                                 return (
                                                   <div key={block} className={locked ? "opacity-80" : ""}>
                                                     <div className="flex items-center justify-between gap-2 mb-1">
