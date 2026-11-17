@@ -2212,17 +2212,22 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   // Same for a CET: their course grants live on their CET record, so keep the
   // saved session in step with it (grants given or taken away later).
   useEffect(() => {
-    if (!codaSession || codaSession.kind !== "cet" || !educators || educators.length === 0) return;
-    const me = educators.find(e => e.id === codaSession.cetId);
-    if (!me) return;
-    const courses = me.assignedCourseNumbers || [];
-    const coord = me.coordinatorMfs || [];
-    if (JSON.stringify(courses) === JSON.stringify(codaSession.assignedCourseNumbers || [])
-      && JSON.stringify(coord) === JSON.stringify(codaSession.coordinatorMfs || [])) return;
-    const next = { ...codaSession, assignedCourseNumbers: courses, coordinatorMfs: coord };
-    setCodaSession(next);
-    saveCodaSession(next);
-  }, [educators]);
+    if (!codaSession || codaSession.kind !== "cet" || !codaSession.cetId) return;
+    let cancelled = false;
+    const sync = async () => {
+      const g = await fetchCetGrant(codaSession.cetId);
+      if (cancelled) return;
+      if (JSON.stringify(g.assignedCourseNumbers) === JSON.stringify(codaSession.assignedCourseNumbers || [])
+        && JSON.stringify(g.coordinatorMfs) === JSON.stringify(codaSession.coordinatorMfs || [])) return;
+      const next = { ...codaSession, assignedCourseNumbers: g.assignedCourseNumbers, coordinatorMfs: g.coordinatorMfs };
+      setCodaSession(next);
+      saveCodaSession(next);
+    };
+    sync();
+    const onVis = () => { if (document.visibilityState === "visible") sync(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { cancelled = true; document.removeEventListener("visibilitychange", onVis); };
+  }, [codaSession && codaSession.cetId]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [reportId, setReportId] = useState(null);
@@ -2748,6 +2753,24 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   );
 }
 
+// CET course grants are kept server-side (/api/admin/cet-access), not on the CET record.
+async function fetchCetGrant(cetId) {
+  try {
+    const res = await fetch("/api/admin/cet-access?cetId=" + encodeURIComponent(cetId), { credentials: "same-origin", cache: "no-store" });
+    const j = await res.json();
+    return { assignedCourseNumbers: (j.grant && j.grant.assignedCourseNumbers) || [], coordinatorMfs: (j.grant && j.grant.coordinatorMfs) || [] };
+  } catch (e) { return { assignedCourseNumbers: [], coordinatorMfs: [] }; }
+}
+async function postCetAccess(creds, payload) {
+  const res = await fetch("/api/admin/cet-access", {
+    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: creds.name, pin: creds.pin, ...payload }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error || "Could not save course access.");
+  return j.grants || {};
+}
+
 function SignInGate({ educators, adminSettings, adminLockouts, recordAdminAttempt, onSignedIn }) {
   const [mode, setMode] = useState(""); // "" | "cet" | "admin"
   const [cetId, setCetId] = useState("");
@@ -2755,10 +2778,11 @@ function SignInGate({ educators, adminSettings, adminLockouts, recordAdminAttemp
   const [adminPin, setAdminPin] = useState("");
   const [error, setError] = useState("");
 
-  function signInAsCet() {
+  async function signInAsCet() {
     const cet = educators.find(e => e.id === cetId);
     if (!cet) { setError("Select your name to continue."); return; }
-    onSignedIn({ kind: "cet", cetId: cet.id, name: cet.name, assignedCourseNumbers: cet.assignedCourseNumbers || [], coordinatorMfs: cet.coordinatorMfs || [] });
+    const g = await fetchCetGrant(cet.id);
+    onSignedIn({ kind: "cet", cetId: cet.id, name: cet.name, assignedCourseNumbers: g.assignedCourseNumbers, coordinatorMfs: g.coordinatorMfs });
   }
 
   async function signInAsAdmin() {
@@ -4552,6 +4576,12 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
   const [editingAccessId, setEditingAccessId] = useState(null);
   const [accessCoordMfs, setAccessCoordMfs] = useState([]);
   const [accessCourses, setAccessCourses] = useState([]);
+  // Grants live on the server; reading and changing them needs the admin's PIN.
+  const [accessPin, setAccessPin] = useState("");
+  const [accessCreds, setAccessCreds] = useState(null);
+  const [accessGrants, setAccessGrants] = useState({});
+  const [accessError, setAccessError] = useState("");
+  const [accessBusy, setAccessBusy] = useState(false);
   const grantTier = session && session.kind === "admin" ? session.tier : "";
   const canGrantAccess = grantTier === "master" || grantTier === "lead" || grantTier === "coordinator";
   const grantMfs = grantTier === "master" ? MEMBER_FEDERATIONS.map(m => m.key) : (session && session.memberFederations) || [];
@@ -4566,10 +4596,27 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
     });
     return Object.fromEntries(Object.entries(out).map(([mf, m]) => [mf, Object.values(m).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))]));
   })();
+  function loadAccessFor(id, grants) {
+    const g = (grants || {})[id] || {};
+    setAccessCoordMfs(g.coordinatorMfs || []);
+    setAccessCourses(g.assignedCourseNumbers || []);
+  }
   function startEditAccess(cet) {
     setEditingAccessId(cet.id);
-    setAccessCoordMfs(cet.coordinatorMfs || []);
-    setAccessCourses(cet.assignedCourseNumbers || []);
+    setAccessError("");
+    if (accessCreds) loadAccessFor(cet.id, accessGrants);
+    else { setAccessCoordMfs([]); setAccessCourses([]); }
+  }
+  async function unlockAccess() {
+    if (!session || !accessPin) return;
+    setAccessBusy(true); setAccessError("");
+    try {
+      const creds = { name: session.name, pin: accessPin };
+      const grants = await postCetAccess(creds, { action: "list" });
+      setAccessCreds(creds); setAccessGrants(grants); setAccessPin("");
+      loadAccessFor(editingAccessId, grants);
+    } catch (e) { setAccessError(e.message || "Could not unlock."); }
+    setAccessBusy(false);
   }
   function toggleAccessMf(mf) {
     setAccessCoordMfs(prev => prev.includes(mf) ? prev.filter(k => k !== mf) : [...prev, mf]);
@@ -4577,17 +4624,16 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
   function toggleAccessCourse(cn) {
     setAccessCourses(prev => prev.some(n => cnEq(n, cn)) ? prev.filter(n => !cnEq(n, cn)) : [...prev, cn]);
   }
-  function saveAccess() {
-    // A non-FA admin can only add or remove inside their own federations: keep
-    // whatever the CET already has outside them.
-    const cet = educators.find(c => c.id === editingAccessId) || {};
-    const allCoursesInScope = new Set(Object.values(coursesByMf).flat().map(cnKey));
-    const keepCourses = grantTier === "master" ? [] : (cet.assignedCourseNumbers || []).filter(n => !allCoursesInScope.has(cnKey(n)));
-    const keepMfs = grantTier === "master" ? [] : (cet.coordinatorMfs || []).filter(k => !grantMfs.includes(k));
-    const nextCourses = [...keepCourses, ...accessCourses.filter(n => grantTier === "master" || allCoursesInScope.has(cnKey(n)))];
-    const nextMfs = [...keepMfs, ...accessCoordMfs.filter(k => grantMfs.includes(k))];
-    saveEducators(educators.map(c => c.id === editingAccessId ? { ...c, assignedCourseNumbers: nextCourses, coordinatorMfs: nextMfs } : c));
-    setEditingAccessId(null);
+  async function saveAccess() {
+    if (!accessCreds) return;
+    setAccessBusy(true); setAccessError("");
+    try {
+      // The server re-checks who you are and trims anything outside your federation(s).
+      const grants = await postCetAccess(accessCreds, { cetId: editingAccessId, assignedCourseNumbers: accessCourses, coordinatorMfs: accessCoordMfs });
+      setAccessGrants(grants);
+      setEditingAccessId(null);
+    } catch (e) { setAccessError(e.message || "Could not save course access."); }
+    setAccessBusy(false);
   }
   const [editingDetailsId, setEditingDetailsId] = useState(null);
   const [editingDetailsClub, setEditingDetailsClub] = useState("");
@@ -5160,8 +5206,19 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                         <div className="mt-3 border-t border-slate-100 pt-3 space-y-2">
                           <p className="text-xs font-semibold text-violet-700">Course access for {c.name}</p>
                           <p className="text-[11px] text-slate-500">A CET sees no course data until you grant it. Tick a federation for every course in it, or pick individual course numbers.</p>
-                          {grantMfs.length === 0 && <p className="text-xs text-slate-500">You aren't assigned to a Member Federation, so you can't grant access.</p>}
-                          {grantMfs.map(mf => {
+                          {!accessCreds && (
+                            <div className="flex items-center gap-2">
+                              <input type="password" inputMode="numeric" maxLength={4} value={accessPin}
+                                onChange={e => { setAccessPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setAccessError(""); }}
+                                onKeyDown={e => { if (e.key === "Enter") unlockAccess(); }}
+                                placeholder="Your PIN" className="w-28 border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-center tracking-widest" />
+                              <button onClick={unlockAccess} disabled={accessBusy || accessPin.length < 4} className="text-xs font-semibold text-violet-600 hover:text-violet-700 disabled:opacity-40">Unlock</button>
+                              <button onClick={() => setEditingAccessId(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+                            </div>
+                          )}
+                          {accessError && <p className="text-xs text-red-600">{accessError}</p>}
+                          {accessCreds && grantMfs.length === 0 && <p className="text-xs text-slate-500">You aren't assigned to a Member Federation, so you can't grant access.</p>}
+                          {accessCreds && grantMfs.map(mf => {
                             const label = (MEMBER_FEDERATIONS.find(m => m.key === mf) || {}).label || mf;
                             const nums = coursesByMf[mf] || [];
                             const all = accessCoordMfs.includes(mf);
@@ -5187,10 +5244,12 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
                               </div>
                             );
                           })}
-                          <div className="flex gap-2">
-                            <button onClick={saveAccess} className="text-xs font-semibold text-violet-600 hover:text-violet-700">Save</button>
-                            <button onClick={() => setEditingAccessId(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
-                          </div>
+                          {accessCreds && (
+                            <div className="flex gap-2">
+                              <button onClick={saveAccess} disabled={accessBusy} className="text-xs font-semibold text-violet-600 hover:text-violet-700 disabled:opacity-40">Save</button>
+                              <button onClick={() => setEditingAccessId(null)} className="text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+                            </div>
+                          )}
                         </div>
                       )}
                       {confirmDeleteId === c.id && (
