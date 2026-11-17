@@ -11003,7 +11003,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   const slotReady = (slot) => slotComplete(slot, 2) && slotComplete(slot, 3);
   function removePartner() {
     const bHasData = slotHasData(fieldsFor("B"));
-    if (bHasData && !window.confirm(`Remove ${nameB} from this shared session? Anything entered for ${nameB} will be discarded.`)) return;
+    if (bHasData && !window.confirm(`Remove ${nameB} from this joint session? Anything entered for ${nameB} will be discarded.`)) return;
     if (activeSlot === "B") {
       loadFields(slotData.current.A || emptySlotFields());
       setActiveSlot("A");
@@ -11858,7 +11858,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
 
             {!(seed && !existingObservation) && !usingNewCoach && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <label className="text-[10px] font-bold uppercase tracking-wide text-indigo-600 mb-1.5 block">Shared session (optional)</label>
+                <label className="text-[10px] font-bold uppercase tracking-wide text-indigo-600 mb-1.5 block">Joint session (optional)</label>
                 {sharedPartner ? (
                   <div className="flex items-center justify-between border border-slate-300 rounded-lg px-3 py-2 bg-white">
                     <p className="text-sm font-medium text-slate-800">{sharedPartner.name}{sharedPartner.club && <span className="text-xs text-slate-500 ml-1.5">({sharedPartner.club})</span>}</p>
@@ -12355,7 +12355,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
             {lockEarly && (
               <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 space-y-3">
                 <div>
-                  <p className="text-sm font-semibold text-indigo-800">Shared session with {sharedPartnerName}</p>
+                  <p className="text-sm font-semibold text-indigo-800">Joint session with {sharedPartnerName}</p>
                   <p className="text-xs text-indigo-700 mt-0.5">
                     Scoring {selectedCoach?.name || "this coach"} only. The session details and plan come from {sharedPartnerName}'s report
                     {sessionPlan.sessionObjective ? <> (objective: <em>{sessionPlan.sessionObjective}</em>)</> : null}.
@@ -12400,7 +12400,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
             {dual && activeSlot === "B" && (
               <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 space-y-3">
                 <p className="text-xs text-indigo-700">
-                  Shared session with {nameA}. If {nameB}'s pitch was a different size, revise it here — leave blank if it was the same
+                  Joint session with {nameA}. If {nameB}'s pitch was a different size, revise it here — leave blank if it was the same
                   ({sessionPlan.pitchLength || "?"} x {sessionPlan.pitchWidth || "?"}).
                 </p>
                 <div className="border border-indigo-200 rounded-lg px-3 py-2 flex items-center gap-3 bg-white">
@@ -12756,7 +12756,7 @@ function buildObservationInnerHtml(obs) {
 
   return `
         <div class="meta-grid">
-          <div><p class="meta-label">Coach</p><p class="meta-value">${esc(obs.coachName) || "—"}${obs.sharedSessionId && obs.sharedWithName ? `<br/><span style="font-weight:600;color:#4338ca;font-size:11px;">Shared session with ${esc(obs.sharedWithName)}</span>` : ""}</p></div>
+          <div><p class="meta-label">Coach</p><p class="meta-value">${esc(obs.coachName) || "—"}${obs.sharedSessionId && obs.sharedWithName ? `<br/><span style="font-weight:600;color:#4338ca;font-size:11px;">Joint session with ${esc(obs.sharedWithName)}</span>` : ""}</p></div>
           <div><p class="meta-label">${esc(obs.educatorRole) || "Coach Education Tutor (CET)"}</p><p class="meta-value">${esc(obs.coachEducatorName) || "—"}</p></div>
           <div><p class="meta-label">Date</p><p class="meta-value">${obs.date ? new Date(obs.date).toLocaleDateString("en-GB") : "—"}</p></div>
         </div>
@@ -13005,7 +13005,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
             <h2 className="text-xl font-bold text-slate-900">Coaching Observation Report</h2>
             <p className="text-sm text-slate-500">{obs.coachName}</p>
             {obs.sharedSessionId && obs.sharedWithName && (
-              <p className="text-xs font-semibold text-indigo-700 mt-0.5">Shared session with {obs.sharedWithName}</p>
+              <p className="text-xs font-semibold text-indigo-700 mt-0.5">Joint session with {obs.sharedWithName}</p>
             )}
           </div>
           <span className={`text-xs font-semibold px-3 py-1.5 rounded-full ${obs.sessionType === "formal" ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>
@@ -14905,7 +14905,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         <Calendar className="w-4 h-4 text-slate-500" />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-slate-800">{o.coachName}{o.sharedSessionId && o.sharedWithName && <span className="ml-2 text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded align-middle">Shared with {o.sharedWithName}</span>}</p>
+                        <p className="text-sm font-semibold text-slate-800">{o.coachName}{o.sharedSessionId && o.sharedWithName && <span className="ml-2 text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded align-middle">Joint with {o.sharedWithName}</span>}</p>
                         <p className="text-xs text-slate-500">
                           {o.sessionType === "formal" ? `Formal · ${o.formalCourseName || "Course"}${o.courseNumber ? ` (#${o.courseNumber})` : ""}` : "Informal"} · {new Date(o.date).toLocaleDateString("en-GB")} · <CetName name={o.coachEducatorName} />
                           {oSessionNumber ? ` · Session ${oSessionNumber}` : ""}
