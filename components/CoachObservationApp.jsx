@@ -600,6 +600,32 @@ function isCDiploma(name) {
   return /\bc diploma\b/i.test(name || "");
 }
 
+// Course numbers / names are matched ignoring case and surrounding spaces.
+function cnKey(v) { return String(v == null ? "" : v).trim().toLowerCase(); }
+function cnEq(a, b) { return cnKey(a) === cnKey(b); }
+
+// Tidy text people type in by hand so it reads properly. Only words typed all in
+// lower- or upper-case are touched; mixed-case words (McDonald, FIFA-style codes in
+// course names) are left as typed.
+function capWord(w) {
+  const lower = w.toLowerCase();
+  const mc = /^mc[a-z]/.test(lower) ? "Mc" + lower.charAt(2).toUpperCase() + lower.slice(3) : null;
+  return mc || lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+function tidyPersonName(str) {
+  return String(str || "").trim().replace(/\s+/g, " ").split(" ").map(tok =>
+    tok.split(/([-'’])/).map(part => (/[a-z]/i.test(part) && (part === part.toLowerCase() || part === part.toUpperCase()) && part.length > 1) ? capWord(part) : (part.length === 1 && /[a-z]/.test(part) ? part.toUpperCase() : part)).join("")
+  ).join(" ");
+}
+const COURSE_SMALL_WORDS = new Set(["and", "of", "the", "for", "in", "to", "a", "at", "on", "or"]);
+function tidyCourseText(str) {
+  return String(str || "").trim().replace(/\s+/g, " ").split(" ").map((tok, i) => {
+    if (!/[a-z]/.test(tok) || /[A-Z]/.test(tok)) return tok;       // no letters, or already has capitals
+    if (i > 0 && COURSE_SMALL_WORDS.has(tok)) return tok;
+    return tok.split("/").map(part => part.replace(/[a-z]/, c => c.toUpperCase())).join("/"); // keeps a leading ' or digit
+  }).join(" ");
+}
+
 // Finds the submitted + draft observations behind one coursework checklist
 // item (e.g. "34. Stop the counterattack") for a coach's course record.
 function findItemObservations(observations, record, label) {
@@ -607,7 +633,7 @@ function findItemObservations(observations, record, label) {
   const cn = (record.courseNumber || "").trim();
   const matches = (observations || []).filter(o => {
     if (o.coachId !== record.coachId) return false;
-    if (cn ? (o.courseNumber || "").trim() !== cn : (o.formalCourseName || "") !== record.courseTitle) return false;
+    if (cn ? !cnEq(o.courseNumber, cn) : (o.formalCourseName || "") !== record.courseTitle) return false;
     if (isCDiploma(record.courseTitle)) return base === "Practical Session";
     if (isAssessmentObsLabel(base)) {
       if (!((isBDiploma(record.courseTitle) || isADiploma(record.courseTitle)) && o.sessionType === "formal")) return false;
@@ -678,8 +704,9 @@ function groupCoursesByNumber(completedTasks) {
   completedTasks.forEach(t => {
     const num = (t.courseNumber || "").trim();
     if (!num) return;
-    if (!map[num]) map[num] = { courseNumber: num, courseTitle: t.courseTitle, records: [] };
-    map[num].records.push(t);
+    const mk = cnKey(num);
+    if (!map[mk]) map[mk] = { courseNumber: num, courseTitle: t.courseTitle, records: [] };
+    map[mk].records.push(t);
   });
   return Object.values(map);
 }
@@ -779,7 +806,7 @@ const ASSESSMENT_OBS_LABEL = "Assessment Observation";
 let ASSESSMENT_OBS = {};
 function setAssessmentObs(v) { ASSESSMENT_OBS = v || {}; }
 function assessmentObsKey(coachId, courseNumber, courseTitle) {
-  const cn = String(courseNumber || "").trim();
+  const cn = cnKey(courseNumber);
   return `${coachId}|${cn ? "n:" + cn : "t:" + (courseTitle || "")}`;
 }
 function assessmentObsFromObservations(observations) {
@@ -1009,7 +1036,7 @@ function computeSessionNumber(observations, coachId, courseNumber, currentId, cu
   if (!coachId || !norm) return null;
   let pool = observations.filter(o =>
     o.coachId === coachId &&
-    (o.courseNumber || "").trim() === norm &&
+    cnEq(o.courseNumber, norm) &&
     (o.status !== "draft" || o.id === currentId)
   );
   if (!pool.some(o => o.id === currentId)) {
@@ -1334,7 +1361,7 @@ function adminHasCourseAccess(adminMatch, courseNumber, mfKey) {
   const tier = adminTier(adminMatch);
   if (tier === "master") return true;
   if (tier === "lead" || tier === "coordinator") return (adminMatch.memberFederations || []).includes(mfKey);
-  if (tier === "course") return (adminMatch.assignedCourseNumbers || []).includes((courseNumber || "").trim()) || coordinatorMfsOf(adminMatch).includes(mfKey);
+  if (tier === "course") return (adminMatch.assignedCourseNumbers || []).some(n => cnEq(n, courseNumber)) || coordinatorMfsOf(adminMatch).includes(mfKey);
   return false;
 }
 
@@ -1429,7 +1456,7 @@ function sessionVisibleCourseNumbers(session) {
 // be pulled from whatever field that record type uses for each.
 function sessionCanSeeRecord(session, courseNumber, mfKey) {
   const courseFilter = sessionVisibleCourseNumbers(session);
-  if (courseFilter) return courseFilter.includes((courseNumber || "").trim()) || coordinatorMfsOf(session).includes(mfKey);
+  if (courseFilter) return courseFilter.some(n => cnEq(n, courseNumber)) || coordinatorMfsOf(session).includes(mfKey);
   const mfFilter = sessionVisibleMfKeys(session);
   if (mfFilter) return mfFilter.includes(mfKey);
   return true;
@@ -2318,7 +2345,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     if (obs.status === "submitted" && obs.coachId && obs.sessionType === "formal" && obs.formalCourseName) {
       const matchIdx = completedTasks.findIndex(t =>
         t.coachId === obs.coachId &&
-        ((obs.courseNumber && (t.courseNumber || "").trim() === obs.courseNumber.trim()) ||
+        ((obs.courseNumber && cnEq(t.courseNumber, obs.courseNumber)) ||
          (!obs.courseNumber && t.courseTitle === obs.formalCourseName))
       );
 
@@ -2367,7 +2394,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             // course are sheet-driven, this auto-created record is too (same
             // custom items, all unticked) so the course stays consistent.
             ...((() => {
-              const siblings = obs.courseNumber ? completedTasks.filter(t => (t.courseNumber || "").trim() === obs.courseNumber.trim() && t.sheetDriven) : [];
+              const siblings = obs.courseNumber ? completedTasks.filter(t => cnEq(t.courseNumber, obs.courseNumber) && t.sheetDriven) : [];
               if (!siblings.length) return {};
               const labels = [];
               siblings.forEach(t => (t.customItems || []).forEach(ci => { if (!labels.includes(ci.label)) labels.push(ci.label); }));
@@ -2441,7 +2468,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
     if (obsToDelete && obsToDelete.status === "submitted" && obsToDelete.coachId) {
       const matchIdx = completedTasks.findIndex(t =>
         t.coachId === obsToDelete.coachId &&
-        ((obsToDelete.courseNumber && (t.courseNumber || "").trim() === obsToDelete.courseNumber.trim()) ||
+        ((obsToDelete.courseNumber && cnEq(t.courseNumber, obsToDelete.courseNumber)) ||
          (!obsToDelete.courseNumber && t.courseTitle === obsToDelete.formalCourseName))
       );
       if (matchIdx !== -1) {
@@ -2449,7 +2476,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
         const updatedTask = { ...task };
 
         const sameSlot = (o) => o.status === "submitted" && o.coachId === obsToDelete.coachId &&
-          ((obsToDelete.courseNumber && (o.courseNumber || "").trim() === obsToDelete.courseNumber.trim()) ||
+          ((obsToDelete.courseNumber && cnEq(o.courseNumber, obsToDelete.courseNumber)) ||
            (!obsToDelete.courseNumber && o.formalCourseName === obsToDelete.formalCourseName));
 
         if ((isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) && obsToDelete.sessionTopic) {
@@ -3274,7 +3301,7 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
           <h3 className="font-semibold text-slate-800 text-sm">Open Courses</h3>
         </div>
         {openGroups.length === 0 ? (
-          <div className="p-6 text-center text-slate-500 text-sm">No open courses yet — these appear once a Coaches Progress record has a Course Number set.</div>
+          <div className="p-6 text-center text-slate-500 text-sm">No open courses yet — these appear once a Coaches Progress record has a Course Number / Name set.</div>
         ) : (
           <div className="divide-y divide-slate-100">
             {openGroupsByMf.map(([mfKey, groupsForMf]) => {
@@ -4007,7 +4034,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
   function addCoach() {
     if (!name.trim()) return;
     const topics = topicsInput.trim() ? topicsInput.split(/[;,]/).map(t => t.trim()).filter(Boolean) : [];
-    const newCoach = { id: uid(), name: name.trim(), club: club.trim(), level: level.trim(), topics, faNumber: faNumberInput.trim() };
+    const newCoach = { id: uid(), name: tidyPersonName(name), club: tidyCourseText(club), level: level.trim(), topics, faNumber: faNumberInput.trim() };
     saveCoaches([...coaches, newCoach]);
     setName(""); setClub(""); setLevel(""); setLevelOption(""); setTopicsInput(""); setFaNumberInput(""); setShowForm(false);
   }
@@ -4667,7 +4694,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
 
   function addCet() {
     if (!name.trim()) return;
-    const newCet = { id: uid(), name: name.trim(), club: org.trim(), level: level.trim(), memberFederations: cetMfSelection };
+    const newCet = { id: uid(), name: tidyPersonName(name), club: tidyCourseText(org), level: level.trim(), memberFederations: cetMfSelection };
     saveEducators([...educators, newCet]);
     setName(""); setOrg(""); setLevel(""); setLevelOption(""); setCetMfSelection([]); setShowForm(false);
   }
@@ -6110,7 +6137,7 @@ function buildCandidateHtml(task, coach, observations, proxyLogos = false) {
   const cnTask = (task.courseNumber || "").trim();
   const forThisCourse = (observations || []).filter(o =>
     o.coachId === task.coachId && (cnTask
-      ? (o.courseNumber || "").trim() === cnTask
+      ? cnEq(o.courseNumber, cnTask)
       : (o.formalCourseName || "") === task.courseTitle))
     .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
   const matchingReports = forThisCourse.filter(o => o.status !== "draft");
@@ -7676,7 +7703,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     const byKey = {};
     completedTasks.forEach(t => {
       const nameKey = (t.coachName || "").trim().toLowerCase();
-      const courseKey = (t.courseNumber || "").trim();
+      const courseKey = cnKey(t.courseNumber);
       if (!nameKey || !courseKey) return;
       const key = `${nameKey}__${courseKey}`;
       if (!byKey[key]) byKey[key] = [];
@@ -8116,8 +8143,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       id: editingId || uid(),
       coachId: form.coachId,
       coachName: coach ? coach.name : "",
-      courseTitle: form.courseTitle.trim(),
-      courseNumber: form.courseNumber.trim(),
+      courseTitle: tidyCourseText(form.courseTitle),
+      courseNumber: tidyCourseText(form.courseNumber),
       memberFederation: form.memberFederation || DEFAULT_MEMBER_FEDERATION,
       attendancePercent: Math.max(0, Math.min(100, Math.round(Number(form.attendancePercent)))),
       onlineModulesPercent: form.onlineModulesPercent === "" ? 0 : Math.max(0, Math.min(100, Math.round(Number(form.onlineModulesPercent)))),
@@ -8577,7 +8604,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   function generateCourseworkPreview() {
     if (!courseworkRawRows || !courseworkNameHeader) return;
     if (!courseworkCourseNumber.trim()) {
-      setCourseworkError("Course Number is required — without it, the imported records won't show up under Open/Completed Courses or auto-fill in New Observation.");
+      setCourseworkError("Course Number / Name is required — without it, the imported records won't show up under Open/Completed Courses or auto-fill in New Observation.");
       setCourseworkPreview(null);
       return;
     }
@@ -8655,7 +8682,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           coach = updatedCoaches[idx];
         }
       }
-      const existingIdx = updatedTasks.findIndex(t => t.coachId === coach.id && (t.courseNumber || "").trim() === courseworkCourseNumber.trim());
+      const existingIdx = updatedTasks.findIndex(t => t.coachId === coach.id && cnEq(t.courseNumber, courseworkCourseNumber));
       if (existingIdx !== -1) {
         updatedTasks[existingIdx] = {
           ...updatedTasks[existingIdx],
@@ -8739,11 +8766,12 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     tasks.forEach(t => {
       const num = (t.courseNumber || "").trim();
       if (!num) { noCourseNumber.push(t); return; }
-      if (!map[num]) map[num] = { courseNumber: num, courseTitle: t.courseTitle, records: [] };
-      map[num].records.push(t);
+      const mk = cnKey(num);
+      if (!map[mk]) map[mk] = { courseNumber: num, courseTitle: t.courseTitle, records: [] };
+      map[mk].records.push(t);
     });
     const groups = Object.values(map).sort(courseNumericSort);
-    if (noCourseNumber.length) groups.push({ courseNumber: "", courseTitle: "No Course Number", records: noCourseNumber });
+    if (noCourseNumber.length) groups.push({ courseNumber: "", courseTitle: "No Course Number / Name", records: noCourseNumber });
     return groups;
   }
 
@@ -8793,7 +8821,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                 <ul className="space-y-1">
                   {[...recommended].sort((a, b) => (a.coachName || "").localeCompare(b.coachName || "")).map(t => {
                     const latestObs = observations
-                      .filter(o => o.status !== "draft" && o.coachId === t.coachId && (o.courseNumber || "").trim() === (t.courseNumber || "").trim())
+                      .filter(o => o.status !== "draft" && o.coachId === t.coachId && cnEq(o.courseNumber, t.courseNumber))
                       .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
                     return (
                       <li key={t.id} className="text-sm text-slate-700">
@@ -8981,8 +9009,8 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
             )}
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course Number (optional)</label>
-            <input value={form.courseNumber} onChange={e => setField("courseNumber", e.target.value)} placeholder="e.g. 165 or 240"
+            <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course Number / Name (optional)</label>
+            <input value={form.courseNumber} onChange={e => setField("courseNumber", e.target.value)} placeholder="e.g. 165 or '27 Queensland"
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
@@ -9411,13 +9439,13 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course title</label>
-              <input value={courseworkCourseTitle} onChange={e => setCourseworkCourseTitle(e.target.value)}
+              <input value={courseworkCourseTitle} onChange={e => setCourseworkCourseTitle(e.target.value)} onBlur={() => setCourseworkCourseTitle(tidyCourseText(courseworkCourseTitle))}
                 placeholder="e.g. AFC/FA B Diploma" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course Number <span className="text-red-500">*</span></label>
-              <input value={courseworkCourseNumber} onChange={e => setCourseworkCourseNumber(e.target.value)}
-                placeholder="e.g. 236" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+              <label className="text-xs font-medium text-slate-500 mb-1.5 block">Course Number / Name <span className="text-red-500">*</span></label>
+              <input value={courseworkCourseNumber} onChange={e => setCourseworkCourseNumber(e.target.value)} onBlur={() => setCourseworkCourseNumber(tidyCourseText(courseworkCourseNumber))}
+                placeholder="e.g. 236 or '27 Queensland" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="text-xs font-medium text-slate-500 mb-1.5 block">Member Federation</label>
@@ -9582,7 +9610,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
               {courseworkSheetDriven && (() => {
                 const legacy = courseworkPreview.filter(p => {
                   const c = p.matchedCoach;
-                  const t = c && completedTasks.find(x => x.coachId === c.id && (x.courseNumber || "").trim() === courseworkCourseNumber.trim());
+                  const t = c && completedTasks.find(x => x.coachId === c.id && cnEq(x.courseNumber, courseworkCourseNumber));
                   return t && !t.sheetDriven;
                 }).length;
                 const n = (courseworkPreview[0]?.customItems || []).length;
@@ -9649,7 +9677,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                       <ul className="space-y-1">
                         {list.map(t => {
                           const latestObs = (observations || [])
-                            .filter(o => o.status !== "draft" && o.coachId === t.coachId && (o.courseNumber || "").trim() === (t.courseNumber || "").trim())
+                            .filter(o => o.status !== "draft" && o.coachId === t.coachId && cnEq(o.courseNumber, t.courseNumber))
                             .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
                           return (
                             <li key={t.id} className="text-sm text-slate-700">
@@ -9833,7 +9861,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                       {groupSomeSelected && !g.courseNumber && (
                         <div className="px-4 pb-3 -mt-1">
                           <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-2.5 flex items-center gap-2 flex-wrap">
-                            <p className="text-xs text-indigo-800 font-medium">Set Course Number for {groupSelectedCount} selected:</p>
+                            <p className="text-xs text-indigo-800 font-medium">Set Course Number / Name for {groupSelectedCount} selected:</p>
                             <input value={bulkCourseNumberInputs[g.courseNumber || "none"] || ""}
                               onChange={e => setBulkCourseNumberInputs(prev => ({ ...prev, [g.courseNumber || "none"]: e.target.value }))}
                               placeholder="e.g. 236" className="border border-indigo-300 rounded-lg px-2.5 py-1.5 text-xs w-28 bg-white" />
@@ -9903,7 +9931,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                             const isDetailsExpanded = expandedTaskId === t.id;
                             const isIdpExpanded = idpExpandedTaskId === t.id;
                             const matchingReports = (observations || [])
-                              .filter(o => o.status !== "draft" && o.coachId === t.coachId && (o.courseNumber || "").trim() === (t.courseNumber || "").trim() && t.courseNumber)
+                              .filter(o => o.status !== "draft" && o.coachId === t.coachId && cnEq(o.courseNumber, t.courseNumber) && t.courseNumber)
                               .sort((a, b) => new Date(b.date) - new Date(a.date));
                             return (
                               <div key={t.id} id={`ct-task-${t.id}`} className="bg-white rounded-xl border border-slate-200 p-4">
@@ -10113,7 +10141,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                               const cn = (t.courseNumber || "").trim();
                                               const obsList = (observations || [])
                                                 .filter(o => o.coachId === t.coachId && (cn
-                                                  ? (o.courseNumber || "").trim() === cn
+                                                  ? cnEq(o.courseNumber, cn)
                                                   : (o.formalCourseName || "") === t.courseTitle))
                                                 .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
                                               if (obsList.length === 0) return null;
@@ -10656,7 +10684,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   const keyboard = useVisualViewportKeyboard();
   const courseNumberTrim = (courseNumber || "").trim();
   const courseCoachIds = courseNumberTrim
-    ? new Set((completedTasks || []).filter(t => (t.courseNumber || "").trim() === courseNumberTrim && t.coachId).map(t => t.coachId))
+    ? new Set((completedTasks || []).filter(t => cnEq(t.courseNumber, courseNumberTrim) && t.coachId).map(t => t.coachId))
     : null;
   const courseFilterOn = !!courseCoachIds && !showAllCoaches;
   const coachesForPicker = courseFilterOn ? coaches.filter(c => courseCoachIds.has(c.id)) : coaches;
@@ -10689,7 +10717,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
   const usingNewCoach = coachId === "__new__";
   const matchedCompletedTask = (completedTasks || []).find(t =>
     t.coachId === coachId &&
-    ((courseNumber && (t.courseNumber || "").trim() === courseNumber.trim()) ||
+    ((courseNumber && cnEq(t.courseNumber, courseNumber)) ||
      (!courseNumber && t.courseTitle === formalCourseName))
   );
   const proposedCetName = (matchedCompletedTask?.cet || "").trim();
@@ -11225,7 +11253,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     if (isCetRole) {
       let n = selectedEducator?.name;
       if (usingNewEducator) {
-        const ne = { id: uid(), name: newEducatorName.trim() };
+        const ne = { id: uid(), name: tidyPersonName(newEducatorName) };
         saveEducators([...educators, ne]);
         n = ne.name;
       }
@@ -11374,7 +11402,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     let finalCoachId = coachId;
     let finalCoachName = selectedCoach?.name;
     if (usingNewCoach) {
-      const nc = { id: uid(), name: newCoachName.trim(), club: newCoachClub.trim(), level: "" };
+      const nc = { id: uid(), name: tidyPersonName(newCoachName), club: tidyCourseText(newCoachClub), level: "" };
       saveCoaches([...coaches, nc]);
       finalCoachId = nc.id;
       finalCoachName = nc.name;
@@ -11383,7 +11411,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
     if (isCetRole) {
       finalEducatorName = selectedEducator?.name;
       if (usingNewEducator) {
-        const ne = { id: uid(), name: newEducatorName.trim() };
+        const ne = { id: uid(), name: tidyPersonName(newEducatorName) };
         saveEducators([...educators, ne]);
         finalEducatorName = ne.name;
       }
@@ -11495,7 +11523,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                   <option value="__other__">Other (type your own)</option>
                 </select>
                 {formalCourseOption === "__other__" && (
-                  <input value={formalCourseName} onChange={e => setFormalCourseName(e.target.value)} placeholder="Custom qualification / course name"
+                  <input value={formalCourseName} onChange={e => setFormalCourseName(e.target.value)} onBlur={() => setFormalCourseName(tidyCourseText(formalCourseName))} placeholder="Custom qualification / course name"
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-2" />
                 )}
                 {(isCDiploma(formalCourseName) || isBDiploma(formalCourseName) || isADiploma(formalCourseName)) && (
@@ -11510,24 +11538,26 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                         const cn = (t.courseNumber || "").trim();
                         if (!cn || lvl(t.courseTitle) !== want) return;
                         if ((t.memberFederation || DEFAULT_MEMBER_FEDERATION) !== memberFederation) return;
-                        counts[cn] = (counts[cn] || 0) + 1;
+                        const k = cnKey(cn);
+                        if (!counts[k]) counts[k] = { label: cn, n: 0 };
+                        counts[k].n += 1;
                       });
-                      const opts = Object.keys(counts).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+                      const opts = Object.keys(counts).sort((a, b) => counts[a].label.localeCompare(counts[b].label, undefined, { numeric: true }));
                       const cur = courseNumber.trim();
-                      const selVal = opts.includes(cur) ? cur : (courseNumOther || cur ? "__other__" : "");
+                      const selVal = opts.includes(cnKey(cur)) ? cnKey(cur) : (courseNumOther || cur ? "__other__" : "");
                       return (
                         <>
                           {opts.length > 0 && (
                             <select value={selVal}
-                              onChange={e => { const v = e.target.value; if (v === "__other__") { setCourseNumOther(true); setCourseNumber(""); } else { setCourseNumOther(false); setCourseNumber(v); } }}
+                              onChange={e => { const v = e.target.value; if (v === "__other__") { setCourseNumOther(true); setCourseNumber(""); } else { setCourseNumOther(false); setCourseNumber(v ? counts[v].label : ""); } }}
                               className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-white">
                               <option value="">Select a course...</option>
-                              {opts.map(o => <option key={o} value={o}>{o} ({counts[o]} coach{counts[o] === 1 ? "" : "es"})</option>)}
+                              {opts.map(o => <option key={o} value={o}>{counts[o].label} ({counts[o].n} coach{counts[o].n === 1 ? "" : "es"})</option>)}
                               <option value="__other__">Other (type your own)</option>
                             </select>
                           )}
                           {(opts.length === 0 || selVal === "__other__") && (
-                            <input value={courseNumber} onChange={e => setCourseNumber(e.target.value)}
+                            <input value={courseNumber} onChange={e => setCourseNumber(e.target.value)} onBlur={() => setCourseNumber(tidyCourseText(courseNumber))}
                               placeholder={isCDiploma(formalCourseName) ? "e.g. 165" : "e.g. 240"}
                               className={`w-full border border-slate-300 rounded-lg px-3 py-2 text-sm ${opts.length > 0 ? "mt-2" : ""}`} />
                           )}
@@ -11648,8 +11678,8 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
 
             {usingNewCoach && (
               <div className="grid grid-cols-2 gap-3 pl-3 border-l-2 border-slate-100">
-                <input value={newCoachName} onChange={e => setNewCoachName(e.target.value)} placeholder="New coach name" className="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-                <input value={newCoachClub} onChange={e => setNewCoachClub(e.target.value)} placeholder="Club / Team" className="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                <input value={newCoachName} onChange={e => setNewCoachName(e.target.value)} onBlur={() => setNewCoachName(tidyPersonName(newCoachName))} placeholder="New coach name" className="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                <input value={newCoachClub} onChange={e => setNewCoachClub(e.target.value)} onBlur={() => setNewCoachClub(tidyCourseText(newCoachClub))} placeholder="Club / Team" className="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
               </div>
             )}
 
@@ -11785,7 +11815,7 @@ function NewObservation({ coaches, courses, educators, saveCoaches, saveEducator
                   </div>
                 )
               ) : (
-                <input value={newEducatorName} onChange={e => setNewEducatorName(e.target.value)} placeholder="Name"
+                <input value={newEducatorName} onChange={e => setNewEducatorName(e.target.value)} onBlur={() => setNewEducatorName(tidyPersonName(newEducatorName))} placeholder="Name"
                   className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm" />
               )}
             </div>
@@ -13375,7 +13405,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     const total = totalForObs(o);
     if (coachId && o.coachId !== coachId) return false;
     if (cetFilter && (o.coachEducatorName || "").toLowerCase() !== cetFilter.toLowerCase()) return false;
-    if (courseNumberFilter && (o.courseNumber || "").trim() !== courseNumberFilter) return false;
+    if (courseNumberFilter && !cnEq(o.courseNumber, courseNumberFilter)) return false;
     if (courseTypeFilter && observationCourseType(o) !== courseTypeFilter) return false;
     if (dateFromFilter && o.date < dateFromFilter) return false;
     if (dateToFilter && o.date > dateToFilter) return false;
@@ -13418,7 +13448,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
     }
     function findVideoLink(o) {
       if (!o.courseNumber) return "";
-      const match = completedTasksData.find(t => t.coachId === o.coachId && (t.courseNumber || "").trim() === (o.courseNumber || "").trim());
+      const match = completedTasksData.find(t => t.coachId === o.coachId && cnEq(t.courseNumber, o.courseNumber));
       return match?.videoLink || "";
     }
     const includeCoach = (coachId) => exportAllCoaches || exportCoachIds.includes(coachId);
@@ -14793,7 +14823,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           })} type="button"
                           className="w-full flex items-center gap-2 text-left bg-slate-100 hover:bg-slate-200 transition-colors rounded-lg px-3 py-2 mb-2">
                           <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
-                          <p className="text-xs font-bold uppercase tracking-wide text-slate-500 flex-1">No Course Number</p>
+                          <p className="text-xs font-bold uppercase tracking-wide text-slate-500 flex-1">No Course Number / Name</p>
                           <span className="text-xs text-slate-500">{noCourseNumber.length}</span>
                         </button>
                       );
