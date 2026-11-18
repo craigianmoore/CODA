@@ -809,20 +809,25 @@ function assessmentObsKey(coachId, courseNumber, courseTitle) {
   const cn = cnKey(courseNumber);
   return `${coachId}|${cn ? "n:" + cn : "t:" + (courseTitle || "")}`;
 }
+// B Diploma: the Assessment Observation is passed only by a submitted formal observation
+// deemed competent (any one of them). If the latest is Not Yet Competent and none has passed,
+// the key + "|nyc" flag is set so the checklist can show it and ask for a competent re-do.
 function assessmentObsFromObservations(observations) {
+  const m = {};
   const latest = {};
   (observations || []).forEach(o => {
     if (o.status === "draft" || o.sessionType !== "formal" || !o.coachId) return;
     const k = assessmentObsKey(o.coachId, o.courseNumber, o.formalCourseName);
     const t = new Date(o.date || 0).getTime();
-    if (!latest[k] || t >= latest[k].t) latest[k] = { t, ok: o.assessmentOutcome !== "Not Yet Competent" };
-    if (o.diplomaBlock) {
-      const kb = k + "|" + o.diplomaBlock;
-      if (!latest[kb] || t >= latest[kb].t) latest[kb] = { t, ok: o.assessmentOutcome !== "Not Yet Competent" };
-    }
+    const competent = !!o.assessmentOutcome && o.assessmentOutcome !== "Not Yet Competent";
+    const keys = [k];
+    if (o.diplomaBlock) keys.push(k + "|" + o.diplomaBlock);
+    keys.forEach(kk => {
+      if (competent) m[kk] = true;
+      if (!latest[kk] || t >= latest[kk].t) latest[kk] = { t, nyc: !competent };
+    });
   });
-  const m = {};
-  Object.keys(latest).forEach(k => { m[k] = latest[k].ok; });
+  Object.keys(latest).forEach(k => { if (!m[k] && latest[k].nyc) m[k + "|nyc"] = true; });
   return m;
 }
 // A Diploma has one Assessment Observation per block ("Assessment Observation – Block 1"),
@@ -844,7 +849,11 @@ function assessmentObsBlockDone(record, block) {
 function assessmentObsDone(record) {
   const blocks = assessmentObsBlocksFor(record);
   if (blocks.length) return blocks.every(b => assessmentObsBlockDone(record, b));
-  return !!record.assessmentObservationDone || !!ASSESSMENT_OBS[assessmentObsKey(record.coachId, record.courseNumber, record.courseTitle)];
+  // No manual tick any more: only a submitted, competent formal observation passes it.
+  return !!ASSESSMENT_OBS[assessmentObsKey(record.coachId, record.courseNumber, record.courseTitle)];
+}
+function assessmentObsNyc(record) {
+  return !assessmentObsDone(record) && !!ASSESSMENT_OBS[assessmentObsKey(record.coachId, record.courseNumber, record.courseTitle) + "|nyc"];
 }
 // Highest course level a CET can present (covers the levels below it).
 const CET_PRESENT_LEVELS = [
@@ -969,7 +978,7 @@ function courseworkItemsRaw(record, coachTopics, team) {
     const blocks = assessmentObsBlocksFor(record);
     const observationItems = blocks.length
       ? blocks.map(b => ({ label: assessmentObsLabelFor(b), done: assessmentObsBlockDone(record, b), outcome: "", group: "observation" }))
-      : hasAssessmentObs(record) ? [{ label: ASSESSMENT_OBS_LABEL, done: assessmentObsDone(record), outcome: "", group: "observation" }] : [];
+      : hasAssessmentObs(record) ? [{ label: ASSESSMENT_OBS_LABEL, done: assessmentObsDone(record), outcome: assessmentObsNyc(record) ? "Not Yet Competent" : "", group: "observation" }] : [];
     // A Diploma has no Online Modules / Formative Assessment items.
     const moduleItems = isADiploma(record.courseTitle) ? [] : [onlineModulesItem, formativeAssessmentItem];
     return [...observationItems, ...sessionItems, ...fixedItems, ...moduleItems];
@@ -1002,7 +1011,7 @@ function applyCourseworkToggle(task, label, coachTopics) {
     updated.formativeAssessmentDone = !task.formativeAssessmentDone;
   } else if (isBDiploma(task.courseTitle) || isADiploma(task.courseTitle)) {
     if (isAssessmentObsLabel(label)) {
-      // Ticked automatically by a submitted observation; the manual tick covers one done off-system.
+      // B Diploma: observation-driven only (a submitted observation deemed competent); no manual tick.
       const blk = assessmentObsBlockOf(label);
       if (blk) {
         const manual = { ...task, assessmentObsBlocks: { ...(task.assessmentObsBlocks || {}), [blk]: false }, assessmentObservationDone: false };
@@ -1010,8 +1019,7 @@ function applyCourseworkToggle(task, label, coachTopics) {
         updated.assessmentObsBlocks = { ...(task.assessmentObsBlocks || {}), [blk]: !(task.assessmentObsBlocks || {})[blk] };
         if (blk === DIPLOMA_BLOCK_OPTIONS_A[0]) updated.assessmentObservationDone = false;
       } else {
-        if (assessmentObsDone({ ...task, assessmentObservationDone: false })) return task;
-        updated.assessmentObservationDone = !task.assessmentObservationDone;
+        return task; // observation-driven only, no manual tick
       }
     } else if (topics.includes(label)) {
       updated.sessionPlansDone = { ...(task.sessionPlansDone || {}), [label]: !(task.sessionPlansDone || {})[label] };
@@ -8091,7 +8099,6 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
     } else if (isCDiploma(f.courseTitle)) {
       if (f.practicalSessionOutcome !== "Not Yet Competent") flags.push(["practicalSessionDone"]);
     } else if (isBDiploma(f.courseTitle) || isADiploma(f.courseTitle)) {
-      if (hasAssessmentObs(f)) flags.push(["assessmentObservationDone"]);
       flags.push(["goalscoringPresentationDone"], ["gamePlanDone"], ["analysisSessionPlanDone"],
         ["annualPlanDone"], ["sixWeekCycleDone"], ["fcDetailsDone"]);
       if (isBDiploma(f.courseTitle)) flags.push(["coachingSession25MinDone"]);
@@ -8393,6 +8400,28 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
   // be corrected in one action instead of editing each record by hand.
   const [bulkCourseNumberInputs, setBulkCourseNumberInputs] = useState({});
   const [bulkMfInputs, setBulkMfInputs] = useState({});
+  // Rename a course after it was added (server-side: updates records, access lists, etc.).
+  const [renameFor, setRenameFor] = useState(null); // course number being renamed
+  const [renameValue, setRenameValue] = useState("");
+  const [renameName, setRenameName] = useState("");
+  const [renamePin, setRenamePin] = useState("");
+  const [renameErr, setRenameErr] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const canRenameCourses = session && session.kind === "admin" && ["master", "lead", "coordinator"].includes(session.tier);
+  async function submitRename() {
+    const next = tidyCourseText(renameValue);
+    if (!next) { setRenameErr("Enter the new Course Number / Name."); return; }
+    setRenameBusy(true); setRenameErr("");
+    try {
+      const res = await fetch("/api/admin/rename-course", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameName, pin: renamePin, courseNumber: renameFor, newCourseNumber: next }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { setRenameErr(j.error || "Could not rename the course."); setRenameBusy(false); return; }
+      window.location.reload(); // everything keyed by the old name is reloaded under the new one
+    } catch (e) { setRenameErr("Could not reach the server."); setRenameBusy(false); }
+  }
   const [savingCandidatePdfId, setSavingCandidatePdfId] = useState(null);
   const [savingCourseReportPdf, setSavingCourseReportPdf] = useState(null);
 
@@ -9346,7 +9375,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                       get: () => assessmentObsBlockDone(form, b),
                       set: () => setForm(prev => ({ ...prev, assessmentObsBlocks: { ...(prev.assessmentObsBlocks || {}), [b]: !assessmentObsBlockDone(prev, b) }, ...(b === DIPLOMA_BLOCK_OPTIONS_A[0] ? { assessmentObservationDone: false } : {}) })),
                     }))
-                  : hasAssessmentObs(form) ? [{ label: ASSESSMENT_OBS_LABEL, key: "assessmentObservationDone" }] : []),
+                  : hasAssessmentObs(form) ? [{ label: ASSESSMENT_OBS_LABEL, key: "assessmentObservationDone", get: () => assessmentObsDone(form), set: () => {}, readOnly: true }] : []),
                 { label: "Goalscoring Presentation", key: "goalscoringPresentationDone", extra: form.team ? <span className="text-xs text-slate-500">({form.team})</span> : null },
                 { label: "Game Plan", key: "gamePlanDone" },
                 { label: "Analysis Session Plan", key: "analysisSessionPlanDone" },
@@ -9358,7 +9387,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                     <span>{newLabelDisplay(form, item.label, [])}</span>
                     <span className="flex items-center gap-2">
                       {item.extra}
-                      <input type="checkbox" checked={item.get ? item.get() : form[item.key]} onChange={() => item.set ? item.set() : setField(item.key, !form[item.key])} className="rounded border-slate-300" />
+                      <input type="checkbox" checked={item.get ? item.get() : form[item.key]} disabled={!!item.readOnly} title={item.readOnly ? "Passed automatically by a submitted observation deemed competent" : undefined} onChange={() => item.set ? item.set() : setField(item.key, !form[item.key])} className="rounded border-slate-300 disabled:opacity-60" />
                     </span>
                   </label>
                   {!(item.get ? item.get() : form[item.key]) && (
@@ -9953,6 +9982,12 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                               <Trash2 className="w-3.5 h-3.5" /> Delete Selected ({groupSelectedCount})
                             </button>
                           )}
+                          {g.courseNumber && canRenameCourses && (
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setRenameFor(g.courseNumber); setRenameValue(g.courseNumber); setRenameName(session.name || ""); setRenamePin(""); setRenameErr(""); }}
+                              className="text-xs font-semibold text-slate-600 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 whitespace-nowrap">
+                              Rename
+                            </button>
+                          )}
                           {g.courseNumber && (isBDiploma(g.courseTitle) || isADiploma(g.courseTitle)) && (
                             <label onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap cursor-pointer" title="Use the numbered checklist for this course: 'Presentation' and 'Session 1 – topic' to 'Session 4 – topic', instead of 'Goalscoring Presentation' and the plain topic names">
                               <input type="checkbox" checked={!!(newLabelCourses || {})[g.courseNumber]}
@@ -10044,6 +10079,26 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                               Apply
                             </button>
                             <p className="text-xs text-indigo-500 w-full">This moves these records into that course's group and re-enables auto-fill in New Observation.</p>
+                          </div>
+                        </div>
+                      )}
+                      {renameFor && renameFor === g.courseNumber && (
+                        <div className="px-4 pb-3 -mt-1">
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 space-y-2">
+                            <p className="text-xs text-slate-700 font-medium">Rename this course. Candidates, observations, closed-course status and Course Admin / CET access all move to the new name.</p>
+                            <input value={renameValue} onChange={e => setRenameValue(e.target.value)} placeholder="New Course Number / Name"
+                              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white" />
+                            <div className="flex gap-1.5 flex-wrap">
+                              <input value={renameName} onChange={e => setRenameName(e.target.value)} placeholder="Admin name"
+                                className="flex-1 min-w-[8rem] border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white" />
+                              <input type="password" inputMode="numeric" maxLength={4} value={renamePin} onChange={e => setRenamePin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                                onKeyDown={e => { if (e.key === "Enter") submitRename(); }} placeholder="PIN"
+                                className="w-20 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-center tracking-widest bg-white" />
+                              <button onClick={submitRename} disabled={renameBusy || !renameValue.trim() || !renamePin}
+                                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:text-slate-300 whitespace-nowrap">{renameBusy ? "Renaming…" : "Rename"}</button>
+                              <button onClick={() => setRenameFor(null)} className="text-xs text-slate-500 hover:text-slate-700 whitespace-nowrap">Cancel</button>
+                            </div>
+                            {renameErr && <p className="text-[10px] text-red-600">{renameErr}</p>}
                           </div>
                         </div>
                       )}
