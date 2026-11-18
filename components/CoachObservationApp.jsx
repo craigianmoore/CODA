@@ -422,6 +422,8 @@ function diplomaBlocksFor(courseTitle, recordOrRecords) {
 // Classroom engagement, ranked 0-3, recorded per block.
 const ENGAGEMENT_LEVELS = [0, 1, 2, 3];
 const ENGAGEMENT_TITLE = "Classroom engagement (0 = not engaged, 3 = highly engaged)";
+// Only A Diploma records classroom engagement (B and C don't); any already stored on B/C is hidden.
+const hasEngagement = (rec) => !!rec && isADiploma(rec.courseTitle);
 
 // CET Assessment — FV's own tool for assessing a CET's coaching-conversation
 // and session-design practice, distinct from the coach observation rubric.
@@ -6223,7 +6225,7 @@ function buildCourseReportHtml(group, coaches, incompleteOnly) {
     const blockOpts = blockOptionsFor(t);
     const statuses = t.blockStatuses || {};
     const trackingRow = blockOpts.length > 0
-      ? `<p style="font-size:12px;margin:0 0 10px;color:#475569;">Progress Tracking: ${blockOpts.map(b => `${esc(b)}: ${esc(normProgress(statuses[b]) || "not set")}${(t.blockEngagement || {})[b] !== undefined ? ` (engagement ${(t.blockEngagement || {})[b]}/3)` : ""}`).join(" · ")}</p>`
+      ? `<p style="font-size:12px;margin:0 0 10px;color:#475569;">Progress Tracking: ${blockOpts.map(b => `${esc(b)}: ${esc(normProgress(statuses[b]) || "not set")}${hasEngagement(t) && (t.blockEngagement || {})[b] !== undefined ? ` (engagement ${(t.blockEngagement || {})[b]}/3)` : ""}`).join(" · ")}</p>`
       : "";
     return `
       <div data-pdf-nosplit="1" style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:10px;">
@@ -6286,7 +6288,7 @@ function buildOutstandingCandidateHtml(task, coach) {
       ? `<table style="width:100%;border-collapse:collapse;font-size:13px;">${outstandingRows}</table>`
       : '<p style="font-size:13px;color:#059669;font-weight:600;">Everything is complete.</p>'}
     ${(() => {
-      const eng = task.blockEngagement || {};
+      const eng = hasEngagement(task) ? (task.blockEngagement || {}) : {};
       const blockNoteEntries = [...new Set([...Object.keys(task.blockNotes || {}), ...Object.keys(eng)])]
         .filter(block => ((task.blockNotes || {})[block] || "").trim() || eng[block] !== undefined)
         .sort()
@@ -9090,7 +9092,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                               : s === "Needs Assistance" ? "bg-red-100 text-red-700 border-red-300"
                               : "bg-amber-100 text-amber-700 border-amber-300"
                             }`}>
-                              {b.replace("Block ", "B")}: {s || "not set"}{(t.blockEngagement || {})[b] !== undefined ? ` · Eng ${(t.blockEngagement || {})[b]}/3` : ""}
+                              {b.replace("Block ", "B")}: {s || "not set"}{hasEngagement(t) && (t.blockEngagement || {})[b] !== undefined ? ` · Eng ${(t.blockEngagement || {})[b]}/3` : ""}
                             </span>
                           );
                         })}
@@ -10475,7 +10477,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                         </button>
                                                       ))}
                                                     </div>
-                                                    <div className="flex items-center gap-1.5 mt-1.5" title={ENGAGEMENT_TITLE}>
+                                                    {hasEngagement(t) && <div className="flex items-center gap-1.5 mt-1.5" title={ENGAGEMENT_TITLE}>
                                                       <span className="text-[10px] font-semibold text-violet-600">Classroom engagement</span>
                                                       {ENGAGEMENT_LEVELS.map(n => (
                                                         <button key={n} type="button" disabled={locked} onClick={() => setBlockEngagement(t, block, n)}
@@ -10485,7 +10487,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                           {n}
                                                         </button>
                                                       ))}
-                                                    </div>
+                                                    </div>}
                                                     {status && (
                                                       <div className="mt-1.5">
                                                         <textarea
