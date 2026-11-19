@@ -840,9 +840,11 @@ const ASSESSMENT_OBS_SEP = " – ";
 function assessmentObsLabelFor(block) { return block ? ASSESSMENT_OBS_LABEL + ASSESSMENT_OBS_SEP + block : ASSESSMENT_OBS_LABEL; }
 function isAssessmentObsLabel(label) { return label === ASSESSMENT_OBS_LABEL || String(label || "").startsWith(ASSESSMENT_OBS_LABEL + ASSESSMENT_OBS_SEP); }
 function assessmentObsBlockOf(label) { return label === ASSESSMENT_OBS_LABEL ? "" : String(label || "").slice((ASSESSMENT_OBS_LABEL + ASSESSMENT_OBS_SEP).length); }
-// A Diploma has no Assessment Observation item at all (B Diploma keeps its single one).
+// No course has a separate Assessment Observation checklist item any more (it was holding back
+// completed coaches). The requirement to pass is unchanged: each B Diploma session must be
+// observed and deemed competent, which is what the session items in the checklist track.
 function assessmentObsBlocksFor(record) { return []; }
-function hasAssessmentObs(record) { return isBDiploma(record.courseTitle); }
+function hasAssessmentObs(record) { return false; }
 function assessmentObsBlockDone(record, block) {
   if ((record.assessmentObsBlocks || {})[block]) return true;
   if (block === DIPLOMA_BLOCK_OPTIONS_A[0] && record.assessmentObservationDone) return true;
