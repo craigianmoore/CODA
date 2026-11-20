@@ -674,7 +674,7 @@ function ItemObsLink({ observations, record, label, text, onViewReport, onEditDr
   );
 }
 
-const CORRESPONDENCE_TYPES = ["Outstanding items", "Course completed", "Video resubmission", "Extension / deadline", "Other"];
+const CORRESPONDENCE_TYPES = ["Items outstanding", "Course completed", "Video resubmission", "Extension / deadline", "Other"];
 
 // Correspondence only opens once the course itself is over (attendance 100%).
 function correspondenceOpen(task) {
@@ -690,7 +690,7 @@ function suggestedCorrespondence(task, coachTopics) {
   const course = `${task.courseTitle}${task.courseNumber ? ` (#${task.courseNumber})` : ""}`;
   const first = (task.coachName || "").split(" ")[0] || "coach";
   if (total > 0 && done < total) {
-    return { type: "Outstanding items", subject: `${course} - outstanding items`,
+    return { type: "Items outstanding", subject: `${course} - items outstanding`,
       body: `Hi ${first},\n\nThanks for attending ${course}. To complete the course you still need to finish:\n\n${outstanding.map(l => `- ${l}`).join("\n")}\n\nPlease let me know if you have any questions.\n\nKind regards` };
   }
   if (nyc) {
@@ -6275,7 +6275,7 @@ function buildOutstandingCandidateHtml(task, coach) {
   const outstandingRows = outstanding.map(i => {
     return `<tr><td style="padding:6px 8px;border:1px solid #ddd;">☐ ${itemLabelHtml(i)}${i.outcome === "Not Yet Competent" ? ` <span style="color:#64748b;font-size:12px;">(Not Yet Competent — needs a re-observation)</span>` : ""}${itemNoteHtml(task, i.label)}</td></tr>`;
   }).join("");
-  return `<html><head><title>${esc(task.coachName)} - Outstanding Items</title></head><body style="margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1e293b;padding:28px;">
+  return `<html><head><title>${esc(task.coachName)} - Items Outstanding</title></head><body style="margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1e293b;padding:28px;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:2px solid #0f172a;padding-bottom:16px;margin-bottom:20px;">
       <div style="width:44px;height:44px;border-radius:9px;background:#fff;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;"><img src="/api/logo-proxy?url=${encodeURIComponent(memberFederationLogo(task.memberFederation))}" alt="${esc((MEMBER_FEDERATIONS.find(m => m.key === task.memberFederation) || {}).label || "Football Victoria")} logo" style="max-width:100%;max-height:100%;object-fit:contain;" /></div>
       <div style="flex:1;">
@@ -10277,7 +10277,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
                                                   {corrLog.map(e => (
                                                     <li key={e.id} className="flex items-start justify-between gap-2 text-xs text-slate-600 bg-white border border-sky-100 rounded-lg px-2.5 py-1.5">
                                                       <span>
-                                                        <strong>{e.type}</strong> · {e.date ? new Date(e.date).toLocaleDateString("en-GB") : ""}{e.by ? ` · ${e.by}` : ""}
+                                                        <strong>{e.type === "Outstanding items" ? "Items outstanding" : e.type}</strong> · {e.date ? new Date(e.date).toLocaleDateString("en-GB") : ""}{e.by ? ` · ${e.by}` : ""}
                                                         {e.note && <span className="block text-slate-500">{e.note}</span>}
                                                       </span>
                                                       <button type="button" onClick={() => deleteCorrespondence(t, e.id)} className="text-slate-300 hover:text-red-600 shrink-0" title="Remove entry">
