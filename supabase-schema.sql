@@ -54,8 +54,8 @@ alter table kv_settings enable row level security;
 -- Admin PINs/lockouts are server-only (see supabase-migrations/2026-11-13-private-admin-settings.sql).
 create policy "kv_settings open except admin keys" on kv_settings
   for all
-  using (key not in ('adminSettings', 'adminLockouts', 'cetAccess'))
-  with check (key not in ('adminSettings', 'adminLockouts', 'cetAccess'));
+  using (key not in ('adminSettings', 'adminLockouts', 'cetAccess', 'activityLog', 'activityLogApp'))
+  with check (key not in ('adminSettings', 'adminLockouts', 'cetAccess', 'activityLog', 'activityLogApp'));
 
 -- Trial users: named PIN access for your CET trial group.
 -- You add/remove rows here any time — no redeploy needed.

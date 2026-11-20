@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { logActivity } from "../../../../lib/admin/activityLog";
 import { adminClient, authenticate, sameOrigin } from "../../../../lib/admin/server";
 import { loadCetAccess, saveCetAccess, loadCourseMfMap, applyCetAccessChange } from "../../../../lib/admin/cetAccess";
 
 export const dynamic = "force-dynamic";
 const NS = { "Cache-Control": "no-store" };
+const clipName = (v) => String(v || "").slice(0, 80);
 const fail = (e) => (e && e.code === "NOT_CONFIGURED"
   ? NextResponse.json({ error: e.message }, { status: 503, headers: NS })
   : NextResponse.json({ error: "Server error." }, { status: 500, headers: NS }));
@@ -38,6 +40,8 @@ export async function POST(request) {
     if (r.error) return NextResponse.json({ error: r.error, }, { status: r.status, headers: NS });
     const next = { ...all, [cetId]: r.grant };
     await saveCetAccess(sb, next);
+    const g = r.grant || {};
+    await logActivity(sb, { who: a.admin.name, role: a.admin.role, action: "CET course access", detail: `${clipName(body.cetName) || cetId}: courses [${(g.assignedCourseNumbers || []).join(", ")}]${(g.coordinatorMfs || []).length ? `, coordinator of [${g.coordinatorMfs.join(", ")}]` : ""}` });
     return NextResponse.json({ ok: true, grants: next }, { headers: NS });
   } catch (e) { return fail(e); }
 }

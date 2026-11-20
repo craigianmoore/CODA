@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logActivity, diffSettings } from "../../../../lib/admin/activityLog";
 import { adminClient, authenticate, applySettingsChange, loadPrivateSettings, kvSet, toDirectory, sameOrigin } from "../../../../lib/admin/server";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export async function POST(request) {
     const r = applySettingsChange(a.admin, stored, body.settings, body.pins);
     if (r.error) return NextResponse.json({ error: r.error }, { status: r.status, headers: NS });
     await kvSet(sb, "adminSettings", r.settings);
+    for (const d of diffSettings(stored, r.settings)) await logActivity(sb, { who: a.admin.name, role: a.admin.role, action: "Admin settings", detail: d });
     return NextResponse.json({ ok: true, settings: toDirectory(r.settings) }, { headers: NS });
   } catch (e) {
     if (e && e.code === "NOT_CONFIGURED") return NextResponse.json({ error: e.message }, { status: 503, headers: NS });
