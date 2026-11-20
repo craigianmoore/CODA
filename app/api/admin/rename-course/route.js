@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logActivity } from "../../../../lib/admin/activityLog";
 import { adminClient, authenticate, sameOrigin } from "../../../../lib/admin/server";
 import { renameCourse } from "../../../../lib/admin/renameCourse";
 
@@ -16,6 +17,7 @@ export async function POST(request) {
     if (a.error) return NextResponse.json({ error: a.error }, { status: a.status, headers: NS });
     const r = await renameCourse(adminClient(), a.admin, body.courseNumber, body.newCourseNumber);
     if (r.error) return NextResponse.json({ error: r.error }, { status: r.status, headers: NS });
+    await logActivity(adminClient(), { who: a.admin.name, role: a.admin.role, action: "Renamed course", detail: `${body.courseNumber} → ${body.newCourseNumber}` });
     return NextResponse.json(r, { headers: NS });
   } catch (e) {
     return NextResponse.json({ error: e && e.code === "NOT_CONFIGURED" ? e.message : "Server error." }, { status: e && e.code === "NOT_CONFIGURED" ? 503 : 500, headers: NS });

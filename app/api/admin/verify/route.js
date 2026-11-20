@@ -11,7 +11,7 @@ export async function POST(request) {
   let body = {};
   try { body = await request.json(); } catch {}
   try {
-    const r = await authenticate(body.name, body.pin);
+    const r = await authenticate(body.name, body.pin, typeof body.purpose === "string" ? body.purpose.slice(0, 80) : "");
     if (r.error) return NextResponse.json({ error: r.error, ...(r.lockedUntil ? { lockedUntil: r.lockedUntil } : {}) }, { status: r.status, headers: NS });
     return NextResponse.json({ ok: true, admin: publicAdmin(r.admin) }, { headers: NS });
   } catch (e) {

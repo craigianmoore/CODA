@@ -1380,7 +1380,7 @@ function adminHasCourseAccess(adminMatch, courseNumber, mfKey) {
 // Admin PIN checks run on the server (/api/admin/verify): it holds the PINs, the
 // support key and the lockout. Resolves { match } (the admin's role and scope,
 // never a PIN) or { match: null, error, status }.
-async function verifyAdmin(name, pin) {
+async function verifyAdmin(name, pin, purpose) {
   const n = (name || "").trim();
   const p = (pin || "").trim();
   if (!n || !p) return { match: null, error: "Enter your name and PIN.", status: 400 };
@@ -1388,7 +1388,7 @@ async function verifyAdmin(name, pin) {
     const res = await fetch("/api/admin/verify", {
       method: "POST", credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: n, pin: p }),
+      body: JSON.stringify({ name: n, pin: p, purpose: purpose || "" }),
     });
     const j = await res.json().catch(() => ({}));
     const lockKey = n.toLowerCase();
@@ -2075,7 +2075,57 @@ async function loadBinnedItemsWithPurgeSb(table) {
   return binned.filter(item => now - new Date(item.deletedAt).getTime() <= BIN_RETENTION_MS);
 }
 
+// ---- Activity log (app-reported) ----------------------------------------
+// Who is using the app right now, for the activity log. Set from the sign-in
+// session; entries are tagged app-reported on the server because the browser
+// writes data straight to the database and the server cannot verify those.
+let ACTIVITY_WHO = null;
+function setActivityWho(session) {
+  if (!session || !session.name) { ACTIVITY_WHO = null; return; }
+  ACTIVITY_WHO = { who: String(session.name), role: session.kind === "cet" ? "cet" : (session.tier || "admin") };
+}
+function reportActivity(action, detail) {
+  if (typeof window === "undefined" || !ACTIVITY_WHO) return;
+  try {
+    fetch("/api/activity", {
+      method: "POST", credentials: "same-origin", keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...ACTIVITY_WHO, action, detail: String(detail || "").slice(0, 280) }),
+    }).catch(() => {});
+  } catch (e) {}
+}
+const ACTIVITY_TABLE_LABEL = { observations: "observation", cets: "CET", coaches: "coach", courses: "course", completed_tasks: "course record", cet_assessments: "CET assessment" };
+function obsBrief(o) {
+  return [o.coachName || o.coachId, o.courseNumber || o.formalCourseName, o.sessionTopic].filter(Boolean).join(" · ");
+}
+// Compares what is about to be written with what was there and reports it.
+function reportCollectionChange(table, oldArray, newArray) {
+  if (!ACTIVITY_WHO) return;
+  try {
+    const label = ACTIVITY_TABLE_LABEL[table];
+    if (!label) return;
+    const oldById = new Map((oldArray || []).map(i => [i.id, i]));
+    const newIds = new Set(newArray.map(i => i.id));
+    const removed = (oldArray || []).filter(i => !newIds.has(i.id));
+    if (removed.length) {
+      const names = removed.slice(0, 3).map(i => table === "observations" ? obsBrief(i) : (i.name || i.coachName || i.courseNumber || i.id)).join("; ");
+      const act = table === "observations" ? "Deleted observation" : table === "cets" ? "Deleted CET" : "Deleted course data";
+      reportActivity(removed.length > 5 && table !== "observations" ? "Cleared data" : act, `${removed.length} ${label}${removed.length === 1 ? "" : "s"}: ${names}${removed.length > 3 ? "…" : ""}`);
+    }
+    if (table === "observations") {
+      for (const o of newArray) {
+        const before = oldById.get(o.id);
+        if (!before) { if (o.status === "submitted") reportActivity(o.sharedSessionId ? "Submitted joint observation" : "Submitted observation", obsBrief(o)); continue; }
+        if (before.status !== "submitted" && o.status === "submitted") reportActivity(o.sharedSessionId ? "Submitted joint observation" : "Submitted observation", obsBrief(o));
+        else if (before.status === "submitted" && o.status !== "submitted") reportActivity("Reopened observation", obsBrief(o));
+        else if (o.status === "submitted" && JSON.stringify(before) !== JSON.stringify(o)) reportActivity("Edited observation", obsBrief(o));
+      }
+    }
+  } catch (e) {}
+}
+
 async function syncCollectionSb(table, oldArray, newArray) {
+  reportCollectionChange(table, oldArray, newArray);
   const newIds = new Set(newArray.map(i => i.id));
   await Promise.all(newArray.map(i => writeRecordSb(table, i)));
   // Soft-delete: anything removed from the array is marked deletedAt
@@ -2095,6 +2145,7 @@ async function syncCollectionSb(table, oldArray, newArray) {
 // added after that backup was taken (e.g. a coach added directly in the
 // live app since the export was made).
 async function mergeCollectionSb(table, newArray) {
+  reportActivity("Imported data", `${newArray.length} ${ACTIVITY_TABLE_LABEL[table] || table} record${newArray.length === 1 ? "" : "s"}`);
   await Promise.all(newArray.map(i => writeRecordSb(table, i)));
 }
 
@@ -2119,6 +2170,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   // Every tab opens at the top of the page, not wherever the previous tab was scrolled to.
   useEffect(() => { try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {} }, [tabState]);
   const [codaSession, setCodaSession] = useState(() => loadCodaSession());
+  setActivityWho(codaSession);
   // A FIFA Mentor (no CODA rights) only ever sees the FIFA Mentoring tab.
   const fifaOnly = sessionIsFifaOnly(codaSession);
   const tab = fifaOnly ? "fifa" : tabState;
@@ -2799,7 +2851,7 @@ function SignInGate({ educators, adminSettings, adminLockouts, recordAdminAttemp
 
   async function signInAsAdmin() {
     setError("");
-    const { match, error: verifyError } = await verifyAdmin(adminName, adminPin);
+    const { match, error: verifyError } = await verifyAdmin(adminName, adminPin, "Sign in");
     if (!match) {
       setError(verifyError || "Incorrect admin name or PIN.");
       return;
@@ -3316,10 +3368,12 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
   }
 
   function closeCourse(courseNumber) {
+    reportActivity("Closed course", String(courseNumber));
     saveClosedCourseNumbers([...closedCourseNumbers, courseNumber]);
   }
 
   function reopenCourse(courseNumber) {
+    reportActivity("Reopened course", String(courseNumber));
     saveClosedCourseNumbers(closedCourseNumbers.filter(n => n !== courseNumber));
   }
 
@@ -3643,6 +3697,83 @@ function CourseTrackingSections({ coaches, completedTasks, saveCompletedTasks, c
 // A banner that starts collapsed and expands on click — used in Logistics
 // to keep CETs, Courses, and Coaches out of the way until wanted. Content
 // is only actually mounted/rendered once expanded, not just visually hidden.
+// FA Admin only: the activity log (server-recorded + app-reported entries).
+function ActivityLogSection({ creds }) {
+  const [open, setOpen] = useState(false);
+  const [entries, setEntries] = useState(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [who, setWho] = useState("");
+  const [kind, setKind] = useState("all");
+  const [q, setQ] = useState("");
+  const [shown, setShown] = useState(100);
+  async function load() {
+    setBusy(true); setError("");
+    try {
+      const res = await fetch("/api/admin/activity", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: creds.name, pin: creds.pin }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setError(j.error || "Could not load the activity log.");
+      else { setEntries(j.entries || []); setShown(100); }
+    } catch (e) { setError("Could not reach the server."); }
+    setBusy(false);
+  }
+  const people = entries ? [...new Map(entries.map(e => [e.who.toLowerCase(), e])).values()].map(e => e.who).sort() : [];
+  const filtered = (entries || []).filter(e =>
+    (!who || e.who.toLowerCase() === who.toLowerCase()) &&
+    (kind === "all" || (kind === "failed" ? e.ok === false : kind === e.source)) &&
+    (!q || (e.action + " " + e.detail + " " + e.who).toLowerCase().includes(q.toLowerCase())));
+  const fmt = (t) => new Date(t).toLocaleString("en-AU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  function exportCsv() {
+    const esc = (v) => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+    const rows = [["When", "Initials", "Name", "Role", "Action", "Detail", "Source", "Failed"], ...filtered.map(e => [new Date(e.t).toISOString(), e.initials, e.who, e.role, e.action, e.detail, e.source === "server" ? "server-recorded" : "app-reported", e.ok === false ? "yes" : ""])];
+    const blob = new Blob([rows.map(r => r.map(esc).join(",")).join("\n")], { type: "text/csv" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "coda-activity-log.csv"; a.click();
+  }
+  return (
+    <div className="border-t border-slate-100 pt-3">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <p className="text-sm font-semibold text-slate-800">Activity log (FA Admin only)</p>
+        {!open && <button onClick={() => { setOpen(true); load(); }} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Open log</button>}
+      </div>
+      <p className="text-xs text-slate-500 mb-2">Who did what, by initials. <b>Server-recorded</b> entries (sign-ins, wrong PINs, admin and access changes, course renames) are written by the server and can be trusted. <b>App-reported</b> entries (deletes, imports, submits, edits, close/reopen) come from the browser, so treat them as a good guide rather than proof.</p>
+      {open && (
+        <div>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <select value={who} onChange={e => { setWho(e.target.value); setShown(100); }} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs">
+              <option value="">Everyone</option>
+              {people.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <select value={kind} onChange={e => { setKind(e.target.value); setShown(100); }} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs">
+              <option value="all">All entries</option>
+              <option value="server">Server-recorded</option>
+              <option value="app">App-reported</option>
+              <option value="failed">Failed sign-ins</option>
+            </select>
+            <input value={q} onChange={e => { setQ(e.target.value); setShown(100); }} placeholder="Search…" className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs flex-1 min-w-[8rem]" />
+            <button onClick={load} disabled={busy} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">{busy ? "Loading…" : "Refresh"}</button>
+            <button onClick={exportCsv} disabled={!filtered.length} className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Export CSV</button>
+            <button onClick={() => setOpen(false)} className="text-xs text-slate-500 hover:text-slate-700">Close</button>
+          </div>
+          {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+          {entries && !filtered.length && <p className="text-xs text-slate-500">No activity matches.</p>}
+          <div className="max-h-96 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+            {filtered.slice(0, shown).map((e, i) => (
+              <div key={e.t + "-" + i} className="flex items-start gap-2 px-2 py-1.5 text-xs">
+                <span title={e.who} className={"shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold " + (e.ok === false ? "bg-red-100 text-red-700" : "bg-indigo-100 text-indigo-700")}>{e.initials}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-slate-800"><b>{e.action}</b>{e.detail ? " — " + e.detail : ""}</p>
+                  <p className="text-slate-500">{e.who}{e.role ? " (" + e.role + ")" : ""} · {fmt(e.t)} · {e.source === "server" ? "server-recorded" : "app-reported"}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          {filtered.length > shown && <button onClick={() => setShown(shown + 200)} className="mt-2 text-xs font-semibold text-indigo-600">Show more ({filtered.length - shown} left)</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CollapsibleSection({ title, count, sectionKey, expandedSections, setExpandedSections, children }) {
   const isExpanded = expandedSections.has(sectionKey);
   return (
@@ -3696,7 +3827,7 @@ function RemoveAllBar({ label, count, onClear, warningText, adminSettings, admin
       setClearError(true);
       return;
     }
-    const { match } = await verifyAdmin(adminName, pin);
+    const { match } = await verifyAdmin(adminName, pin, "Remove data");
     if (!match) {
       setClearError(true);
       return;
@@ -3878,7 +4009,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
       setBackfillAuthError(true);
       return;
     }
-    const { match } = await verifyAdmin(backfillAuthName, backfillAuthPin);
+    const { match } = await verifyAdmin(backfillAuthName, backfillAuthPin, "Backfill records");
     if (!match || !isMasterAdmin(match)) {
       setBackfillAuthError(true);
       return;
@@ -3935,7 +4066,7 @@ function CoachesTab({ coaches, observations, saveCoaches, allObservations, saveO
       setMergeAuthError(true);
       return;
     }
-    const { match } = await verifyAdmin(mergeAuthName, mergeAuthPin);
+    const { match } = await verifyAdmin(mergeAuthName, mergeAuthPin, "Merge records");
     if (!match) {
       setMergeAuthError(true);
       return;
@@ -4773,7 +4904,7 @@ function CetTab({ educators, saveEducators, observations, adminSettings, adminLo
       setMergeAuthError(true);
       return;
     }
-    const { match } = await verifyAdmin(mergeAuthName, mergeAuthPin);
+    const { match } = await verifyAdmin(mergeAuthName, mergeAuthPin, "Merge records");
     if (!match) {
       setMergeAuthError(true);
       return;
@@ -5327,7 +5458,7 @@ function CoursesTab({ courses, saveCourses, adminSettings, adminLockouts, record
       setDupAuthError(true);
       return;
     }
-    const { match } = await verifyAdmin(dupAuthName, dupAuthPin);
+    const { match } = await verifyAdmin(dupAuthName, dupAuthPin, "Find duplicates");
     if (!match) {
       setDupAuthError(true);
       return;
@@ -5419,7 +5550,7 @@ function CoursesTab({ courses, saveCourses, adminSettings, adminLockouts, record
       setExportError(true);
       return;
     }
-    const { match } = await verifyAdmin(exportAdminName, exportPin);
+    const { match } = await verifyAdmin(exportAdminName, exportPin, "Export data");
     if (!match) {
       setExportError(true);
       return;
@@ -6383,7 +6514,7 @@ function RapaTab({ educators, adminSettings, adminLockouts, recordAdminAttempt,
 
   async function handleMasterAuth() {
     if (isLockedOut(adminLockouts, masterAuthName)) { setMasterAuthError(true); return; }
-    const { match } = await verifyAdmin(masterAuthName, masterAuthPin);
+    const { match } = await verifyAdmin(masterAuthName, masterAuthPin, "FA Admin tools");
     if (!match || !isMasterAdmin(match)) {
       setMasterAuthError(true);
       return;
@@ -7311,7 +7442,7 @@ function CetAssessmentTab({ educators, saveEducators, courses, cetAssessments, s
       setAdminAuthError(true);
       return;
     }
-    const { match } = await verifyAdmin(adminAuthName, adminAuthPin);
+    const { match } = await verifyAdmin(adminAuthName, adminAuthPin, "Admin tools");
     if (!match || isCourseAdmin(match)) {
       setAdminAuthError(true);
       return;
@@ -7901,7 +8032,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       setDupTaskAuthError(true);
       return;
     }
-    const { match } = await verifyAdmin(dupTaskAuthName, dupTaskAuthPin);
+    const { match } = await verifyAdmin(dupTaskAuthName, dupTaskAuthPin, "Duplicate task");
     if (!match) {
       setDupTaskAuthError(true);
       return;
@@ -8497,7 +8628,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       setProgressAuthError(true);
       return;
     }
-    const { match } = await verifyAdmin(progressAuthName, progressAuthPin);
+    const { match } = await verifyAdmin(progressAuthName, progressAuthPin, "Progress tracking");
     if (!match) {
       setProgressAuthError(true);
       return;
@@ -8681,7 +8812,7 @@ function CompletedTasksTab({ coaches, courses, saveCoaches, completedTasks, save
       setNycRepairAuthError(true);
       return;
     }
-    const { match } = await verifyAdmin(nycRepairAuthName, nycRepairAuthPin);
+    const { match } = await verifyAdmin(nycRepairAuthName, nycRepairAuthPin, "NYC repair");
     if (!match || !isMasterAdmin(match)) {
       setNycRepairAuthError(true);
       return;
@@ -13009,7 +13140,7 @@ function ReportView({ observations, reportId, coaches, onBack, onEditDraft, onSu
     setReopenError("");
     setReopening(true);
     try {
-      const { match, error: verifyError } = await verifyAdmin(reopenName, reopenPin);
+      const { match, error: verifyError } = await verifyAdmin(reopenName, reopenPin, "Reopen course");
       if (!match) {
         setReopenError(verifyError || "Incorrect admin name or PIN.");
         setReopening(false);
@@ -13929,7 +14060,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
       setPanelAuthError(true);
       return;
     }
-    const { match } = await verifyAdmin(panelName, panelPin);
+    const { match } = await verifyAdmin(panelName, panelPin, "Open admin panel");
     if (!match) {
       setPanelAuthError(true);
       return;
@@ -14403,6 +14534,8 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                 })()}
               </div>
               )}
+
+              {iAmMaster && <ActivityLogSection creds={panelCredsRef.current} />}
 
               {(iAmMaster || iAmLead || iAmCoordinator) && (
                 <div className="border-t border-slate-100 pt-3">
