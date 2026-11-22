@@ -109,16 +109,16 @@ import paths in whichever file ends up at `/app` (`../../lib/supabase`
 and `../../components/CoachObservationApp` one level down from root,
 `../lib/supabase` etc. at the root itself).
 
-## FIFA Mentoring (admin-only area)
+## FIFA CE (admin-only area)
 
-A separate **FIFA Mentoring** tab (the FIFA Coach Educators' Mentoring Programme
+A separate **FIFA CE** tab (the FIFA Coach Educators' Mentoring Programme
 tracker) sits behind its own permission, independent of CODA admin rights:
 
 | Login | Sees |
 |---|---|
-| FA Admin (master) | CODA and FIFA Mentoring |
+| FA Admin (master) | CODA and FIFA CE |
 | MF Admin / Coordinator / Course Admin | CODA only, unless an FA Admin switches **FIFA: on** next to their name (History -> Admin) |
-| **FIFA Mentor** (new role, added by an FA Admin) | FIFA Mentoring only |
+| **FIFA CE** (new role, added by an FA Admin) | FIFA CE only |
 
 Same named per-person PIN as the rest of CODA. The page, its data and the FIFA
 toolkit PDFs are served only by `/api/fifa/*`, which re-checks the permission on
@@ -144,7 +144,7 @@ that exact change: only an FA Admin can change roles, other admins' PINs, FIFA a
 or limits; an MF Admin can manage Course Admins/Coordinators in their own federation;
 anyone can change their own PIN).
 
-Needs `SUPABASE_SERVICE_ROLE_KEY` (already required for FIFA Mentoring). Optional:
+Needs `SUPABASE_SERVICE_ROLE_KEY` (already required for FIFA CE). Optional:
 
 - `SUPPORT_ACCESS_KEY` - the recovery PIN that signs in as FA Admin. Still works with the
   old `NEXT_PUBLIC_SUPPORT_ACCESS_KEY` name; prefer the new name so it is not exposed to
