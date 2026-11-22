@@ -3037,18 +3037,18 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
           )}
         </div>
         <nav className="flex items-center gap-2 pb-2 -mb-px">
-          <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">
+          <div className="flex items-center flex-wrap gap-x-0.5 flex-1 min-w-0">
           {visibleItems.map(it => {
             const Icon = it.icon;
             const active = tab === it.id || (tab === "report" && it.id === "history");
             return (
               <Fragment key={it.id}>
                 {/* Divider: CET Observation and RAPA are a separate operational area from the course tabs */}
-                {(it.id === "cetAssessment" || it.id === "fifa") && !sessionIsFifaOnly(session) && <span aria-hidden="true" className="self-center h-6 w-0.5 bg-slate-500 mx-1.5 shrink-0" />}
+                {(it.id === "cetAssessment" || it.id === "fifa") && !sessionIsFifaOnly(session) && <span aria-hidden="true" className="self-center h-6 w-0.5 bg-slate-500 mx-1 shrink-0" />}
                 <button
                   onClick={() => setTab(it.id)}
                   title={it.fullLabel || it.label}
-                  className={`flex items-center gap-1.5 px-2.5 py-2 text-sm font-medium rounded-t-lg whitespace-nowrap border-b-2 transition-colors ${
+                  className={`flex items-center gap-1 px-2 py-2 text-sm font-medium rounded-t-lg whitespace-nowrap border-b-2 transition-colors ${
                     active ? "border-slate-900 text-slate-900" : "border-transparent text-slate-500 hover:text-slate-600"
                   }`}
                 >
