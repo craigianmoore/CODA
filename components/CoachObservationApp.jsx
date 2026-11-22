@@ -1320,18 +1320,23 @@ function migrateAdminSettings(raw) {
 // specific course numbers within one federation — narrower than Lead.
 // Admin list order: FA Admins first, then each Member Federation (A-Z) with its
 // MF Admin, MF Coordinator, then Course Admins; FIFA Mentors last. Then by name.
+// Which group an admin is listed under: "master", "fifa", an MF key, or "".
+function adminGroupKey(a) {
+  if (a.role === "master") return "master";
+  if (a.role === "fifa") return "fifa";
+  const mfs = [...(a.memberFederations || [])].sort((x, y) => MEMBER_FEDERATIONS.findIndex(m => m.key === x) - MEMBER_FEDERATIONS.findIndex(m => m.key === y));
+  const others = mfs.filter(k => k !== "FA");
+  if (mfs.includes("FA")) return others.length === 1 ? others[0] : "FA";
+  return mfs[0] || "";
+}
 function sortAdminsByMf(admins) {
   const roleRank = { master: 0, lead: 1, coordinator: 2, course: 3, fifa: 4 };
   const mfRank = (a) => {
-    if (a.role === "master") return -1;
-    if (a.role === "fifa") return 999;
-    // Group under their one MF when they cover a single MF plus FA; under FA
-    // when they cover FA plus several MFs; otherwise under the first MF A-Z.
-    const mfs = a.memberFederations || [];
-    const others = mfs.filter(k => k !== "FA");
-    const group = mfs.includes("FA") ? (others.length === 1 ? [others[0]] : ["FA"]) : mfs;
-    const ranks = group.map(k => MEMBER_FEDERATIONS.findIndex(m => m.key === k)).filter(i => i >= 0);
-    return ranks.length ? Math.min(...ranks) : 998;
+    const g = adminGroupKey(a);
+    if (g === "master") return -1;
+    if (g === "fifa") return 999;
+    const i = MEMBER_FEDERATIONS.findIndex(m => m.key === g);
+    return i >= 0 ? i : 998;
   };
   return [...admins].sort((a, b) =>
     mfRank(a) - mfRank(b) ||
@@ -14615,8 +14620,20 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   {" "}Session Host: <strong>{adminSettings.sessionHostName || "—"}</strong>.
                 </p>
                 <div className="flex flex-wrap gap-2 mb-2">
-                  {sortAdminsByMf(adminSettings.admins).map((a, i) => (
-                    <span key={a.name} className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 flex items-center gap-1.5">
+                  {sortAdminsByMf(adminSettings.admins).map((a, i, arr) => (
+                    <Fragment key={a.name}>
+                    {(i === 0 || adminGroupKey(arr[i - 1]) !== adminGroupKey(a)) && (() => {
+                      const g = adminGroupKey(a);
+                      const mf = MEMBER_FEDERATIONS.find(m => m.key === g);
+                      const label = g === "master" ? "FA Admins" : g === "fifa" ? "FIFA Mentors" : g === "FA" ? "FA · multiple MFs" : (mf ? mf.key : "No federation");
+                      const color = mf ? mf.color : "#475569";
+                      return (
+                        <div className="w-full mt-1">
+                          <span className="inline-block text-[11px] font-bold px-2.5 py-0.5 rounded-full text-white" style={{ background: color }}>{label}</span>
+                        </div>
+                      );
+                    })()}
+                    <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 flex items-center gap-1.5">
                       {a.name}
                       {isSessionHost(adminSettings, a.name) && <Lock className="w-3 h-3 text-amber-600" />}
                       {a.role === "lead"
@@ -14654,6 +14671,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         </button>
                       )}
                     </span>
+                    </Fragment>
                   ))}
                 </div>
                 {confirmRemoveAdminName && (
