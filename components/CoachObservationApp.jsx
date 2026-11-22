@@ -2967,7 +2967,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
     { id: "tasks", label: "Coaches Progress", icon: ListChecks },
     { id: "logistics", label: "Logistics", icon: Settings },
     { id: "history", label: "History", icon: FileText },
-    { id: "cetAssessment", label: "CET Observation", icon: Award },
+    { id: "cetAssessment", label: "CET Obs.", fullLabel: "CET Observation", icon: Award },
     { id: "rapa", label: "RAPA", icon: ShieldAlert },
   ];
   const fifaItem = { id: "fifa", label: "FIFA CE", icon: BookOpen };
