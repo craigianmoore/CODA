@@ -1325,7 +1325,12 @@ function sortAdminsByMf(admins) {
   const mfRank = (a) => {
     if (a.role === "master") return -1;
     if (a.role === "fifa") return 999;
-    const ranks = (a.memberFederations || []).map(k => MEMBER_FEDERATIONS.findIndex(m => m.key === k)).filter(i => i >= 0);
+    // Group under their one MF when they cover a single MF plus FA; under FA
+    // when they cover FA plus several MFs; otherwise under the first MF A-Z.
+    const mfs = a.memberFederations || [];
+    const others = mfs.filter(k => k !== "FA");
+    const group = mfs.includes("FA") ? (others.length === 1 ? [others[0]] : ["FA"]) : mfs;
+    const ranks = group.map(k => MEMBER_FEDERATIONS.findIndex(m => m.key === k)).filter(i => i >= 0);
     return ranks.length ? Math.min(...ranks) : 998;
   };
   return [...admins].sort((a, b) =>
