@@ -1319,7 +1319,7 @@ function migrateAdminSettings(raw) {
 // "course" (Course Admin, appointed by Master or Lead) is scoped to
 // specific course numbers within one federation — narrower than Lead.
 // Admin list order: FA Admins first, then each Member Federation (A-Z) with its
-// MF Admin, MF Coordinator, then Course Admins; FIFA Mentors last. Then by name.
+// MF Admin, MF Coordinator, then Course Admins; FIFA CEs last. Then by name.
 // Which group an admin is listed under: "master", "fifa", an MF key, or "".
 function adminGroupKey(a) {
   if (a.role === "master") return "master";
@@ -1352,8 +1352,8 @@ function adminTier(adminMatch) {
   if (adminMatch.role === "course") return "course";
   return "master";
 }
-// FIFA Mentoring is a separate permission from CODA admin rights. FA Admins
-// (master) and FIFA Mentors (tier "fifa", no CODA access) always have it; any
+// FIFA CE is a separate permission from CODA admin rights. FA Admins
+// (master) and FIFA CEs (tier "fifa", no CODA access) always have it; any
 // other admin only if an FA Admin switched it on for them. This only decides
 // what the UI shows: /api/fifa/* re-checks it on the server for every request.
 function sessionHasFifa(session) {
@@ -2197,7 +2197,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
   useEffect(() => { try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {} }, [tabState]);
   const [codaSession, setCodaSession] = useState(() => loadCodaSession());
   setActivityWho(codaSession);
-  // A FIFA Mentor (no CODA rights) only ever sees the FIFA Mentoring tab.
+  // A FIFA CE (no CODA rights) only ever sees the FIFA CE tab.
   const fifaOnly = sessionIsFifaOnly(codaSession);
   const tab = fifaOnly ? "fifa" : tabState;
   function handleSignedIn(session) {
@@ -2892,7 +2892,7 @@ function SignInGate({ educators, adminSettings, adminLockouts, recordAdminAttemp
       fifaMentoring: match.fifaMentoring === true,
     });
     if (tier === "master" || tier === "fifa" || match.fifaMentoring === true) {
-      // Best effort: opens the FIFA Mentoring session so there is no second PIN prompt.
+      // Best effort: opens the FIFA CE session so there is no second PIN prompt.
       try {
         fetch("/api/fifa/login", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: match.name, pin: adminPin }) }).catch(() => {});
       } catch {}
@@ -2970,7 +2970,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
     { id: "cetAssessment", label: "CET Observation", icon: Award },
     { id: "rapa", label: "RAPA", icon: ShieldAlert },
   ];
-  const fifaItem = { id: "fifa", label: "FIFA Mentoring", icon: BookOpen };
+  const fifaItem = { id: "fifa", label: "FIFA CE", icon: BookOpen };
   const visibleItems = sessionIsFifaOnly(session) ? [fifaItem] : (sessionHasFifa(session) ? [...items, fifaItem] : items);
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
@@ -3030,7 +3030,7 @@ function Header({ tab, setTab, viewMode, onViewModeChange, fontScale, onFontScal
           {session && (
             <div className="flex items-center gap-1.5 ml-2 text-xs text-slate-500 shrink-0">
               <span className="hidden sm:inline">
-                {session.kind === "cet" ? session.name : `${session.name} · ${{ master: "FA Admin", lead: "MF Admin (TD/CEM)", coordinator: "MF Coordinator", course: "Course Admin", fifa: "FIFA Mentor" }[session.tier] || "Admin"}`}
+                {session.kind === "cet" ? session.name : `${session.name} · ${{ master: "FA Admin", lead: "MF Admin (TD/CEM)", coordinator: "MF Coordinator", course: "Course Admin", fifa: "FIFA CE" }[session.tier] || "Admin"}`}
               </span>
               <button onClick={onSignOut} className="font-semibold text-slate-500 hover:text-slate-600">Sign Out</button>
             </div>
@@ -14616,7 +14616,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
               <div className="border-t border-slate-100 pt-3">
                 <p className="text-sm font-semibold text-slate-800 mb-1">Admins</p>
                 <p className="text-xs text-slate-500 mb-2">
-                  Maximum {maxAdmins} admin{maxAdmins === 1 ? "" : "s"}, each with their own individual PIN. FA Admins and FIFA Mentors always have FIFA Mentoring access; other admins only when switched on.
+                  Maximum {maxAdmins} admin{maxAdmins === 1 ? "" : "s"}, each with their own individual PIN. FA Admins and FIFA CEs always have FIFA CE access; other admins only when switched on.
                   {" "}Session Host: <strong>{adminSettings.sessionHostName || "—"}</strong>.
                 </p>
                 <div className="flex flex-wrap gap-2 mb-2">
@@ -14625,7 +14625,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                     {(i === 0 || adminGroupKey(arr[i - 1]) !== adminGroupKey(a)) && (() => {
                       const g = adminGroupKey(a);
                       const mf = MEMBER_FEDERATIONS.find(m => m.key === g);
-                      const label = g === "master" ? "FA Admins" : g === "fifa" ? "FIFA Mentors" : g === "FA" ? "FA · multiple MFs" : (mf ? mf.key : "No federation");
+                      const label = g === "master" ? "FA Admins" : g === "fifa" ? "FIFA CEs" : g === "FA" ? "FA · multiple MFs" : (mf ? mf.key : "No federation");
                       const color = mf ? mf.color : "#475569";
                       return (
                         <div className="w-full mt-1">
@@ -14643,11 +14643,11 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         : a.role === "course"
                         ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.course.c }}>{ROLE_STYLE.course.sym} Course Admin: {(a.memberFederations || []).join(", ")}{(a.assignedCourseNumbers || []).length > 0 ? ` (#${(a.assignedCourseNumbers || []).join(", #")})` : ""}{coordinatorMfsOf(a).length > 0 ? ` · all courses: ${coordinatorMfsOf(a).join(", ")}` : ""}</span>
                         : a.role === "fifa"
-                        ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.fifa.c }}>{ROLE_STYLE.fifa.sym} FIFA Mentor (FIFA Mentoring only)</span>
+                        ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.fifa.c }}>{ROLE_STYLE.fifa.sym} FIFA CE (FIFA CE only)</span>
                         : <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.master.c }}>{ROLE_STYLE.master.sym} FA Admin</span>}
                       {iAmMaster && a.role !== "master" && a.role !== "fifa" && (
                         <button onClick={() => toggleFifaAccess(a.name)}
-                          title="Lets this admin open the FIFA Mentoring tab as well as their CODA access"
+                          title="Lets this admin open the FIFA CE tab as well as their CODA access"
                           className="text-[10px] font-bold text-sky-700 hover:text-sky-900 ml-1">
                           FIFA: {a.fifaMentoring ? "on" : "off"}
                         </button>
@@ -14844,9 +14844,9 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                           {ROLE_STYLE.course.sym} Course Admin{newAdminRole === "course" ? " \u2713" : ""}
                         </button>
                         <button onClick={() => { setNewAdminRole("fifa"); setNewAdminMfSelection([]); setAddAdminError(""); }} type="button"
-                          title="Can only open the FIFA Mentoring tab. No access to CODA courses, coaches or observations."
+                          title="Can only open the FIFA CE tab. No access to CODA courses, coaches or observations."
                           {...roleBtnProps("fifa", newAdminRole === "fifa", false)}>
-                          {ROLE_STYLE.fifa.sym} FIFA Mentor{newAdminRole === "fifa" ? " \u2713" : ""}
+                          {ROLE_STYLE.fifa.sym} FIFA CE{newAdminRole === "fifa" ? " \u2713" : ""}
                         </button>
                       </div>
                     )}
