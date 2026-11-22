@@ -134,6 +134,15 @@ One-off setup:
 
 Each admin only ever sees their own mentees and notes.
 
+### Mentee share link
+
+In a mentee's Overview, **Share with mentee** creates a private read-only link
+(`/m/<token>`, no login). The page shows only name, format, on-site date, progress,
+what to prepare next and the journey; never notes or mentor-only items. Links expire
+after 120 days, can be replaced or turned off at any time, and each create/off is
+written to the activity log. Setup: run `supabase-migrations/2026-11-22-fifa-mentee-share.sql`
+and upload the updated `tracker.html` (with the Share panel) to the `fifa-mentoring` bucket.
+
 ## Admin PINs are server-side
 
 Admin names, PINs and sign-in lockouts are no longer readable or writable with the
