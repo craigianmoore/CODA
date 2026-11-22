@@ -1318,6 +1318,22 @@ function migrateAdminSettings(raw) {
 // Coach Education Manager) is scoped to one or more Member Federations;
 // "course" (Course Admin, appointed by Master or Lead) is scoped to
 // specific course numbers within one federation — narrower than Lead.
+// Admin list order: FA Admins first, then each Member Federation (A-Z) with its
+// MF Admin, MF Coordinator, then Course Admins; FIFA Mentors last. Then by name.
+function sortAdminsByMf(admins) {
+  const roleRank = { master: 0, lead: 1, coordinator: 2, course: 3, fifa: 4 };
+  const mfRank = (a) => {
+    if (a.role === "master") return -1;
+    if (a.role === "fifa") return 999;
+    const ranks = (a.memberFederations || []).map(k => MEMBER_FEDERATIONS.findIndex(m => m.key === k)).filter(i => i >= 0);
+    return ranks.length ? Math.min(...ranks) : 998;
+  };
+  return [...admins].sort((a, b) =>
+    mfRank(a) - mfRank(b) ||
+    (roleRank[a.role] ?? 9) - (roleRank[b.role] ?? 9) ||
+    String(a.name).localeCompare(String(b.name)));
+}
+
 function adminTier(adminMatch) {
   if (!adminMatch) return "master";
   if (adminMatch.role === "fifa") return "fifa";
@@ -14594,7 +14610,7 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                   {" "}Session Host: <strong>{adminSettings.sessionHostName || "—"}</strong>.
                 </p>
                 <div className="flex flex-wrap gap-2 mb-2">
-                  {adminSettings.admins.map((a, i) => (
+                  {sortAdminsByMf(adminSettings.admins).map((a, i) => (
                     <span key={a.name} className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 flex items-center gap-1.5">
                       {a.name}
                       {isSessionHost(adminSettings, a.name) && <Lock className="w-3 h-3 text-amber-600" />}
