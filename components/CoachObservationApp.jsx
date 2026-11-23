@@ -2833,6 +2833,7 @@ export default function CoachObservationApp({ initialMemberFederation } = {}) {
             onDataRestored={reloadCollectionsQuietly}
             adminSettings={adminSettings}
             saveAdminSettings={saveAdminSettings}
+            closedCourseNumbers={closedCourseNumbers}
             adminLockouts={adminLockouts} recordAdminAttempt={recordAdminAttempt}
             autoOpenAdmin={historyAdminAutoOpen} onAutoOpenHandled={() => setHistoryAdminAutoOpen(false)}
             session={codaSession}
@@ -13638,7 +13639,7 @@ function DataImportTool({ onImported }) {
   );
 }
 
-function HistoryTab({ coaches, educators, observations, completedTasks, coachId, setCoachId, cetFilter, setCetFilter, onView, onClearHistory, onDeleteObservation, onDataRestored, adminSettings, saveAdminSettings, adminLockouts, recordAdminAttempt, autoOpenAdmin, onAutoOpenHandled, session }) {
+function HistoryTab({ coaches, educators, observations, completedTasks, coachId, setCoachId, cetFilter, setCetFilter, onView, onClearHistory, onDeleteObservation, onDataRestored, adminSettings, saveAdminSettings, closedCourseNumbers = [], adminLockouts, recordAdminAttempt, autoOpenAdmin, onAutoOpenHandled, session }) {
   const [courseNumberFilter, setCourseNumberFilter] = useState("");
   const [courseTypeFilter, setCourseTypeFilter] = useState("");
   const [dateFromFilter, setDateFromFilter] = useState("");
@@ -13690,6 +13691,10 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
   const [pinChangeSuccess, setPinChangeSuccess] = useState(false);
   const [editingAdminPinName, setEditingAdminPinName] = useState(null);
   const [editingAdminCoursesName, setEditingAdminCoursesName] = useState(null);
+  // Closed courses are tucked away so long-running admins don't show lines of finished courses.
+  const [showClosedFor, setShowClosedFor] = useState(() => new Set());
+  const [showClosedOptions, setShowClosedOptions] = useState(false);
+  const isClosedCourse = (n) => (closedCourseNumbers || []).some(c => String(c) === String(n));
   const [editAdminMfSelection, setEditAdminMfSelection] = useState([]);
   const [editAdminCoordMfs, setEditAdminCoordMfs] = useState([]);
   const [editAdminCourseNumbers, setEditAdminCourseNumbers] = useState([]);
@@ -14641,7 +14646,26 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                         : a.role === "coordinator"
                         ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.coordinator.c }}>{ROLE_STYLE.coordinator.sym} MF Coordinator: {(a.memberFederations || []).join(", ")}</span>
                         : a.role === "course"
-                        ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.course.c }}>{ROLE_STYLE.course.sym} Course Admin: {(a.memberFederations || []).join(", ")}{(a.assignedCourseNumbers || []).length > 0 ? ` (#${(a.assignedCourseNumbers || []).join(", #")})` : ""}{coordinatorMfsOf(a).length > 0 ? ` · all courses: ${coordinatorMfsOf(a).join(", ")}` : ""}</span>
+                        ? <><span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.course.c }}>{ROLE_STYLE.course.sym} Course Admin: {(a.memberFederations || []).join(", ")}{(() => {
+                          const all = a.assignedCourseNumbers || [];
+                          const open = all.filter(n => !isClosedCourse(n));
+                          return open.length > 0 ? ` (#${open.join(", #")})` : (all.length > 0 ? " (no open courses)" : "");
+                        })()}{coordinatorMfsOf(a).length > 0 ? ` · all courses: ${coordinatorMfsOf(a).join(", ")}` : ""}</span>
+                        {(() => {
+                          const closed = (a.assignedCourseNumbers || []).filter(isClosedCourse);
+                          if (closed.length === 0) return null;
+                          const shown = showClosedFor.has(a.name);
+                          return (
+                            <>
+                              <button type="button" onClick={() => setShowClosedFor(prev => { const nx = new Set(prev); shown ? nx.delete(a.name) : nx.add(a.name); return nx; })}
+                                className="text-[10px] font-semibold text-slate-500 hover:text-slate-700 underline decoration-dotted">
+                                {shown ? "hide closed" : `+${closed.length} closed`}
+                              </button>
+                              {shown && <span className="text-[10px] text-slate-400 line-through">#{closed.join(", #")}</span>}
+                            </>
+                          );
+                        })()}
+                        </>
                         : a.role === "fifa"
                         ? <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.fifa.c }}>{ROLE_STYLE.fifa.sym} FIFA CE (FIFA CE only)</span>
                         : <span className="text-[10px] font-bold" style={{ color: ROLE_STYLE.master.c }}>{ROLE_STYLE.master.sym} FA Admin</span>}
@@ -14756,14 +14780,19 @@ function HistoryTab({ coaches, educators, observations, completedTasks, coachId,
                             <p className="text-xs text-slate-500">No courses tagged to this federation yet in Coaches Progress.</p>
                           ) : (
                             <div className="flex gap-1.5 flex-wrap">
-                              {options.map(num => (
+                              {options.filter(num => !isClosedCourse(num) || showClosedOptions).map(num => (
                                 <button key={num} type="button" onClick={() => setEditAdminCourseNumbers(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num])}
                                   className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
                                     editAdminCourseNumbers.includes(num) ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-white text-slate-500 border-slate-200"
                                   }`}>
-                                  #{num}
+                                  #{num}{isClosedCourse(num) ? " (closed)" : ""}
                                 </button>
                               ))}
+                              {options.some(isClosedCourse) && (
+                                <button type="button" onClick={() => setShowClosedOptions(v => !v)} className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 underline decoration-dotted px-1">
+                                  {showClosedOptions ? "hide closed courses" : `show ${options.filter(isClosedCourse).length} closed`}
+                                </button>
+                              )}
                             </div>
                           )}
                           </>}
