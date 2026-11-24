@@ -27,7 +27,10 @@ export default function FifaMentoringTab({ session }) {
       const el = frameRef.current;
       if (!el) return;
       const top = el.getBoundingClientRect().top + window.scrollY;
-      const avail = Math.round(window.innerHeight - top - 12);
+      // visualViewport is the area actually on screen (innerHeight can include
+      // browser UI or pinch-zoom space); take the smaller of the two.
+      const vh = Math.min(window.innerHeight, window.visualViewport?.height || Infinity, root.clientHeight || Infinity);
+      const avail = Math.round(vh - top - 16);
       setFrameH(Math.max(420, avail));
       // When the frame fits in the window, the page itself has nothing to scroll.
       // Locking it stops the tracker's scrolling from dragging the whole frame
@@ -35,9 +38,20 @@ export default function FifaMentoringTab({ session }) {
       root.style.overflow = avail >= 420 ? "hidden" : "";
     };
     fit();
-    const t = setTimeout(fit, 400);
+    // The header above the frame can change height after first paint (fonts,
+    // tab wrapping, the text-size switch), so re-fit whenever anything resizes.
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(fit) : null;
+    if (ro) { ro.observe(document.body); if (frameRef.current?.parentElement) ro.observe(frameRef.current.parentElement); }
+    const timers = [100, 400, 1000, 2500].map((ms) => setTimeout(fit, ms));
     window.addEventListener("resize", fit);
-    return () => { clearTimeout(t); window.removeEventListener("resize", fit); root.style.overflow = ""; };
+    window.visualViewport?.addEventListener("resize", fit);
+    return () => {
+      timers.forEach(clearTimeout);
+      ro?.disconnect();
+      window.removeEventListener("resize", fit);
+      window.visualViewport?.removeEventListener("resize", fit);
+      root.style.overflow = "";
+    };
   }, [status]);
 
   async function check() {
