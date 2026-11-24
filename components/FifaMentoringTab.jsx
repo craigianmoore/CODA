@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Lock, Loader2 } from "lucide-react";
 
 // FIFA CE area. The page itself and all its data come from /api/fifa/*,
@@ -12,6 +12,25 @@ export default function FifaMentoringTab({ session }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const frameRef = useRef(null);
+  const [frameH, setFrameH] = useState(null);
+
+  // Size the tracker frame to the space left under the CODA header, so the whole
+  // frame is on screen at once and nothing (the tracker's own menu included) hangs
+  // below the fold where the page can't be scrolled to reach it.
+  useEffect(() => {
+    if (status !== "ready") return;
+    const fit = () => {
+      const el = frameRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      setFrameH(Math.max(420, Math.round(window.innerHeight - top - 12)));
+    };
+    fit();
+    const t = setTimeout(fit, 400);
+    window.addEventListener("resize", fit);
+    return () => { clearTimeout(t); window.removeEventListener("resize", fit); };
+  }, [status]);
 
   async function check() {
     try {
@@ -85,7 +104,7 @@ export default function FifaMentoringTab({ session }) {
       <div className="flex justify-end">
         <button onClick={lock} className="text-xs font-semibold text-slate-500 hover:text-slate-700 flex items-center gap-1"><Lock className="w-3 h-3" /> Lock FIFA CE</button>
       </div>
-      <iframe src="/api/fifa/app" title="FIFA CE" className="w-full rounded-xl border border-slate-200 bg-white" style={{ height: "calc(100vh - 190px)", minHeight: 640 }} />
+      <iframe ref={frameRef} src="/api/fifa/app" title="FIFA CE" className="w-full rounded-xl border border-slate-200 bg-white" style={{ height: frameH ? `${frameH}px` : "calc(100vh - 190px)", minHeight: 420 }} />
     </div>
   );
 }
