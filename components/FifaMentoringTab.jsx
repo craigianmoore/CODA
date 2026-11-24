@@ -20,16 +20,24 @@ export default function FifaMentoringTab({ session }) {
   // below the fold where the page can't be scrolled to reach it.
   useEffect(() => {
     if (status !== "ready") return;
+    // Start from the top so the frame's top edge is a stable measurement.
+    window.scrollTo(0, 0);
+    const root = document.documentElement;
     const fit = () => {
       const el = frameRef.current;
       if (!el) return;
       const top = el.getBoundingClientRect().top + window.scrollY;
-      setFrameH(Math.max(420, Math.round(window.innerHeight - top - 12)));
+      const avail = Math.round(window.innerHeight - top - 12);
+      setFrameH(Math.max(420, avail));
+      // When the frame fits in the window, the page itself has nothing to scroll.
+      // Locking it stops the tracker's scrolling from dragging the whole frame
+      // up under the header (which hid the top of the tracker's menu).
+      root.style.overflow = avail >= 420 ? "hidden" : "";
     };
     fit();
     const t = setTimeout(fit, 400);
     window.addEventListener("resize", fit);
-    return () => { clearTimeout(t); window.removeEventListener("resize", fit); };
+    return () => { clearTimeout(t); window.removeEventListener("resize", fit); root.style.overflow = ""; };
   }, [status]);
 
   async function check() {
