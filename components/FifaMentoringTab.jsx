@@ -26,16 +26,22 @@ export default function FifaMentoringTab({ session }) {
     const fit = () => {
       const el = frameRef.current;
       if (!el) return;
-      const top = el.getBoundingClientRect().top + window.scrollY;
+      const rect = el.getBoundingClientRect();
+      // CODA's A+/A++ text sizes apply CSS `zoom` to the whole app, so a height of
+      // N px renders as N * zoom px on screen. Work out that factor from how tall
+      // the frame actually renders versus the height we gave it, then divide.
+      const cur = parseFloat(el.style.height);
+      const k = cur > 0 && rect.height > 0 ? Math.min(3, Math.max(0.5, rect.height / cur)) : 1;
       // visualViewport is the area actually on screen (innerHeight can include
       // browser UI or pinch-zoom space); take the smaller of the two.
       const vh = Math.min(window.innerHeight, window.visualViewport?.height || Infinity, root.clientHeight || Infinity);
-      const avail = Math.round(vh - top - 16);
-      setFrameH(Math.max(420, avail));
+      const avail = vh - rect.top - 16; // on-screen pixels left under the frame's top edge
+      const next = Math.max(Math.round(320 / k), Math.round(avail / k));
+      if (!(cur > 0) || Math.abs(next - cur) > 1) setFrameH(next); // ignore 1px jitter so re-measuring settles
       // When the frame fits in the window, the page itself has nothing to scroll.
       // Locking it stops the tracker's scrolling from dragging the whole frame
       // up under the header (which hid the top of the tracker's menu).
-      root.style.overflow = avail >= 420 ? "hidden" : "";
+      root.style.overflow = avail >= 320 ? "hidden" : "";
     };
     fit();
     // The header above the frame can change height after first paint (fonts,
@@ -126,7 +132,7 @@ export default function FifaMentoringTab({ session }) {
       <div className="flex justify-end">
         <button onClick={lock} className="text-xs font-semibold text-slate-500 hover:text-slate-700 flex items-center gap-1"><Lock className="w-3 h-3" /> Lock FIFA CE</button>
       </div>
-      <iframe ref={frameRef} src="/api/fifa/app" title="FIFA CE" className="w-full rounded-xl border border-slate-200 bg-white" style={{ height: frameH ? `${frameH}px` : "calc(100vh - 190px)", minHeight: 420 }} />
+      <iframe ref={frameRef} src="/api/fifa/app" title="FIFA CE" className="w-full rounded-xl border border-slate-200 bg-white" style={{ height: frameH ? `${frameH}px` : "calc(100vh - 190px)", minHeight: 240 }} />
     </div>
   );
 }
