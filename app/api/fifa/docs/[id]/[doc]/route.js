@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireFifa, adminClient, FIFA_BUCKET, docPrefix } from "../../../../../../lib/fifa/server";
+import { requireFifa, adminClient, FIFA_BUCKET, docPrefix, resolveMentee } from "../../../../../../lib/fifa/server";
 
 export const dynamic = "force-dynamic";
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -10,7 +10,9 @@ export async function GET(request, { params }) {
   if (!g.ok) return g.response;
   const { id, doc } = await params;
   if (!ID.test(id) || !DOC.test(doc)) return NextResponse.json({ error: "Bad id." }, { status: 400 });
-  const { data, error } = await adminClient().storage.from(FIFA_BUCKET).download(docPrefix(g.owner, id) + "/" + doc + ".pdf");
+  const r = await resolveMentee(g, id, new URL(request.url).searchParams.get("owner"));
+  if (!r) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  const { data, error } = await adminClient().storage.from(FIFA_BUCKET).download(docPrefix(r.owner, id) + "/" + doc + ".pdf");
   if (error || !data) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const name = new URL(request.url).searchParams.get("name") || "document.pdf";
   return new Response(await data.arrayBuffer(), {
@@ -28,7 +30,10 @@ export async function DELETE(request, { params }) {
   if (!g.ok) return g.response;
   const { id, doc } = await params;
   if (!ID.test(id) || !DOC.test(doc)) return NextResponse.json({ error: "Bad id." }, { status: 400 });
-  const { error } = await adminClient().storage.from(FIFA_BUCKET).remove([docPrefix(g.owner, id) + "/" + doc + ".pdf"]);
+  const r = await resolveMentee(g, id, new URL(request.url).searchParams.get("owner"));
+  if (!r) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  if (r.perm === "view") return NextResponse.json({ error: "You can view this mentee but not change it." }, { status: 403 });
+  const { error } = await adminClient().storage.from(FIFA_BUCKET).remove([docPrefix(r.owner, id) + "/" + doc + ".pdf"]);
   if (error) return NextResponse.json({ error: "Could not remove the PDF." }, { status: 500 });
   return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }

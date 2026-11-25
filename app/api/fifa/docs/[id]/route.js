@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
-import { requireFifa, adminClient, FIFA_BUCKET, docPrefix } from "../../../../../lib/fifa/server";
+import { requireFifa, adminClient, FIFA_BUCKET, docPrefix, resolveMentee } from "../../../../../lib/fifa/server";
 
 export const dynamic = "force-dynamic";
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -17,8 +17,9 @@ export async function POST(request, { params }) {
   const { id } = await params;
   if (!ID.test(id)) return NextResponse.json({ error: "Bad id." }, { status: 400 });
   const sb = adminClient();
-  const { data: row } = await sb.from("fifa_mentees").select("id").eq("owner", g.owner).eq("id", id).maybeSingle();
-  if (!row) return NextResponse.json({ error: "Save the mentee first, then add the PDF." }, { status: 404 });
+  const r = await resolveMentee(g, id, new URL(request.url).searchParams.get("owner"));
+  if (!r) return NextResponse.json({ error: "Save the mentee first, then add the PDF." }, { status: 404 });
+  if (r.perm === "view") return NextResponse.json({ error: "You can view this mentee but not change it." }, { status: 403 });
   const buf = Buffer.from(await request.arrayBuffer());
   if (!buf.length) return NextResponse.json({ error: "Empty file." }, { status: 400 });
   if (buf.length > MAX_BYTES) return NextResponse.json({ error: "That PDF is over 4 MB." }, { status: 413 });
@@ -27,7 +28,7 @@ export async function POST(request, { params }) {
   try { name = decodeURIComponent(request.headers.get("x-filename") || name); } catch {}
   name = name.replace(/[\u0000-\u001f<>:"/\\|?*]/g, "_").slice(0, 120) || "document.pdf";
   const doc = "d_" + randomBytes(5).toString("hex");
-  const { error } = await sb.storage.from(FIFA_BUCKET).upload(docPrefix(g.owner, id) + "/" + doc + ".pdf", buf, { contentType: "application/pdf", upsert: false });
+  const { error } = await sb.storage.from(FIFA_BUCKET).upload(docPrefix(r.owner, id) + "/" + doc + ".pdf", buf, { contentType: "application/pdf", upsert: false });
   if (error) return NextResponse.json({ error: "Could not store the PDF." }, { status: 500 });
   return NextResponse.json({ id: doc, name, size: buf.length, at: Date.now() }, { headers: { "Cache-Control": "no-store" } });
 }
