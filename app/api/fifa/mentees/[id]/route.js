@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireFifa, adminClient } from "../../../../../lib/fifa/server";
+import { requireFifa, adminClient, FIFA_BUCKET, docPrefix } from "../../../../../lib/fifa/server";
 
 export const dynamic = "force-dynamic";
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -25,7 +25,14 @@ export async function DELETE(request, { params }) {
   if (!g.ok) return g.response;
   const { id } = await params;
   if (!ID.test(id)) return NextResponse.json({ error: "Bad id." }, { status: 400 });
-  const { error } = await adminClient().from("fifa_mentees").delete().eq("owner", g.owner).eq("id", id);
+  const sb = adminClient();
+  const { error } = await sb.from("fifa_mentees").delete().eq("owner", g.owner).eq("id", id);
   if (error) return NextResponse.json({ error: "Could not delete." }, { status: 500 });
+  // Also remove any PDFs kept for this mentee (best effort).
+  try {
+    const dir = docPrefix(g.owner, id);
+    const { data: files } = await sb.storage.from(FIFA_BUCKET).list(dir);
+    if (files && files.length) await sb.storage.from(FIFA_BUCKET).remove(files.map((f) => dir + "/" + f.name));
+  } catch {}
   return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }
