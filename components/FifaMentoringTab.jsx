@@ -14,6 +14,8 @@ export default function FifaMentoringTab({ session }) {
   const [busy, setBusy] = useState(false);
   const frameRef = useRef(null);
   const [frameH, setFrameH] = useState(null);
+  // Newer trackers carry their own Lock button in their header and tell us so; until then keep the old one above the frame.
+  const [ownLock, setOwnLock] = useState(false);
 
   // Size the tracker frame to the space left under the CODA header, so the whole
   // frame is on screen at once and nothing (the tracker's own menu included) hangs
@@ -88,6 +90,17 @@ export default function FifaMentoringTab({ session }) {
     setBusy(false);
   }
 
+  useEffect(() => {
+    if (status !== "ready") { setOwnLock(false); return; }
+    const onMsg = (e) => {
+      if (e.origin !== window.location.origin || e.source !== frameRef.current?.contentWindow) return;
+      if (e.data?.type === "coda-fifa-ready") setOwnLock(true);
+      else if (e.data?.type === "coda-fifa-lock") lock();
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [status]);
+
   async function lock() {
     try { await fetch("/api/fifa/session", { method: "DELETE", credentials: "same-origin" }); } catch {}
     setStatus("login");
@@ -129,9 +142,11 @@ export default function FifaMentoringTab({ session }) {
   }
   return (
     <div className="space-y-2">
-      <div className="flex justify-end">
-        <button onClick={lock} className="text-xs font-semibold text-slate-500 hover:text-slate-700 flex items-center gap-1"><Lock className="w-3 h-3" /> Lock FIFA CE</button>
-      </div>
+      {!ownLock && (
+        <div className="flex justify-end">
+          <button onClick={lock} className="text-xs font-semibold text-slate-500 hover:text-slate-700 flex items-center gap-1"><Lock className="w-3 h-3" /> Lock FIFA CE</button>
+        </div>
+      )}
       <iframe ref={frameRef} src="/api/fifa/app" title="FIFA CE" className="w-full rounded-xl border border-slate-200 bg-white" style={{ height: frameH ? `${frameH}px` : "calc(100vh - 190px)", minHeight: 240 }} />
     </div>
   );
