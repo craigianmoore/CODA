@@ -147,7 +147,7 @@ export default function FifaMentoringTab({ session }) {
           <button onClick={lock} className="text-xs font-semibold text-slate-500 hover:text-slate-700 flex items-center gap-1"><Lock className="w-3 h-3" /> Lock FIFA CE</button>
         </div>
       )}
-      <iframe ref={frameRef} src="/api/fifa/app" title="FIFA CE" className="w-full rounded-xl border border-slate-200 bg-white" style={{ height: frameH ? `${frameH}px` : "calc(100vh - 190px)", minHeight: 240 }} />
+      <iframe ref={frameRef} src="/api/fifa/app" title="FIFA CE" allow="microphone" className="w-full rounded-xl border border-slate-200 bg-white" style={{ height: frameH ? `${frameH}px` : "calc(100vh - 190px)", minHeight: 240 }} />
     </div>
   );
 }
